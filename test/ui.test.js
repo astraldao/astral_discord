@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {commands} from '../src/commands.js';
+import {commands,canConfigure} from '../src/commands.js';
+import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {panel,countdownCard,payload,choiceNavigation,waitingCard} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
@@ -11,6 +12,15 @@ test('all commands and embed/component payloads serialize under Discord builder 
     for(const row of message.components)row.toJSON();
     assert.deepEqual(message.allowedMentions.parse,[]);
   }
+});
+test('settings commands default to administrators and enforce the same permission at execution',()=>{
+  const json=commands().map(command=>command.toJSON());
+  assert.equal(json.find(command=>command.name==='vc設定').default_member_permissions,String(P.Administrator));
+  assert.ok(!json.find(command=>command.name==='vc').default_member_permissions);
+  assert.equal(canConfigure(new PermissionsBitField(P.Administrator)),true);
+  assert.equal(canConfigure(new PermissionsBitField(P.ManageGuild)),false);
+  assert.equal(canConfigure(new PermissionsBitField()),false);
+  assert.equal(canConfigure(null),false);
 });
 test('destination pagination and queue progress remain usable at the first and last pages',()=>{
   const first=choiceNavigation(0,5).toJSON().components;

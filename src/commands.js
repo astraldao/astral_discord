@@ -1,7 +1,8 @@
 import {SlashCommandBuilder, ChannelType, PermissionFlagsBits as P} from 'discord.js';
 const vc=(s)=>s.addChannelOption(o=>o.setName('チャンネル').setDescription('通常のボイスチャンネル').addChannelTypes(ChannelType.GuildVoice).setRequired(true));
+export const canConfigure=permissions=>permissions?.has(P.Administrator)===true;
 export function commands() {
-  const settings=new SlashCommandBuilder().setName('vc設定').setDescription('入室ロビーの設定').setDefaultMemberPermissions(P.ManageGuild)
+  const settings=new SlashCommandBuilder().setName('vc設定').setDescription('管理者用・入室ロビーの設定').setDefaultMemberPermissions(P.Administrator)
     .addSubcommand(s=>vc(s.setName('ロビー').setDescription('入室ロビーを指定')))
     .addSubcommand(s=>vc(s.setName('行き先追加').setDescription('入室候補にVCを追加')))
     .addSubcommand(s=>vc(s.setName('行き先削除').setDescription('入室候補からVCを削除')))

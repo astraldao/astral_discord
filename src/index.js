@@ -6,7 +6,7 @@ import {connectSpeech} from './audio.js';
 import {synthesize,gentlePcm} from './speech.js';
 
 import {SettingsStore} from './settings.js';
-import {commands} from './commands.js';
+import {commands,canConfigure} from './commands.js';
 import {mentions,text,payload,panel,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
@@ -136,7 +136,7 @@ function configurationCard(c) {
   return payload('✦  ロビー設定',`**ロビー**\n${c.lobbyId?`<#${c.lobbyId}>`:'未設定'}\n\n**行き先 · ${c.targetIds.length}件**\n${destinations}\n\n**待機** ${c.seconds}秒　 **ずんだもん** ${c.voice?'ON':'OFF'}\n**音量** ${c.volume??30}%\n**直接入室** ${c.enforce?'検出後ロビーへ戻す':'許可'}\n\n設定は自動保存されます。`);
 }
 async function configure(interaction) {
-  if(!interaction.memberPermissions.has(P.ManageGuild))throw new EntryError('設定変更には「サーバー管理」権限が必要です。');
+  if(!canConfigure(interaction.memberPermissions))throw new EntryError('このコマンドは管理者専用です。入室にはロビーの「行き先を選ぶ」ボタンをご利用ください。');
   const action=interaction.options.getSubcommand();
   if(action==='一覧'){await interaction.editReply(configurationCard(settings.get()));return;}
   if(action==='辞書一覧') {
