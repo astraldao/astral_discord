@@ -1,0 +1,10 @@
+node_modules/
+.env
+data/
+*.log
+.voicevox-venv/
+voicevox/
+__pycache__/
+dictionaries/japanese-plus/
+dictionaries/japanese-plus.tar.gz
+.quaxly-bootstrap.sh
