@@ -13,6 +13,29 @@ test('VC notifications are serialized and recover after failure', async () => {
   assert.deepEqual(events,['start','end','next']);assert.equal(queue.size,0);
 });
 const user = {}, bot = {};
+test('waiting cancellation immediately frees capacity and updates positions without running cancelled tasks',async()=>{
+  const queue=new SerialQueue(), cancelled=new AbortController(),positions=[],events=[];
+  let release;
+  const first=queue.add(()=>new Promise(resolve=>{release=resolve;}));
+  await Promise.resolve();
+  const second=queue.add(()=>events.push('cancelled'),{signal:cancelled.signal});
+  const failure=assert.rejects(second,/cancelled/);
+  const third=queue.add(()=>events.push('third'),{onPosition:ahead=>positions.push(ahead)});
+  assert.equal(queue.size,3);
+  cancelled.abort(new Error('cancelled'));
+  assert.equal(queue.size,2);
+  assert.equal(positions.at(-1),1);
+  await failure;
+  const fourth=queue.add(()=>events.push('fourth'));
+  release();await first;await third;await fourth;
+  assert.deepEqual(events,['third','fourth']);
+  assert.equal(queue.size,0);
+});
+test('already aborted jobs never enter the queue',async()=>{
+  const queue=new SerialQueue(),signal=AbortSignal.abort(new Error('cancelled'));
+  await assert.rejects(queue.add(()=>assert.fail('must not run'),{signal}),/cancelled/);
+  assert.equal(queue.size,0);
+});
 const channel = (overrides={}) => ({id:'target',type:2,parentId:'category',userLimit:0,
   members:{filter:()=>({size:1})}, permissionsFor:()=>({has:()=>true}),...overrides});
 const allowed = c => canEnter(c,user,bot,'lobby','category');

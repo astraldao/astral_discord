@@ -7,7 +7,7 @@ import {synthesize,gentlePcm} from './speech.js';
 
 import {SettingsStore} from './settings.js';
 import {commands} from './commands.js';
-import {mentions,text,payload,panel,openButton,cancelButton,countdownCard} from './ui.js';
+import {mentions,text,payload,panel,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -17,7 +17,12 @@ const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.Gui
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 let guild,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
-const status=(job,title,description,components=[],state='normal')=>quiet(()=>job.interaction.editReply(payload(title,description,{components,state})));
+const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
+const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
+const cancelJob=(job,reason)=>{
+  job.abort.abort(new EntryError(reason));
+  if(!job.started && pending.get(job.userId)===job)pending.delete(job.userId);
+};
 const configured=()=>{const c=settings.get();if(!c.lobbyId || !c.targetIds.length)throw new EntryError('管理者が /vc設定 でロビーと行き先を設定してください。');return c;};
 class EntryError extends Error {}
 
@@ -35,19 +40,25 @@ async function validate(job) {
   return {member, channel};
 }
 async function run(job) {
-  let audio, notice;
+  job.started=true;
+  let audio, notice,phase='validation';
   try {
     const c=job.config;
     let {member, channel} = await validate(job);
     await status(job,'✧  入室準備',`**${text(channel.name)}** に参加を予告します。`,[cancelButton(job)]);
     if (c.voice) {
       await status(job,'✧  音声を準備',`ずんだもんが **${text(member.displayName)}** さんの参加をお知らせします。`,[cancelButton(job)]);
+      phase='synthesis';
       const wav=await synthesize(member.displayName,job.abort.signal,c.words??[]);
       await validate(job);
+      phase='connection';
       audio=await connectSpeech(channel,gentlePcm(wav,c.volume??30),job.abort.signal);
+      await status(job,'✧  参加をお知らせ中',`**${text(channel.name)}** に音声で参加を予告しています。\n読み上げが終わるとカウントダウンが始まります。`,[cancelButton(job)]);
+      phase='playback';
       await audio.start();
     }
     ({member, channel} = await validate(job));
+    phase='notice';
     const announcement=payload('✦  参加予告',`**${text(member.displayName)}** さんが **${c.seconds}秒後** に参加します。`);
     announcement.embeds[0].setThumbnail(member.displayAvatarURL());
     if(c.voice)announcement.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
@@ -56,29 +67,41 @@ async function run(job) {
     for (let remaining = c.seconds; remaining > 0; remaining--) {
       await validate(job);
       if (audio && !audio.healthy()) throw new EntryError('音声接続が切れたため中止しました。');
-      await quiet(()=>job.interaction.editReply({...countdownCard(channel.name,remaining,c.seconds),components:[cancelButton(job)]}));
+      await updateJob(job,{...countdownCard(channel.name,remaining,c.seconds),components:[cancelButton(job)]});
       await delay(Math.max(0, deadline - (remaining - 1) * 1000 - performance.now()), undefined, {signal: job.abort.signal});
     }
     ({member, channel} = await validate(job));
     if (audio && !audio.healthy()) throw new EntryError('音声接続が切れたため中止しました。');
     job.abort.signal.throwIfAborted();
+    phase='move';
     job.moving = true;
     const grant = {channelId: channel.id}; grants.set(member.id, grant);
     try {await member.voice.setChannel(channel, '入室予告が完了');}
     catch (error) {if (grants.get(member.id) === grant) grants.delete(member.id); throw error;}
     setTimeout(() => {if (grants.get(member.id) === grant) grants.delete(member.id);}, 10000).unref();
-    await quiet(() => notice.edit(payload('✦  入室しました',`**${text(member.displayName)}** さん、ようこそ。`,{state:'success'})));
+    const completed=payload('✦  入室しました',`**${text(member.displayName)}** さん、ようこそ。`,{state:'success'});
+    if(c.voice)completed.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
+    await quiet(() => notice.edit(completed));
     await status(job,'✦  入室しました',`**${text(channel.name)}** で、よいひとときを。`,[],'success');
   } catch (error) {
-    if (notice) await quiet(() => notice.edit(payload('✧  入室取り消し','この参加予告は取り消されました。',{state:'error'})));
-    await status(job,'✧  入室を中止',job.abort.signal.aborted ? '入室をキャンセルしました。' : error instanceof EntryError ? error.message : '処理に失敗しました。ローカルVOICEVOXのセットアップ・Bot権限・音声接続を確認してください。');
-    console.error('入室処理:', error.code ?? error.name);
+    if (notice) {
+      const cancelled=payload('✧  入室取り消し','この参加予告は取り消されました。',{state:'error'});
+      if(job.config.voice)cancelled.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
+      await quiet(()=>notice.edit(cancelled));
+    }
+    const failures={synthesis:'音声を生成できませんでした。管理者にVOICEVOXのセットアップ確認をお願いしてください。',connection:'VCに接続できませんでした。Botの接続権限や音声接続を確認してください。',playback:'音声を再生できませんでした。Botの発言権限・サーバーミュートを確認してください。',notice:'参加予告を送信できませんでした。Botの送信・埋め込み権限を確認してください。',move:'VCへ移動できませんでした。空き状況とBotのメンバー移動権限を確認してください。'};
+    await status(job,'✧  入室を中止',job.abort.signal.aborted ? job.abort.signal.reason?.message??'入室をキャンセルしました。' : error instanceof EntryError ? error.message : failures[phase]??'行き先や権限を確認して、もう一度選んでください。',[openButton()],'error');
+    if(!job.abort.signal.aborted)console.error('入室処理:',phase,error.code ?? error.name);
   } finally {
     audio?.close();
     if (pending.get(job.userId) === job) pending.delete(job.userId);
   }
 }
-async function choose(interaction) {
+async function choose(interaction,page=0) {
+  const existing=pending.get(interaction.user.id);
+  if(existing && !existing.abort.signal.aborted){
+    await interaction.editReply(payload('✧  入室予約があります','予約の進行状況は、最初の予約メッセージで確認できます。変更したい場合は先にキャンセルしてください。',{components:[cancelButton(existing)]}));return;
+  }
   const c=configured();
   const member = await guild.members.fetch(interaction.user.id);
   if (member.voice.channelId !== c.lobbyId) throw new EntryError('先にロビーVCに参加してください。');
@@ -87,11 +110,12 @@ async function choose(interaction) {
     && (!c.voice || channel.permissionsFor(guild.members.me).has(P.Speak))).sort((a,b) => a.rawPosition - b.rawPosition);
   if (!choices.length) throw new EntryError('現在入室できるVCがありません。');
   if (choices.length > 125) throw new EntryError('対象カテゴリのVCを125個以下にしてください。');
-  const rows = [];
-  for (let i=0; i<choices.length; i+=25) rows.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder()
-    .setCustomId(`vc:select:${i}`).setPlaceholder('移動先を選択')
-    .addOptions(choices.slice(i,i+25).map(c => ({label: c.name.slice(0,100), value: c.id,description:`${c.members.filter(m=>!m.user.bot).size}人が参加中`})))));
-  await interaction.editReply(payload('✦  行き先を選択','入室できるVCだけを表示しています。\n選択すると、参加予告の順番待ちに入ります。',{components:rows}));
+  const pages=Math.ceil(choices.length/25);
+  page=Math.max(0,Math.min(Number.isInteger(page)?page:0,pages-1));
+  const menu=new StringSelectMenuBuilder().setCustomId(`vc:select:${page}`).setPlaceholder('入室するVCを選ぶ')
+    .addOptions(choices.slice(page*25,page*25+25).map(channel=>({label:channel.name.slice(0,100),value:channel.id,
+      description:`${channel.members.filter(m=>!m.user.bot).size}${channel.userLimit?` / ${channel.userLimit}`:''}人 · ${channel.parent?.name??'カテゴリなし'}`.slice(0,100)})));
+  await interaction.editReply(payload('✦  行き先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1} / ${pages}ページ`:''}\n選ぶと参加予告が始まります。待機中はキャンセルできます。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}));
 }
 async function refreshPanel(create=false) {
   const c=settings.get();
@@ -160,7 +184,10 @@ async function configure(interaction) {
     else throw new EntryError('不明な設定操作です。');
   });
   revision++;
-  for(const job of pending.values())if(!job.moving)job.abort.abort();
+  for(const job of pending.values())if(!job.moving){
+    cancelJob(job,'設定が変更されたため予約を取り消しました。行き先を選び直してください。');
+    if(!job.started)void status(job,'✧  予約を取り消しました',job.abort.signal.reason.message,[openButton()]);
+  }
   let note='';
   try {await refreshPanel();}catch{note='\nパネルを更新できませんでした。設定は保存済みです。 /vc設定 パネル設置 で再設置してください。';}
   await interaction.editReply(payload('✦  設定を保存',`**${action}** を更新しました。\n再起動は不要です。${note}`,{state:'success'}));
@@ -184,21 +211,29 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
       if (!job || interaction.customId !== `vc:cancel:${job.interaction.id}` || job.moving) return interaction.reply({...payload('✧  予約終了','この予約は終了済み、または移動を開始しています。'),flags:MessageFlags.Ephemeral});
-      job.abort.abort(); await interaction.update(payload('✧  キャンセル','入室予約を取り消しました。')); return;
+      await interaction.deferUpdate();
+      cancelJob(job,'入室をキャンセルしました。');
+      await job.updates;
+      await interaction.editReply(payload('✧  キャンセル','入室予約を取り消しました。行き先を選び直せます。',{components:[openButton()]})); return;
     }
-    if (interaction.isStringSelectMenu()) await interaction.deferUpdate();
+    if (interaction.isStringSelectMenu() || (interaction.isButton() && interaction.customId.startsWith('vc:page:'))) await interaction.deferUpdate();
     else await interaction.deferReply({flags: MessageFlags.Ephemeral});
     if (stopping) throw new EntryError('Botを終了しています。');
     if(command && interaction.commandName==='vc設定'){await configure(interaction);return;}
-    if (!interaction.isStringSelectMenu()) {await choose(interaction); return;}
+    if (!interaction.isStringSelectMenu()) {await choose(interaction,interaction.customId?.startsWith('vc:page:')?Number(interaction.customId.split(':')[2]):0); return;}
     if (pending.has(interaction.user.id)) throw new EntryError('すでに入室待ちです。先にキャンセルしてください。');
     if (queue.size >= 20) throw new EntryError('入室待ちが多いため、少し後でお試しください。');
     const job = {userId:interaction.user.id, channelId:interaction.values[0], interaction, abort:new AbortController(), moving:false,revision,config:configured()};
     await validate(job);
     if (pending.has(job.userId)) throw new EntryError('すでに入室待ちです。');
+    if(queue.size>=20)throw new EntryError('入室待ちが多いため、少し後でお試しください。');
+    job.channelName=guild.channels.cache.get(job.channelId)?.name??'選択したVC';
     pending.set(job.userId,job);
-    await status(job,'✧  入室待ち',`順番に参加を予告します。\n告知完了から **${job.config.seconds}秒** 後に入室します。`,[cancelButton(job)]);
-    void queue.add(() => run(job)).catch(error => console.error('キュー:',error.name));
+    void queue.add(()=>run(job),{signal:job.abort.signal,onPosition:ahead=>{
+      if(job.started || job.abort.signal.aborted)return;
+      void updateJob(job,{...waitingCard(job.channelName,ahead,job.config.seconds),components:[cancelButton(job)]});
+    }}).catch(error=>{if(!job.abort.signal.aborted)console.error('キュー:',error.name);})
+      .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error'})));
@@ -212,7 +247,10 @@ client.on('voiceStateUpdate',(before,after) => {
   const grant = grants.get(after.id);
   if (grant?.channelId === after.channelId) {grants.delete(after.id); return;}
   const job = pending.get(after.id);
-  if (job && !job.moving && after.channelId !== c.lobbyId) job.abort.abort();
+  if (job && !job.moving && after.channelId !== c.lobbyId) {
+    cancelJob(job,'ロビーから退出したため予約を取り消しました。');
+    if(!job.started)void status(job,'✧  予約を取り消しました',job.abort.signal.reason.message,[openButton()]);
+  }
   if (c.enforce && c.lobbyId && c.targetIds.includes(after.channelId) && after.channelId !== c.lobbyId) {
     after.setChannel(c.lobbyId,'予告付き入室にはロビーをご利用ください').catch(error => console.error('ロビー移動:',error.code ?? error.name));
   }

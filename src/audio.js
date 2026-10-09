@@ -14,7 +14,7 @@ export async function connectSpeech(channel, pcm, signal) {
   player.on('error', error => { fault = error; });
   connection.on('error', error => { fault = error; });
   try {
-    await entersState(connection, VoiceConnectionStatus.Ready, 15000);
+    await entersState(connection, VoiceConnectionStatus.Ready, signal ? AbortSignal.any([signal,AbortSignal.timeout(15000)]) : 15000);
     if (channel.guild.members.me.voice.serverMute) throw new Error('Botがサーバーミュートされています。');
     connection.subscribe(player);
     const abort=()=>player.stop();
@@ -24,7 +24,7 @@ export async function connectSpeech(channel, pcm, signal) {
         signal?.throwIfAborted();
         if (fault) throw fault;
         player.play(createAudioResource(Readable.from([pcm]), {inputType: StreamType.Raw}));
-        await entersState(player, AudioPlayerStatus.Playing, 3000);
+        await entersState(player, AudioPlayerStatus.Playing, signal ? AbortSignal.any([signal,AbortSignal.timeout(3000)]) : 3000);
         await entersState(player, AudioPlayerStatus.Idle, signal ? AbortSignal.any([signal,AbortSignal.timeout(25000)]) : 25000);
         if(fault)throw fault;
       },

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {commands} from '../src/commands.js';
-import {panel,countdownCard,payload} from '../src/ui.js';
+import {panel,countdownCard,payload,choiceNavigation,waitingCard} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
   const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','vc設定']);
@@ -11,6 +11,15 @@ test('all commands and embed/component payloads serialize under Discord builder 
     for(const row of message.components)row.toJSON();
     assert.deepEqual(message.allowedMentions.parse,[]);
   }
+});
+test('destination pagination and queue progress remain usable at the first and last pages',()=>{
+  const first=choiceNavigation(0,5).toJSON().components;
+  const last=choiceNavigation(4,5).toJSON().components;
+  assert.equal(first[0].disabled,true);assert.equal(first[2].disabled,false);
+  assert.equal(last[0].disabled,false);assert.equal(last[2].disabled,true);
+  assert.equal(first[1].custom_id,'vc:page:0');
+  assert.match(waitingCard('test',2,5).embeds[0].toJSON().description,/2人/);
+  assert.match(waitingCard('test',0,5).embeds[0].toJSON().description,/まもなく/);
 });
 test('explicit destination list does not admit other VCs in same category',()=>{
   const c={id:'123',type:2,parentId:'category',userLimit:0,permissionsFor:()=>({has:()=>true})};

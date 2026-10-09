@@ -1,11 +1,45 @@
 export class SerialQueue {
   tail = Promise.resolve();
-  size = 0;
-  add(task) {
-    this.size++;
-    const result = this.tail.then(task);
-    this.tail = result.catch(() => {}).finally(() => { this.size--; });
+  waiting = [];
+  active = null;
+  get size() { return this.waiting.length + (this.active ? 1 : 0); }
+  positions() {
+    this.waiting.forEach((entry,index)=>{
+      try {entry.onPosition?.(index+(this.active?1:0));} catch {}
+    });
+  }
+  add(task,{signal,onPosition}={}) {
+    if(signal?.aborted)return Promise.reject(signal.reason);
+    const result = new Promise((resolve,reject)=>{
+      const entry={task,resolve,reject,signal,onPosition};
+      entry.cancel=()=>{
+        const index=this.waiting.indexOf(entry);
+        if(index<0)return;
+        this.waiting.splice(index,1);
+        signal.removeEventListener('abort',entry.cancel);
+        reject(signal.reason);
+        this.positions();
+      };
+      signal?.addEventListener('abort',entry.cancel,{once:true});
+      this.waiting.push(entry);
+      this.positions();
+      queueMicrotask(()=>this.pump());
+    });
+    this.tail = result.catch(() => {});
     return result;
+  }
+  async pump() {
+    if(this.active || !this.waiting.length)return;
+    const entry=this.waiting.shift();
+    this.active=entry;
+    this.positions();
+    let value,error,failed=false;
+    try {value=await entry.task();} catch(cause){error=cause;failed=true;}
+    entry.signal?.removeEventListener('abort',entry.cancel);
+    this.active=null;
+    this.positions();
+    queueMicrotask(()=>this.pump());
+    if(failed)entry.reject(error);else entry.resolve(value);
   }
 }
 
