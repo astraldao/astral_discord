@@ -1,4 +1,4 @@
-import {Client, GatewayIntentBits, ChannelType, PermissionFlagsBits as P, ActionRowBuilder,
+import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
   StringSelectMenuBuilder, MessageFlags} from 'discord.js';
 import {setTimeout as delay} from 'node:timers/promises';
 import {SerialQueue, canEnter} from './queue.js';
@@ -8,7 +8,8 @@ import {synthesize,gentlePcm} from './speech.js';
 import {SettingsStore} from './settings.js';
 import {commands} from './commands.js';
 import {createAdminController} from './admin.js';
-import {mentions,text,payload,panel,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
+import {createPanelRefresher} from './panel.js';
+import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -16,7 +17,7 @@ const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,ta
 await settings.load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
-let guild,admin,ready=false,stopping=false,revision=0;
+let guild,admin,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -118,20 +119,6 @@ async function choose(interaction,page=0) {
       description:`${channel.members.filter(m=>!m.user.bot).size}${channel.userLimit?` / ${channel.userLimit}`:''}人 · ${channel.parent?.name??'カテゴリなし'}`.slice(0,100)})));
   await interaction.editReply(payload('✦  行き先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1} / ${pages}ページ`:''}\n選ぶと参加予告が始まります。待機中はキャンセルできます。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}));
 }
-async function refreshPanel(create=false) {
-  const c=settings.get();
-  if(!c.lobbyId) throw new EntryError('先に /管理 の「VC設定」でロビーを設定してください。');
-  const lobby=await guild.channels.fetch(c.lobbyId);
-  if(!lobby || lobby.type!==ChannelType.GuildVoice) throw new EntryError('ロビーVCが見つかりません。再設定してください。');
-  if(c.panel?.channelId===c.lobbyId) {
-    try {const message=await lobby.messages.fetch(c.panel.messageId);await message.edit(panel(c));return;}
-    catch(error) {if(error.code!==10008)throw error;}
-  }
-  if(create) {
-    const message=await lobby.send(panel(c));
-    await settings.update(next=>{next.panel={channelId:c.lobbyId,messageId:message.id};});
-  }
-}
 function settingsChanged() {
   revision++;
   for(const job of pending.values())if(!job.moving){
@@ -143,6 +130,7 @@ client.once('clientReady', async () => {
   try {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
+    refreshPanel=createPanelRefresher({settings,guild});
     for(const command of commands()) await guild.commands.create(command.toJSON());
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length});
