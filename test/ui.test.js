@@ -5,8 +5,8 @@ import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {panel,countdownCard,payload,choiceNavigation,waitingCard} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
-  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','vc設定']);
-  assert.equal(json[1].options.length,12);
+  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','管理']);
+  assert.equal(json[1].options?.length??0,0);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);
     for(const row of message.components)row.toJSON();
@@ -15,7 +15,7 @@ test('all commands and embed/component payloads serialize under Discord builder 
 });
 test('settings commands default to administrators and enforce the same permission at execution',()=>{
   const json=commands().map(command=>command.toJSON());
-  assert.equal(json.find(command=>command.name==='vc設定').default_member_permissions,String(P.Administrator));
+  assert.equal(json.find(command=>command.name==='管理').default_member_permissions,String(P.Administrator));
   assert.ok(!json.find(command=>command.name==='vc').default_member_permissions);
   assert.equal(canConfigure(new PermissionsBitField(P.Administrator)),true);
   assert.equal(canConfigure(new PermissionsBitField(P.ManageGuild)),false);
