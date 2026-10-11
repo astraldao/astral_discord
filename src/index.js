@@ -136,7 +136,7 @@ client.once('clientReady', async () => {
     refreshPanel=createPanelRefresher({settings,guild});
     for(const command of commands()) await guild.commands.create(command.toJSON());
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
-    densuke=createDensukeController({email:env.DENSUKE_EMAIL});
+    densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i)});
     client.user.setActivity('✦ /vc で次の会話へ');
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);

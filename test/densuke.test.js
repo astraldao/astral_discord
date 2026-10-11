@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {eventData,confirmationFields,resultLinks,createDensukeClient,UncertainCreation} from '../src/densuke.js';
-import {createDensukeController,densukeModal,densukeScreen} from '../src/densuke-ui.js';
+import {createDensukeController,densukeModal,densukeScreen,densukeEmailModal} from '../src/densuke-ui.js';
 const email='owner@example.com';
 const event=()=>({name:'卓の日程',schedule:'10/31(土) 20:00～\n11/1(日) 20:00～',description:'説明',password:'aB123',choice:'3'});
 const result={answer:'https://www.densuke.biz/list?cd=Answer123',edit:'https://www.densuke.biz/edit?cd=Secret123'};
@@ -41,12 +41,13 @@ test('confirmation failure never sends creation and responses have a size limit'
   await assert.rejects(huge.create(event(),email),/大きすぎ/);
 });
 function fixture(fail=false){
-  let now=0,calls=0;const posts=[];
-  const controller=createDensukeController({email,now:()=>now,client:{async create(){calls++;if(fail)throw new UncertainCreation('uncertain');return result;}}});
+  let now=0,calls=0,c={densukeEmail:null};const posts=[],mails=[];
+  const settings={get:()=>structuredClone(c),async update(fn){const next=structuredClone(c);fn(next);c=next;}};
+  const controller=createDensukeController({email,settings,now:()=>now,client:{async create(e,destination){calls++;mails.push(destination);if(fail)throw new UncertainCreation('uncertain');return result;}}});
   const interaction=(id,extra={})=>({customId:id,user:{id:'owner'},memberPermissions:new PermissionsBitField(P.Administrator),channelId:'channel',channel:{async send(m){posts.push(m);}},message:{},deferred:false,replied:false,
-    isModalSubmit:()=>id?.endsWith(':submit')??false,async deferReply(){this.deferred=true;},async deferUpdate(){this.deferred=true;},async reply(m){this.replied=true;this.result=m;},async editReply(m){this.result=m;},async showModal(m){this.modal=m;},...extra});
+    isModalSubmit:()=>id?.includes(':submit')??false,async deferReply(){this.deferred=true;},async deferUpdate(){this.deferred=true;},async reply(m){this.replied=true;this.result=m;},async editReply(m){this.result=m;},async showModal(m){this.modal=m;},...extra});
   async function open(){await controller.open(interaction());return [...controller.sessions.sessions.values()].at(-1);}
-  return {controller,interaction,open,calls:()=>calls,posts,setTime:v=>now=v};
+  return {controller,interaction,open,calls:()=>calls,posts,mails,settings,setTime:v=>now=v};
 }
 test('modal stays private, review is required, duplicate creation is refused and sharing excludes secrets',async()=>{
   const f=fixture(),s=await f.open(),act=(action,extra)=>f.interaction(`densuke:${s.id}:${action}`,extra);
@@ -76,4 +77,31 @@ test('largest form and preview fit Discord limits',()=>{
   const s={id:'test',phase:'review',event:{...event(),name:'a'.repeat(250),schedule:'a'.repeat(4000),description:'a'.repeat(2000)}};
   assert.equal(densukeModal(s).toJSON().components.length,4);
   const m=densukeScreen(s);assert.ok(m.embeds[0].toJSON().description.length<4096);m.components.forEach(r=>r.toJSON());
+  densukeEmailModal(s,email).toJSON();
+});
+test('email settings use a private modal, retain the event draft and override the environment fallback',async()=>{
+  const f=fixture(),s=await f.open();s.event=event();s.phase='review';
+  const form=f.interaction(`densuke:${s.id}:form-email`);await f.controller.handle(form);
+  assert.ok(form.modal);assert.equal(form.deferred,false);
+  const submit=f.interaction(`densuke:${s.id}:submit-email`,{fields:{getTextInputValue:()=> 'new@example.com'}});
+  await f.controller.handle(submit);assert.equal(f.settings.get().densukeEmail,'new@example.com');
+  assert.equal(s.event.name,event().name);assert.equal(s.phase,'review');assert.equal(f.calls(),0);
+  assert.ok(!JSON.stringify(submit.result).includes('new@example.com'));
+  await f.controller.handle(f.interaction(`densuke:${s.id}:create`));assert.deepEqual(f.mails,['new@example.com']);
+});
+test('invalid or unauthorized email edits never persist, and stale edits never overwrite',async()=>{
+  const f=fixture(),s=await f.open();const act=(a,extra)=>f.interaction(`densuke:${s.id}:${a}`,extra);
+  await f.controller.handle(act('form-email'));
+  await f.controller.handle(act('submit-email',{fields:{getTextInputValue:()=> 'bad\naddress'}}));assert.equal(f.settings.get().densukeEmail,null);
+  await f.controller.handle(act('submit-email',{memberPermissions:new PermissionsBitField(),fields:{getTextInputValue:()=> 'new@example.com'}}));assert.equal(f.settings.get().densukeEmail,null);
+  await f.settings.update(c=>c.densukeEmail='other@example.com');
+  await f.controller.handle(act('submit-email',{fields:{getTextInputValue:()=> 'new@example.com'}}));assert.equal(f.settings.get().densukeEmail,'other@example.com');
+});
+test('another administrator changing the recipient requires review before event submission',async()=>{
+  const f=fixture(),s=await f.open(),act=(a,extra)=>f.interaction(`densuke:${s.id}:${a}`,extra);
+  await f.controller.handle(act('submit',{fields:{getTextInputValue:key=>event()[key]}}));
+  await f.settings.update(c=>c.densukeEmail='other@example.com');
+  await f.controller.handle(act('create'));assert.equal(f.calls(),0);
+  await f.controller.handle(act('submit',{fields:{getTextInputValue:key=>event()[key]}}));
+  await f.controller.handle(act('create'));assert.deepEqual(f.mails,['other@example.com']);
 });

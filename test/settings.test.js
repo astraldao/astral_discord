@@ -27,3 +27,15 @@ test('duplicate destinations and lobby as destination are rejected',()=>{
   const c=defaults();c.targetIds=['123456789012345678','123456789012345678'];assert.throws(()=>validateSettings(c));
   c.targetIds.pop();c.lobbyId=c.targetIds[0];assert.throws(()=>validateSettings(c));
 });
+test('fixed Densuke mail migrates safely, survives restart and rejects invalid addresses',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'astral-mail-'));
+  try {
+    const path=join(dir,'settings.json');await writeFile(path,JSON.stringify(defaults()));
+    const store=new SettingsStore(path,defaults());await store.load();assert.equal(store.get().densukeEmail,null);
+    await store.update(c=>{c.densukeEmail='owner@example.com';});
+    const reload=new SettingsStore(path,defaults());await reload.load();assert.equal(reload.get().densukeEmail,'owner@example.com');
+    assert.equal(reload.get().seconds,5);assert.deepEqual(reload.get().targetIds,[]);
+    for(const value of ['not-mail','a\n@example.com','a'.repeat(255)+'@example.com',42])await assert.rejects(store.update(c=>{c.densukeEmail=value;}));
+    assert.equal(store.get().densukeEmail,'owner@example.com');
+  } finally {await rm(dir,{recursive:true,force:true});}
+});

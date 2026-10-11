@@ -1,4 +1,5 @@
 import {parse} from 'parse5';
+import {validDensukeEmail} from './settings.js';
 const origin='https://www.densuke.biz';
 export const choices={'1':'○△×','2':'○×','3':'◎○△×'};
 export function eventData(input) {
@@ -16,7 +17,7 @@ function nodes(html) {
 }
 const attrs=n=>Object.fromEntries((n.attrs??[]).map(a=>[a.name,a.value]));
 function fieldsFor(event,email) {
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email??''))throw new Error('管理者がDENSUKE_EMAILを設定してください。');
+  if(!validDensukeEmail(email))throw new Error('「固定メール設定」でメールアドレスを設定してください。');
   return {eventname:event.name,schedule:event.schedule,explain:event.description,email,pw:event.password?'1':'0',password:event.password,eventchoice:event.choice,postfix:''};
 }
 export function confirmationFields(html,event,email) {
