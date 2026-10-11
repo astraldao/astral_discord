@@ -13,8 +13,10 @@ export function trpgPanel(p){const shared=p.mode==='shared';return payload('✦ 
 export function createTrpgController({store,guild,iachara=createIacharaClient(),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});const channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルの閲覧権限がありません。');return canConfigure(member.permissions);}}) {
   const sessions=new AdminSessions();const cooldown=new Map();
   const isAdmin=i=>access(i);
+  const managementSession=s=>s.entry==='admin' && s.isAdmin;
+  const requireAdmin=s=>{if(!managementSession(s))throw new Error('管理者専用の操作です。/管理 から開いてください。');};
   function screen(s,note=''){
-    if(['home','install','scenarios','archives'].includes(s.view) && !s.isAdmin)throw new Error('管理者専用の画面です。');
+    if(['home','install','scenarios','archives'].includes(s.view) && !managementSession(s))throw new Error('管理者専用の画面です。');
     const d=store.metadata();let title='✦  卓・キャラシ管理',body='',components=[];
     const back=()=>row(button(s,'home','戻る'));
     if(s.view==='home'){body='ベース卓は管理者用の非公開画面から確認できます。\nキャラシパネルは設置時に秘匿／共有を選択します。';components=[row(button(s,'scenarios','ベース卓を探す'),button(s,'form-scenario','ベース卓を登録'),button(s,'install','キャラシパネルを設置')),row(button(s,'archives','キャラ控えを管理'))];}
@@ -30,17 +32,16 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       }else{
         const items=visibleCharacters(d,s.panelId,s.userId,s.isAdmin);const pages=Math.max(1,Math.ceil(items.length/10));s.page=Math.max(0,Math.min(s.page,pages-1));const part=items.slice(s.page*10,s.page*10+10);body=`${p.mode==='secret'?'秘匿':'共有'}モード · ${items.length}件\n\n${part.map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||'キャラシはまだ登録されていません。'}\n\n${s.page+1}/${pages}ページ\nTXTは本人と管理者のみ閲覧できます。`;
         const own=part.filter(c=>d.characters.some(x=>x.id===c.id && (x.ownerId===s.userId || s.isAdmin)));if(own.length)components.push(row(menu(s,'character','控えを開くPCを選ぶ',own.map(c=>({label:c.name,value:c.id})))));
-        components.push(row(button(s,'form-register','登録・URLから更新'),button(s,'prev','前へ').setDisabled(s.page===0),button(s,'next','次へ').setDisabled(s.page>=pages-1)));if(s.isAdmin)components.push(back());
+        components.push(row(button(s,'form-register','登録・URLから更新'),button(s,'prev','前へ').setDisabled(s.page===0),button(s,'next','次へ').setDisabled(s.page>=pages-1)));if(managementSession(s))components.push(back());
       }
     }
     const message=payload(title,(note?`${note}\n\n`:'')+body,{components});message.attachments=[];message.embeds[0].setAuthor({name:'ASTRAL · TABLE ARCHIVE'}).setFooter({text:'この画面はあなただけに表示 · 操作期限10分'});return message;
   }
-  const requireAdmin=s=>{if(!s.isAdmin)throw new Error('管理者専用の操作です。');};
   async function fetchSave(s,url,owner=s.userId,i){const time=Date.now();if((cooldown.get(s.userId)??0)>time)throw new Error('更新は30秒に1回です。少し待ってください。');if(cooldown.size>1000)for(const [id,end] of cooldown)if(end<=time)cooldown.delete(id);cooldown.set(s.userId,time+30000);url=iacharaUrl(url);const result=await iachara.fetchCharacter(url);sessions.get(s.id,s.userId);s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(owner!==s.userId && !s.isAdmin)throw new Error('管理者権限が変更されたため更新を中止しました。');s.characterId=await store.saveCharacter(s.panelId,owner,url,result);s.view='detail';s.page=0;}
-  return {sessions,async open(i){await i.deferReply({flags:MessageFlags.Ephemeral});if(!await isAdmin(i))throw new Error('管理者専用です。');const s=sessions.create(i.user.id);s.isAdmin=true;s.originChannelId=i.channelId;s.view='home';await i.editReply(screen(s));},async handle(i){let s,locked=false;
+  return {sessions,async open(i){await i.deferReply({flags:MessageFlags.Ephemeral});if(!await isAdmin(i))throw new Error('管理者専用です。');const s=sessions.create(i.user.id);s.entry='admin';s.isAdmin=true;s.originChannelId=i.channelId;s.view='home';await i.editReply(screen(s));},async handle(i){let s,locked=false;
     try {
       const parts=i.customId.split(':');
-      if(parts[1]==='p'){const p=store.metadata().panels.find(x=>x.id===parts[2]);if(!p || p.channelId!==i.channelId || p.messageId!==i.message?.id || parts[3]!=='open')throw new Error('このパネルは利用できません。');await i.deferReply({flags:MessageFlags.Ephemeral});s=sessions.create(i.user.id);Object.assign(s,{isAdmin:await isAdmin(i),originChannelId:i.channelId,view:'characters',panelId:p.id});await i.editReply(screen(s));return;}
+      if(parts[1]==='p'){const p=store.metadata().panels.find(x=>x.id===parts[2]);if(!p || p.channelId!==i.channelId || p.messageId!==i.message?.id || parts[3]!=='open')throw new Error('このパネルは利用できません。');await i.deferReply({flags:MessageFlags.Ephemeral});s=sessions.create(i.user.id);Object.assign(s,{entry:'panel',isAdmin:await isAdmin(i),originChannelId:i.channelId,view:'characters',panelId:p.id});await i.editReply(screen(s));return;}
       s=sessions.get(parts[1],i.user.id);if(s.originChannelId && s.originChannelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');const action=parts[2];if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
       if(action.startsWith('form-')){s.isAdmin=await isAdmin(i);const kind=action.slice(5);if(kind!=='register')requireAdmin(s);if(kind==='register' && !s.panelId)throw new Error('パネルから開いてください。');await i.showModal(form(s,kind));return;}
       // Always create a private response, including forged/public component requests.
