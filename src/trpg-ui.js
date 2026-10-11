@@ -1,7 +1,7 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,AttachmentBuilder,escapeMarkdown,PermissionFlagsBits as P} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,text,privateScreen} from './ui.js';
+import {payload,text} from './ui.js';
 import {visibleCharacters,searchScenarios,iacharaUrl} from './trpg-store.js';
 import {createIacharaClient} from './iachara.js';
 const row=(...x)=>new ActionRowBuilder().addComponents(...x);
@@ -13,7 +13,6 @@ function form(s,kind){const m=new ModalBuilder().setCustomId(`trpg:${s.id}:submi
 export function trpgPanel(p){
   const shared=p.mode==='shared';
   const message=payload('✦  キャラシ',`いあきゃらの共有URLを登録すると、PC名・URL・TXTの控えを保存できます。\n\n**${shared?'共有':'秘匿'}モード**\n${shared?'PC名と共有URLはメンバーが閲覧できます。':'PC名と共有URLは登録した本人と管理者だけが閲覧できます。'}\nTXTの控えは、どちらのモードでも本人と管理者だけに表示します。`,{components:[row(new ButtonBuilder().setCustomId(`trpg:p:${p.id}:open`).setLabel('PC一覧・登録').setStyle(ButtonStyle.Primary))]});
-  message.embeds[0].setFooter({text:'ボタンを押した後の画面は、あなただけに表示'});
   return message;
 }
 export function createTrpgController({store,guild,iachara=createIacharaClient(),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});const channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルの閲覧権限がありません。');return canConfigure(member.permissions);}}) {
@@ -74,7 +73,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       }
     }
     const message=payload(title,(note?`${note}\n\n`:'')+body,{components});message.attachments=[];
-    return privateScreen(message,`操作期限10分 · ${s.entry==='admin'?'/管理 から開き直す':'元のパネルから開き直す'}`);
+    return message;
   }
   async function fetchSave(s,url,owner=s.userId,i){const time=Date.now();if((cooldown.get(s.userId)??0)>time)throw new Error('更新は30秒に1回です。少し待ってください。');if(cooldown.size>1000)for(const [id,end] of cooldown)if(end<=time)cooldown.delete(id);cooldown.set(s.userId,time+30000);url=iacharaUrl(url);const result=await iachara.fetchCharacter(url);sessions.get(s.id,s.userId);s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(owner!==s.userId && !s.isAdmin)throw new Error('管理者権限が変更されたため更新を中止しました。');s.characterId=await store.saveCharacter(s.panelId,owner,url,result);s.view='detail';s.page=0;}
   return {sessions,async refreshPanels(){

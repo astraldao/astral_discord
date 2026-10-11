@@ -13,7 +13,7 @@ import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
-import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,privateScreen} from './ui.js';
+import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -26,7 +26,7 @@ const limits=new InteractionLimits();
 let guild,admin,densuke,trpg,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
-const status=(job,title,description,components=[],state='normal')=>updateJob(job,privateScreen(payload(title,description,{components,state}),state==='success'?'入室完了':components.some(r=>r.components.some(b=>b.data.custom_id?.startsWith('vc:cancel:')))?'入室までキャンセルできます':'/vc から選び直せます'));
+const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
 const cancelJob=(job,reason)=>{
   job.abort.abort(new EntryError(reason));
   if(!job.started && pending.get(job.userId)===job)pending.delete(job.userId);
@@ -69,7 +69,7 @@ async function run(job) {
     phase='notice';
     const announcement=payload('✦  参加予告',`**${text(member.displayName)}** さんが **${c.seconds}秒後** に参加します。`);
     announcement.embeds[0].setThumbnail(member.displayAvatarURL());
-    if(c.voice)announcement.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
+    if(c.voice)announcement.embeds[0].setDescription(announcement.embeds[0].data.description+'\n\nVOICEVOX:ずんだもん');
     notice = await channel.send(announcement);
     const deadline = performance.now() + c.seconds*1000;
     for (let remaining = c.seconds; remaining > 0; remaining--) {
@@ -88,13 +88,13 @@ async function run(job) {
     catch (error) {if (grants.get(member.id) === grant) grants.delete(member.id); throw error;}
     setTimeout(() => {if (grants.get(member.id) === grant) grants.delete(member.id);}, 10000).unref();
     const completed=payload('✦  入室しました',`**${text(member.displayName)}** さん、ようこそ。`,{state:'success'});
-    if(c.voice)completed.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
+    if(c.voice)completed.embeds[0].setDescription(completed.embeds[0].data.description+'\n\nVOICEVOX:ずんだもん');
     await quiet(() => notice.edit(completed));
     await status(job,'✦  入室しました',`**${text(channel.name)}** に移動しました。`,[],'success');
   } catch (error) {
     if (notice) {
       const cancelled=payload('✧  入室取り消し','この参加予告は取り消されました。',{state:'error'});
-      if(job.config.voice)cancelled.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
+      if(job.config.voice)cancelled.embeds[0].setDescription(cancelled.embeds[0].data.description+'\n\nVOICEVOX:ずんだもん');
       await quiet(()=>notice.edit(cancelled));
     }
     const failures={synthesis:'音声を生成できませんでした。管理者にVOICEVOXのセットアップ確認をお願いしてください。',connection:'VCに接続できませんでした。Botの接続権限や音声接続を確認してください。',playback:'音声を再生できませんでした。Botの発言権限・サーバーミュートを確認してください。',notice:'参加予告を送信できませんでした。Botの送信・埋め込み権限を確認してください。',move:'VCへ移動できませんでした。空き状況とBotのメンバー移動権限を確認してください。'};
@@ -123,7 +123,7 @@ async function choose(interaction,page=0) {
   const menu=new StringSelectMenuBuilder().setCustomId(`vc:select:${page}`).setPlaceholder('入室するVCを選ぶ')
     .addOptions(choices.slice(page*25,page*25+25).map(channel=>({label:channel.name.slice(0,100),value:channel.id,
       description:`${channel.members.filter(m=>!m.user.bot).size}${channel.userLimit?` / ${channel.userLimit}`:''}人 · ${channel.parent?.name??'カテゴリなし'}`.slice(0,100)})));
-  await interaction.editReply(privateScreen(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}),'入室までキャンセルできます'));
+  await interaction.editReply(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}));
 }
 function settingsChanged() {
   revision++;

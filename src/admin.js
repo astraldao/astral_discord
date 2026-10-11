@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text,privateScreen} from './ui.js';
+import {payload,text} from './ui.js';
 import {validateSettings} from './settings.js';
 
 export function changeSettings(c,action,value) {
@@ -96,7 +96,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     components.push(row(button(s,'nav-vc','VC設定へ')));
   }
   if(note)description=`${note}\n\n${description}`;
-  return privateScreen(payload(title,description,{components}),'管理者専用 · 操作期限10分 · /管理 で開き直す');
+  return payload(title,description,{components});
 }
 export function adminModal(s,kind,c) {
   const modal=new ModalBuilder().setCustomId(`admin:${s.id}:submit-${kind}`).setTitle({seconds:'待機時間',volume:'音量',word:'読み方の登録・上書き'}[kind]);
