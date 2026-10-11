@@ -151,3 +151,26 @@ test('uncertain creation cannot use new-event shortcut to recreate an event',asy
   await f.controller.handle(f.interaction(`densuke:${s.id}:restart`));
   assert.equal(s.phase,'uncertain');assert.equal(f.calls(),1);
 });
+test('invalid form submission preserves corrections privately and cannot create the previous valid event',async()=>{
+  const f=fixture(),s=await f.open();s.event=event();s.phase='review';
+  const invalid={...event(),name:'新しい卓',password:'BAD_12'};
+  const act=(a,extra)=>f.interaction(`densuke:${s.id}:${a}`,extra);
+  const submit=act('submit',{fields:{getTextInputValue:key=>invalid[key]}});await f.controller.handle(submit);
+  assert.equal(s.phase,'draft');assert.ok(!JSON.stringify(submit.result).includes(invalid.password));
+  await f.controller.handle(act('create'));assert.equal(f.calls(),0);
+  const form=act('form');await f.controller.handle(form);
+  const fields=form.modal.toJSON().components.map(r=>r.components[0]);
+  assert.equal(fields[0].value,invalid.name);assert.equal(fields[1].value,invalid.schedule);assert.equal(fields[3].value,invalid.password);
+  const foreign=act('form',{user:{id:'stranger'}});await f.controller.handle(foreign);assert.ok(!foreign.modal);assert.ok(!JSON.stringify(foreign.result).includes(invalid.password));
+  await f.controller.handle(act('submit',{fields:{getTextInputValue:key=>({...invalid,password:'OK12'})[key]}}));
+  assert.equal(s.phase,'review');assert.equal(s.inputDraft,undefined);
+  await f.controller.handle(act('create'));assert.equal(f.calls(),1);
+  assert.ok(JSON.stringify(densukeScreen(s)).includes('<#channel>'));
+  await f.controller.handle(act('share'));assert.ok(!JSON.stringify(f.posts).includes('Secret123'));
+});
+test('failed input draft is bounded and discarded on cancellation',async()=>{
+  const f=fixture(),s=await f.open();const fields={...event(),schedule:'x'.repeat(5000),password:'BAD_12'};
+  await f.controller.handle(f.interaction(`densuke:${s.id}:submit`,{fields:{getTextInputValue:key=>fields[key]}}));
+  assert.equal(s.phase,'draft');assert.equal(s.inputDraft.schedule.length,4000);densukeModal(s).toJSON();
+  await f.controller.handle(f.interaction(`densuke:${s.id}:cancel`));assert.equal(s.inputDraft,undefined);assert.equal(s.event.password,'');
+});

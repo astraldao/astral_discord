@@ -90,3 +90,19 @@ test('setup guidance and unavailable install/delete actions reflect actual confi
   s.stage={action:'remove',description:'入室先から削除'};
   assert.equal(adminScreen(s,c).components[0].toJSON().components[0].style,4);
 });
+test('invalid setting inputs are retained for correction without being persisted',async()=>{
+  const f=fixture(),s=f.controller.sessions.create('owner');s.view='vc';
+  const act=(a,extra)=>f.interaction(`admin:${s.id}:${a}`,extra);
+  await f.controller.handle(act('submit-seconds',{fields:{getTextInputValue:()=> '20'}}));
+  assert.equal(f.settings.get().seconds,5);
+  const form=act('form-seconds');await f.controller.handle(form);
+  assert.equal(form.modal.toJSON().components[0].components[0].value,'20');
+  await f.controller.handle(act('submit-seconds',{fields:{getTextInputValue:()=> '8'}}));
+  assert.equal(f.settings.get().seconds,8);assert.equal(s.formDraft,undefined);
+  s.view='words';
+  await f.controller.handle(act('submit-word',{fields:{getTextInputValue:key=>key==='surface'?'Astral':'invalid'}}));
+  assert.equal(f.settings.get().words.length,0);
+  const word=act('form-word');await f.controller.handle(word);
+  assert.equal(word.modal.toJSON().components[0].components[0].value,'Astral');assert.equal(word.modal.toJSON().components[1].components[0].value,'invalid');
+  await f.controller.handle(act('nav-audio'));assert.equal(s.formDraft,undefined);
+});

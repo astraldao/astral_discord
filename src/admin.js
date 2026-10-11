@@ -100,9 +100,10 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
 }
 export function adminModal(s,kind,c) {
   const modal=new ModalBuilder().setCustomId(`admin:${s.id}:submit-${kind}`).setTitle({seconds:'待機時間',volume:'音量',word:'読み方の登録・上書き'}[kind]);
-  const input=(id,label,max,value)=>{const field=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMaxLength(max).setRequired(true);if(value)field.setValue(value);return row(field);};
-  if(kind==='word')modal.addComponents(input('surface','表示名全体または英単語（32文字以内）',32,''),input('reading','読み（ひらがな・カタカナ、40文字以内）',40,''));
-  else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,String(c[kind])));
+  const input=(id,label,max,value)=>{const field=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMaxLength(max).setRequired(true);if(value)field.setValue(String(value).slice(0,max));return row(field);};
+  const draft=s.formDraft?.kind===kind?s.formDraft.value:undefined;
+  if(kind==='word')modal.addComponents(input('surface','表示名全体または英単語（32文字以内）',32,draft?.surface??''),input('reading','読み（ひらがな・カタカナ、40文字以内）',40,draft?.reading??''));
+  else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
 export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg}) {
@@ -121,11 +122,11 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     const stage=s.stage;if(!stage)throw new Error('保存する変更がありません。');
     await validateChannel(stage.action,stage.value);
     await settings.update(c=>{
-      if(!confirmed && pendingCount())throw new Error('入室予約が増えました。確認画面で保存を確定で確定してください。');
+      if(!confirmed && pendingCount())throw new Error('入室予約が増えました。確認画面で保存を確定してください。');
       if(JSON.stringify(c)!==stage.base)throw new Error('別の操作で設定が変わりました。画面を戻り、変更を選び直してください。');
       changeSettings(c,stage.action,stage.value);
     });
-    s.stage=null;changed();
+    s.stage=null;delete s.formDraft;changed();
     let note='✓ 設定を保存しました。再起動は不要です。';
     try {await refreshPanel();}catch{note+='\nパネル更新に失敗しました。「入室パネル」から更新してください。';}
     return note;
@@ -145,7 +146,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(action.startsWith('form-')) {await interaction.showModal(adminModal(s,action.slice(5),settings.get()));return;}
       if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();
       let note='';
-      if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
+      if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}
       else if(action==='save')note=await save(s,true);
@@ -158,6 +159,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         else if(action.startsWith('submit-')) {
           const kind=action.slice(7);operation=kind==='word'?'word-add':kind;
           value=kind==='word'?{surface:interaction.fields.getTextInputValue('surface'),reading:interaction.fields.getTextInputValue('reading')}:interaction.fields.getTextInputValue('value');
+          s.formDraft={kind,value};
           description=kind==='word'?`**${text(value.surface)}** → ${text(value.reading)}`:`**${kind==='seconds'?'待機秒数':'音量'}** ${c[kind]} → ${text(value)}${kind==='seconds'?'秒':'%'}`;
         } else throw new Error('不明な操作です。 /管理 で開き直してください。');
         await validateChannel(operation,value);changeSettings(structuredClone(c),operation,value);
