@@ -1,10 +1,17 @@
 import {EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, escapeMarkdown} from 'discord.js';
 export const mentions={parse:[]};
 export const text=value=>escapeMarkdown(String(value)).replace(/@/g,'＠').slice(0,100);
+let botIcon=()=>undefined;
+const footerDate=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'});
+export function setBotIconProvider(provider){botIcon=provider;}
+export function cardFooter(date=new Date()){
+  const iconURL=botIcon();
+  return {text:`created by あすとらる · ${footerDate.format(date)}`,...(iconURL?{iconURL}:{})};
+}
 const colors={normal:0x8886e8,success:0x69bba8,error:0xd38da3};
 export function card(title,description,state='normal') {
   return new EmbedBuilder().setColor(colors[state])
-    .setTitle(title).setDescription(description);
+    .setTitle(title).setDescription(description).setFooter(cardFooter());
 }
 export function payload(title,description,{state='normal',components=[]}={}) {
   return {content:null,embeds:[card(title,description,state)],components,allowedMentions:mentions};

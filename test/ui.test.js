@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {commands,canConfigure} from '../src/commands.js';
 import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
-import {panel,countdownCard,payload,choiceNavigation,waitingCard} from '../src/ui.js';
+import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setBotIconProvider} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
   const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','管理']);
@@ -39,4 +39,14 @@ test('explicit destination list does not admit other VCs in same category',()=>{
 test('single-page VC choices keep refresh without useless pagination',()=>{
   const controls=choiceNavigation(0,1).toJSON().components;
   assert.equal(controls.length,1);assert.equal(controls[0].custom_id,'vc:page:0');assert.ok(!controls[0].disabled);
+});
+
+test('footer uses Japan date and the current bot icon on every render',t=>{
+  let icon='https://cdn.discordapp.com/embed/avatars/0.png';
+  setBotIconProvider(()=>icon);t.after(()=>setBotIconProvider(()=>undefined));
+  assert.equal(cardFooter(new Date('2026-10-11T14:59:59Z')).text,'created by あすとらる · 2026/10/11');
+  assert.equal(cardFooter(new Date('2026-10-11T15:00:00Z')).text,'created by あすとらる · 2026/10/12');
+  assert.equal(payload('画面','本文').embeds[0].toJSON().footer.icon_url,icon);
+  icon='https://cdn.discordapp.com/embed/avatars/1.png';
+  assert.equal(panel({seconds:5,voice:true}).embeds[0].toJSON().footer.icon_url,icon);
 });

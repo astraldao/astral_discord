@@ -13,7 +13,7 @@ import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
-import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
+import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -21,6 +21,7 @@ const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,ta
 await settings.load();
 const trpgStore=await new TrpgStore('data/trpg.json').load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
+setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
 let guild,admin,densuke,trpg,refreshPanel,ready=false,stopping=false,revision=0;
