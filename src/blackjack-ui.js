@@ -6,7 +6,12 @@ import {newRound,play,handValue,cardName} from './blackjack.js';
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`bj:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style);
 const startButton=()=>row(new ButtonBuilder().setCustomId('game:open').setLabel('ゲームを選ぶ').setStyle(ButtonStyle.Primary));
-export function gameLobby(){return payload('✦  PLAY ROOM','遊ぶゲームを選んでください。',{components:[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions({label:'ブラックジャック',value:'blackjack',description:'ディーラーと21点を目指すカードゲーム',emoji:'♠️'}))]});}
+export function gameLobby(s){
+  const ongoing=s?.game.phase==='playing';
+  const components=[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions({label:'ブラックジャック',value:'blackjack',description:'ディーラーと21点を目指すカードゲーム',emoji:'♠️'}))];
+  if(s)components.push(row(button(s,'resume',ongoing?'続きから遊ぶ':'前の結果を見る',ButtonStyle.Primary)));
+  return payload('✦  PLAY ROOM',s?`**ブラックジャック · ${ongoing?'プレイ中':'ラウンド終了'}**\n${ongoing?'続きから遊ぶか、ゲームを選んでください。':'結果を確認するか、ゲームを選んでください。'}`:'遊ぶゲームを選んでください。',{components});
+}
 const results={blackjack:'ブラックジャック！あなたの勝ち',win:'あなたの勝ち',lose:'ディーラーの勝ち',push:'引き分け',bust:'21を超えました · ディーラーの勝ち','dealer-bust':'ディーラーが21を超えました · あなたの勝ち',stopped:'ゲームを終了しました'};
 const stats=s=>s.stats??{win:0,lose:0,draw:0};
 function record(s){if(s.game.phase!=='done' || s.game.result==='stopped')return;s.stats??={win:0,lose:0,draw:0};s.stats[['blackjack','win','dealer-bust'].includes(s.game.result)?'win':s.game.result==='push'?'draw':'lose']++;}
@@ -14,15 +19,16 @@ export function blackjackRules(s){return payload('♠  ブラックジャック�
 export function blackjackScreen(s,note=''){
   const g=s.game,active=g.phase==='playing',score=stats(s);
   const body=`${s.confirmStop?'**このラウンドを終了しますか？**':active?'**あなたのターン**':`**${results[g.result]}**`}\nラウンド ${s.round??1} · ${score.win}勝 ${score.lose}敗 ${score.draw}分`;
-  const components=s.confirmStop?[row(button(s,'confirm-stop','終了する'),button(s,'resume','プレイを続ける',ButtonStyle.Primary))]:active?[row(button(s,'hit','1枚引く',ButtonStyle.Primary),button(s,'stand','この手で勝負',ButtonStyle.Primary)),row(button(s,'rules','遊び方'),button(s,'stop','終了する'))]:[row(button(s,'again','もう一度遊ぶ',ButtonStyle.Primary),button(s,'rules','遊び方'))];
-  const message=payload('♠  BLACKJACK',(note?`${note}\n\n`:'')+body,{state:!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});message.embeds[0].setImage('attachment://blackjack.png');message.files=[new AttachmentBuilder(blackjackImage(g),{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`})];message.attachments=[];message.components.push(row(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary)));return message;
+  const components=s.confirmStop?[row(button(s,'confirm-stop','終了する'),button(s,'resume','プレイを続ける',ButtonStyle.Primary))]:active?[row(button(s,'hit','1枚引く',ButtonStyle.Primary),button(s,'stand','この手で勝負')),row(button(s,'rules','遊び方'),button(s,'stop','終了する'))]:[row(button(s,'again','もう一度遊ぶ',ButtonStyle.Primary),button(s,'rules','遊び方'))];
+  const message=payload('♠  BLACKJACK',(note?`${note}\n\n`:'')+body,{state:!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});message.embeds[0].setImage('attachment://blackjack.png');message.files=[new AttachmentBuilder(blackjackImage(g),{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`})];message.attachments=[];message.components.at(-1).addComponents(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary));return message;
 }
 export function createBlackjackController({guild,now=()=>Date.now(),deal=newRound,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルではゲームを操作できません。');}}){
   const sessions=new AdminSessions(now);
   const get=(id,user)=>{try{return sessions.get(id,user);}catch{throw new Error('この画面は終了しています。下のボタンか /game から開き直せます。');}};
   async function acknowledge(i){if(i.deferred || i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
-  async function lobby(i){await acknowledge(i);await access(i);await i.editReply({...gameLobby(),attachments:[]});}
-  async function open(i){await acknowledge(i);await access(i);let s=[...sessions.sessions.values()].find(x=>x.userId===i.user.id && x.channelId===i.channelId && x.expires>now());if(s){if(s.busy)throw new Error('前の操作を処理中です。');await i.editReply(blackjackScreen(s,'続きのゲームを開きました。'));return;}s=sessions.create(i.user.id);s.channelId=i.channelId;s.game=deal();s.turn=0;s.round=1;s.stats={win:0,lose:0,draw:0};record(s);await i.editReply(blackjackScreen(s));}
+  const current=i=>[...sessions.sessions.values()].find(x=>x.userId===i.user.id && x.channelId===i.channelId && x.expires>now());
+  async function lobby(i){await acknowledge(i);await access(i);await i.editReply({...gameLobby(current(i)),attachments:[]});}
+  async function open(i){await acknowledge(i);await access(i);let s=current(i);if(s){if(s.busy)throw new Error('前の操作を処理中です。');await i.editReply(blackjackScreen(s,'続きのゲームを開きました。'));return;}s=sessions.create(i.user.id);s.channelId=i.channelId;s.game=deal();s.turn=0;s.round=1;s.stats={win:0,lose:0,draw:0};record(s);await i.editReply(blackjackScreen(s));}
   return {sessions,open,lobby,async handle(i){let s,locked=false,authorized=false;
     try{
       if(i.customId==='game:open'){await lobby(i);return;}
