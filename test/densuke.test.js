@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
-import {eventData,confirmationFields,resultLinks,createDensukeClient,UncertainCreation} from '../src/densuke.js';
+import {eventData,eventLinks,confirmationFields,resultLinks,createDensukeClient,UncertainCreation} from '../src/densuke.js';
 import {createDensukeController,densukeModal,densukeScreen,densukeEmailModal} from '../src/densuke-ui.js';
 const email='owner@example.com';
 const event=()=>({name:'卓の日程',schedule:'10/31(土) 20:00～\n11/1(日) 20:00～',description:'説明',password:'aB123',choice:'3'});
-const result={answer:'https://www.densuke.biz/list?cd=Answer123',edit:'https://www.densuke.biz/edit?cd=Secret123'};
+const result={answer:'https://www.densuke.biz/list?cd=Answer123',edit:'https://www.densuke.biz/edit?cd=Answer123&pw=Secret123'};
 const completed=`<a href="${result.answer}">回答</a><input value="${result.edit}">`;
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 function confirm(e=event(),mail=email){return '<form action="create" method="post">'+Object.entries({eventname:e.name,schedule:e.schedule,explain:e.description,email:mail,pw:e.password?'1':'0',password:e.password,eventchoice:e.choice,postfix:''}).map(([name,value])=>`<input type="hidden" name="${name}" value="${esc(value)}">`).join('')+'</form>';}
@@ -25,7 +25,7 @@ test('result URLs accept only Densuke links and upgrade HTTP to HTTPS',()=>{
   assert.deepEqual(resultLinks(completed.replaceAll('https://www.densuke.biz','http://densuke.biz')),result);
   for(const html of [completed.replaceAll('www.densuke.biz','evil.example'),completed.replace('/edit?','/other?')])assert.throws(()=>resultLinks(html));
 });
-test('client submits fixed mail once, never follows redirects and never auto-retries creation',async()=>{
+test('client submits fixed mail once and never auto-retries creation',async()=>{
   const requests=[];
   const client=createDensukeClient(async(url,options)=>{requests.push({url,options});return new Response(requests.length===1?confirm():completed);});
   assert.deepEqual(await client.create(event(),email),result);
@@ -33,6 +33,29 @@ test('client submits fixed mail once, never follows redirects and never auto-ret
   assert.equal(requests[1].options.body.get('email'),email);assert.equal(requests[1].options.redirect,'manual');
   let count=0;const broken=createDensukeClient(async()=>{count++;if(count===1)return new Response(confirm());throw new Error('timeout');});
   await assert.rejects(broken.create(event(),email),UncertainCreation);assert.equal(count,2);
+});
+test('result extraction supports textarea and plain URLs and preserves edit credentials',()=>{
+  const html=`<h2>イベント作成完了</h2><textarea>${result.answer}</textarea><div>${result.edit.replace('&','&amp;')}</div>`;
+  assert.deepEqual(resultLinks(html),result);
+  assert.throws(()=>eventLinks(result.answer,result.edit.replace('Answer123','Other123')));
+  assert.deepEqual(eventLinks(result.answer+'&pw=NeverShare',result.edit),result);
+});
+test('completion redirect uses GET once and never repeats the create POST',async()=>{
+  const calls=[];
+  const client=createDensukeClient(async(url,options)=>{
+    calls.push({url,method:options.method});
+    if(calls.length===1)return new Response(confirm());
+    if(calls.length===2)return new Response(null,{status:303,headers:{location:'https://densuke.biz/complete'}});
+    return new Response(`<textarea>${result.answer}\n${result.edit.replace('&','&amp;')}</textarea>`);
+  });
+  assert.deepEqual(await client.create(event(),email),result);
+  assert.deepEqual(calls.map(c=>c.method),['POST','POST','GET']);
+});
+test('external redirects and redirects requiring a repeated POST are rejected',async()=>{
+  for(const [status,location] of [[302,'https://evil.example/complete'],[307,'https://www.densuke.biz/create']]){
+    let calls=0;const client=createDensukeClient(async()=>{calls++;return calls===1?new Response(confirm()):new Response(null,{status,headers:{location}});});
+    await assert.rejects(client.create(event(),email),UncertainCreation);assert.equal(calls,2);
+  }
 });
 test('confirmation failure never sends creation and responses have a size limit',async()=>{
   let count=0;const client=createDensukeClient(async()=>{count++;return new Response('changed page');});
@@ -104,4 +127,11 @@ test('another administrator changing the recipient requires review before event 
   await f.controller.handle(act('create'));assert.equal(f.calls(),0);
   await f.controller.handle(act('submit',{fields:{getTextInputValue:key=>event()[key]}}));
   await f.controller.handle(act('create'));assert.deepEqual(f.mails,['other@example.com']);
+});
+test('existing event recovery works after restart without creation or exposing edit credentials',async()=>{
+  const f=fixture(),s=await f.open(),act=(action,extra)=>f.interaction(`densuke:${s.id}:${action}`,extra);
+  const form=act('form-recover');await f.controller.handle(form);assert.ok(form.modal);assert.equal(form.deferred,false);
+  await f.controller.handle(act('submit-recover',{fields:{getTextInputValue:key=>result[key]}}));
+  assert.equal(s.phase,'done');assert.equal(f.calls(),0);
+  await f.controller.handle(act('share'));assert.equal(f.posts.length,1);assert.ok(!JSON.stringify(f.posts[0]).includes('Secret123'));
 });

@@ -30,22 +30,50 @@ export function confirmationFields(html,event,email) {
   // Forward only the known fields, never server-provided destinations or extra parameters.
   return expected;
 }
+export function densukeUrl(value) {
+  try {
+    const url=new URL(value,origin);
+    if(!['https:','http:'].includes(url.protocol) || !['densuke.biz','www.densuke.biz'].includes(url.hostname) || url.port || url.username || url.password || !/^\/(list|edit)$/.test(url.pathname) || !/^[A-Za-z0-9]+$/.test(url.searchParams.get('cd')??''))return null;
+    url.protocol='https:';url.hostname='www.densuke.biz';return url;
+  } catch{return null;}
+}
+export function eventLinks(answer,edit) {
+  const a=densukeUrl(answer),e=densukeUrl(edit);
+  if(a?.pathname!=='/list' || e?.pathname!=='/edit' || a.searchParams.get('cd')!==e.searchParams.get('cd'))throw new Error('同じイベントの回答用・編集用URLを入力してください。');
+  // Keep the edit capability (pw) private; never pass it to the public URL.
+  a.search=new URLSearchParams({cd:a.searchParams.get('cd')}).toString();
+  return {answer:a.href,edit:e.href};
+}
 export function resultLinks(html) {
-  const links=new Set();
-  for(const n of nodes(html)){
-    const a=attrs(n),value=n.tagName==='a'?a.href:n.tagName==='input'?a.value:null;
-    if(!value)continue;
-    try {const url=new URL(value,origin);if(['https:','http:'].includes(url.protocol) && ['densuke.biz','www.densuke.biz'].includes(url.hostname) && !url.port && !url.username && !url.password && /^\/(list|edit)$/.test(url.pathname) && /^[A-Za-z0-9]+$/.test(url.searchParams.get('cd')??'')){url.protocol='https:';url.hostname='www.densuke.biz';links.add(url.href);}}catch{}
+  const links=new Map();
+  function collect(value) {
+    const url=densukeUrl(value);if(url)links.set(url.href,url);
   }
-  const answer=[...links].find(url=>new URL(url).pathname==='/list'),edit=[...links].find(url=>new URL(url).pathname==='/edit');
-  if(!answer || !edit)throw new Error('作成結果を確認できません。控えメールを確認してください。再作成すると重複する可能性があります。');
-  return {answer,edit};
+  for(const n of nodes(html)){
+    const a=attrs(n);
+    if(n.tagName==='a')collect(a.href);
+    if(n.tagName==='input' && !['eventname','schedule','explain','email'].includes(a.name))collect(a.value);
+    // Completion pages may display URLs in textareas or plain text rather than links.
+    if(n.nodeName==='#text')for(const value of (n.value??'').match(/https?:\/\/(?:www\.)?densuke\.biz\/(?:list|edit)\?[^\s<>"']+/g)??[])collect(value);
+  }
+  const answers=[...links.values()].filter(url=>url.pathname==='/list'),edits=[...links.values()].filter(url=>url.pathname==='/edit');
+  for(const answer of answers)for(const edit of edits)if(answer.searchParams.get('cd')===edit.searchParams.get('cd'))return eventLinks(answer.href,edit.href);
+  throw Object.assign(new Error('作成結果を確認できません。控えメールを確認してください。再作成すると重複する可能性があります。'),{code:'DENSUKE_RESULT_URLS'});
 }
 export class UncertainCreation extends Error {}
 export function createDensukeClient(fetcher=fetch) {
   async function request(path,fields) {
-    const response=await fetcher(origin+path,{method:'POST',body:new URLSearchParams(fields),redirect:'manual',signal:AbortSignal.timeout(20000),headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'AstralVoiceLobby/3.2'}});
-    if(!response.ok)throw new Error('伝助との通信に失敗しました。');
+    let url=origin+path,method='POST',body=new URLSearchParams(fields),response;
+    const signal=AbortSignal.timeout(20000);
+    for(let redirects=0;redirects<=3;redirects++) {
+      response=await fetcher(url,{method,body,redirect:'manual',signal,headers:{...(method==='POST'?{'Content-Type':'application/x-www-form-urlencoded'}:{}),'User-Agent':'AstralVoiceLobby/3.2'}});
+      if(![301,302,303].includes(response.status))break;
+      const location=response.headers.get('location');
+      let target;try{target=new URL(location??'',url);}catch{}
+      if(!location || !target || target.protocol!=='https:' || !['www.densuke.biz','densuke.biz'].includes(target.hostname) || target.port || target.username || target.password || redirects===3)throw Object.assign(new Error('伝助の転送先を確認できません。'),{code:'DENSUKE_REDIRECT'});
+      await response.body?.cancel();url=target.href;method='GET';body=undefined;
+    }
+    if(!response.ok)throw Object.assign(new Error('伝助との通信に失敗しました。'),{code:`DENSUKE_HTTP_${response.status}`});
     const reader=response.body.getReader();let size=0;const chunks=[];
     try {while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>1024*1024)throw new Error('伝助の応答が大きすぎます。');chunks.push(Buffer.from(value));}}
     finally {await reader.cancel().catch(()=>{});}
@@ -55,6 +83,6 @@ export function createDensukeClient(fetcher=fetch) {
     const event=eventData(input),fields=fieldsFor(event,email);
     const confirmed=confirmationFields(await request('/confirm',fields),event,email);
     try {return resultLinks(await request('/create',confirmed));}
-    catch {throw new UncertainCreation('作成結果を確認できません。控えメールを確認してください。自動再送はしません。');}
+    catch(error){console.error('伝助の作成結果:',error.code??'DENSUKE_RESPONSE');throw new UncertainCreation('作成結果を確認できません。控えメールを確認してください。自動再送はしません。');}
   }};
 }
