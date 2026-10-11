@@ -11,16 +11,19 @@ import {createAdminController} from './admin.js';
 import {createPanelRefresher} from './panel.js';
 import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
+import {TrpgStore} from './trpg-store.js';
+import {createTrpgController} from './trpg-ui.js';
 import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
 const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,targetIds:[],seconds:5,voice:true,enforce:true,panel:null});
 await settings.load();
+const trpgStore=await new TrpgStore('data/trpg.json').load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,admin,densuke,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,admin,densuke,trpg,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -137,7 +140,8 @@ client.once('clientReady', async () => {
     for(const command of commands()) await guild.commands.create(command.toJSON());
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i)});
+    trpg=createTrpgController({store:trpgStore,guild});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i)});
     client.user.setActivity('✦ /vc で次の会話へ');
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
   } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); client.destroy(); process.exitCode = 1;}
@@ -146,7 +150,7 @@ client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const command = interaction.isChatInputCommand() && ['vc','管理'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
@@ -159,7 +163,7 @@ client.on('interactionCreate', async interaction => {
     }
     if(adminComponent || (command && interaction.commandName==='管理')) {
       if(stopping)throw new EntryError('Botを終了しています。');
-      if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
+      if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
