@@ -131,7 +131,7 @@ test('another administrator changing the recipient requires review before event 
 test('existing event recovery works after restart without creation or exposing edit credentials',async()=>{
   const f=fixture(),s=await f.open(),act=(action,extra)=>f.interaction(`densuke:${s.id}:${action}`,extra);
   const form=act('form-recover');await f.controller.handle(form);assert.ok(form.modal);assert.equal(form.deferred,false);
-  await f.controller.handle(act('submit-recover',{fields:{getTextInputValue:key=>result[key]}}));
+  await f.controller.handle(act(`submit-recover:${s.recoverToken}`,{fields:{getTextInputValue:key=>result[key]}}));
   assert.equal(s.phase,'done');assert.equal(f.calls(),0);
   await f.controller.handle(act('share'));assert.equal(f.posts.length,1);assert.ok(!JSON.stringify(f.posts[0]).includes('Secret123'));
 });
@@ -173,4 +173,14 @@ test('failed input draft is bounded and discarded on cancellation',async()=>{
   await f.controller.handle(f.interaction(`densuke:${s.id}:submit`,{fields:{getTextInputValue:key=>fields[key]}}));
   assert.equal(s.phase,'draft');assert.equal(s.inputDraft.schedule.length,4000);densukeModal(s).toJSON();
   await f.controller.handle(f.interaction(`densuke:${s.id}:cancel`));assert.equal(s.inputDraft,undefined);assert.equal(s.event.password,'');
+});
+
+test('uncertain creation recovers from an answer URL alone and never repeats creation',async()=>{
+  const f=fixture(true),s=await f.open(),act=(a,extra)=>f.interaction(`densuke:${s.id}:${a}`,extra);s.event=event();s.phase='review';await f.controller.handle(act('create'));assert.equal(s.phase,'uncertain');await f.controller.handle(act('form-recover'));const i=act(`submit-recover:${s.recoverToken}`,{fields:{getTextInputValue:key=>{assert.equal(key,'answer');return result.answer;}}});await f.controller.handle(i);assert.equal(s.phase,'done');assert.equal(f.calls(),1);assert.equal(s.result.edit,undefined);assert.ok(!JSON.stringify(i.result).includes('undefined'));assert.ok(!JSON.stringify(i.result).includes('Secret123'));await f.controller.handle(act('share'));assert.equal(f.posts.length,1);assert.equal(f.calls(),1);
+});
+test('recovery rejects wrong sessions, old forms, edit URLs and wrong channels while retaining invalid input',async()=>{
+  const f=fixture(),s=await f.open(),act=(a,extra)=>f.interaction(`densuke:${s.id}:${a}`,extra);await f.controller.handle(act('form-recover'));const old=s.recoverToken;await f.controller.handle(act('form-recover'));await f.controller.handle(act(`submit-recover:${old}`,{fields:{getTextInputValue:()=>result.answer}}));assert.equal(s.phase,'draft');await f.controller.handle(act(`submit-recover:${s.recoverToken}`,{fields:{getTextInputValue:()=>result.edit}}));assert.equal(s.phase,'draft');assert.equal(s.recoverDraft,result.edit);await f.controller.handle(act('form-recover'));const token=s.recoverToken;const wrong=act(`submit-recover:${token}`,{channelId:'wrong',fields:{getTextInputValue:()=>result.answer}});await f.controller.handle(wrong);assert.equal(s.phase,'draft');await f.controller.handle(act(`submit-recover:${token}`,{user:{id:'other'},fields:{getTextInputValue:()=>result.answer}}));assert.equal(s.phase,'draft');assert.equal(f.calls(),0);
+});
+test('revoked administrator cannot recover or receive private results after acknowledgement',async()=>{
+  let allowed=true;const guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>true})})}};const c=createDensukeController({email,guild}),s=c.sessions.create('owner');Object.assign(s,{phase:'uncertain',channelId:'channel',event:event(),recoverToken:'token',recoverPhase:'uncertain'});const replies=[];const i={customId:`densuke:${s.id}:submit-recover:token`,user:{id:'owner'},channelId:'channel',fields:{getTextInputValue:()=>result.answer},async deferReply(){this.deferred=true;allowed=false;},async editReply(p){replies.push(p);}};await c.handle(i);assert.equal(s.phase,'uncertain');assert.ok(!JSON.stringify(replies).includes('卓の日程'));assert.ok(!JSON.stringify(replies).includes('回答用URL'));assert.ok(JSON.stringify(replies).includes('管理者専用'));
 });

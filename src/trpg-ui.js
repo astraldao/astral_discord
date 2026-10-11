@@ -35,7 +35,7 @@ function form(s,kind){
   }
   const m=new ModalBuilder().setCustomId(`trpg:${s.id}:submit-${kind==='scenario-edit'?'scenario':kind}`).setTitle({scenario:'ベース卓を登録','scenario-edit':'ベース卓を修正',search:'シナリオ名で検索','pc-search':'PC名で検索',register:'いあきゃらの共有URLを登録'}[kind]);
   if(kind==='search' || kind==='pc-search')m.addComponents(input('query',kind==='search'?'検索するシナリオ名':'検索するPC名',100,false,kind==='search'?s.query:s.pcQuery));
-  else m.addComponents(input('url','共有URL（同じURLは控えを更新）',100,true,s.registrationUrl));
+  else m.addComponents(input('url','いあきゃらの共有URL',100,true,s.registrationUrl));
   return m;
 }
 export function trpgPanel(p){
@@ -92,7 +92,9 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
     } else {
       if(s.tableReturn)requireAdmin(s);const p=d.panels.find(x=>x.id===s.panelId);if(!p)throw new Error('パネルが見つかりません。');
       title='✦  PC一覧';
-      if(s.view==='detail' || s.view==='preview' || s.view==='delete-character'){
+      if(s.view==='duplicate'){
+        const c=store.character(s.duplicate?.id,s.userId,s.panelId,false);title='✦  このPCは登録済みです';body=`**${text(c.name)}**\n${c.url}\n\n保存済みの控えを開くか、いあきゃらから最新データを取得するか選んでください。`;components=[row(button(s,'duplicate-open','保存済みPCを開く',ButtonStyle.Primary),button(s,'duplicate-update','最新データを取得')),row(button(s,'characters','PC一覧へ'))];
+      }else if(s.view==='detail' || s.view==='preview' || s.view==='delete-character'){
         const c=store.character(s.characterId,s.userId,s.panelId,s.isAdmin);
         title=s.view==='preview'?'✦  TXTの控え':'✦  PCの控え';
         body=`**${text(c.name)}**\n${c.url}\n\n保存日時 <t:${Math.floor(c.updatedAt/1000)}:f>`;
@@ -180,7 +182,10 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       else if(action==='submit-pc-search'){if(!s.panelId)throw new Error('パネルから開いてください。');s.pcQuery=i.fields.getTextInputValue('query').trim().slice(0,100);s.view='characters';s.page=0;}
       else if(action==='mine'){if(!s.panelId)throw new Error('パネルから開いてください。');s.ownOnly=!s.ownOnly;s.view='characters';s.page=0;}
       else if(action==='clear-pc-filter'){s.pcQuery='';s.ownOnly=false;s.view='characters';s.page=0;}
-      else if(action==='submit-register'){s.registrationUrl=i.fields.getTextInputValue('url').trim().slice(0,100);await fetchSave(s,s.registrationUrl,s.userId,i);note='✓ PC名・共有URL・TXTを保存しました。';}
+      else if(action==='submit-register'){s.registrationUrl=i.fields.getTextInputValue('url').trim().slice(0,100);const url=iacharaUrl(s.registrationUrl);const existing=store.metadata().characters.find(c=>c.panelId===s.panelId && c.ownerId===s.userId && c.url===url);if(existing){s.duplicate={id:existing.id,url};s.view='duplicate';s.page=0;}else{await fetchSave(s,url,s.userId,i);note='✓ PC名・共有URL・TXTを保存しました。';}}
+      else if(['duplicate-open','duplicate-update'].includes(action)){if(s.view!=='duplicate' || !s.duplicate)throw new Error('登録済みPCの確認画面から操作してください。');const c=store.character(s.duplicate.id,s.userId,s.panelId,false);if(c.url!==s.duplicate.url)throw new Error('PCを選び直してください。');if(action==='duplicate-update'){await fetchSave(s,c.url,s.userId,i,c.id);note='✓ 最新のキャラデータを保存しました。';}else{s.characterId=c.id;s.view='detail';s.page=0;}delete s.duplicate;}
+      else if(action==='table-filter'){requireAdmin(s);if(!['active','completed','all'].includes(i.values[0]))throw new Error('卓の表示条件を選び直してください。');s.tableFilter=i.values[0];s.tableQuery='';s.tableListPage=0;s.page=0;s.view='tables';}
+      else if(['pin-table','unpin-table','complete-table','reopen-table'].includes(action)){requireAdmin(s);if(s.view!=='table' || !s.tableStateRevision)throw new Error('卓セットの詳細から操作してください。');const key=['pin-table','unpin-table'].includes(action)?'pinned':'completed',value=['pin-table','complete-table'].includes(action);await store.setTableState(s.tableId,key,value,s.tableStateRevision);note=key==='pinned'?(value?'✓ 卓を固定しました。':'✓ 卓の固定を解除しました。'):(value?'✓ 完了にしました。PC・控え・URLは保持しています。':'✓ 進行中に戻しました。');}
       else if(action==='character'){delete s.tableReturn;store.character(i.values[0],s.userId,s.panelId,s.isAdmin);s.characterId=i.values[0];s.view='detail';s.page=0;}
       else if(action==='characters'){delete s.tableReturn;delete s.deleteCharacter;s.view='characters';s.page=s.characterPage??0;}
       else if(action==='refresh'){const c=store.character(s.characterId,s.userId,s.panelId,s.isAdmin);await fetchSave(s,c.url,c.ownerId,i,c.id);note='✓ 最新のキャラデータを保存しました。';}

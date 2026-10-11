@@ -145,7 +145,7 @@ client.once('clientReady', async () => {
     refreshPanel=createPanelRefresher({settings,guild});
     for(const command of commands()) await guild.commands.create(command.toJSON());
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
-    densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings});
+    densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});

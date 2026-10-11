@@ -36,7 +36,7 @@ export function visibleCharacters(data,panelId,userId,isAdmin=false) {
 export class TrpgStore {
   tail=Promise.resolve(); data={version:1,scenarios:[],panels:[],characters:[],tables:[]};
   constructor(path){this.path=path;}
-  async load(){try{const raw=await readFile(this.path,'utf8');if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの容量が上限を超えています。');const d=JSON.parse(raw);d.tables??=[];if(d.version!==1 || !['scenarios','panels','characters','tables'].every(k=>Array.isArray(d[k])) || d.tables.length>100 || d.tables.some(t=>!t || typeof t.name!=='string' || !t.name.trim() || t.name.length>100 || !Array.isArray(t.characterIds) || t.characterIds.length>100 || t.characterIds.some(id=>!d.characters.some(c=>c.id===id)) || (t.scenarioId && !d.scenarios.some(x=>x.id===t.scenarioId)) || answerUrl(t.answerUrl)!==t.answerUrl) || d.panels.some(p=>!['secret','shared'].includes(p.mode)) || d.characters.some(c=>typeof c.txt!=='string' || Buffer.byteLength(c.txt)>MAX_TXT || !d.panels.some(p=>p.id===c.panelId)))throw new Error('卓管理データを読み込めません。');this.data=d;}catch(e){if(e.code!=='ENOENT')throw e;}return this;}
+  async load(){try{const raw=await readFile(this.path,'utf8');if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの容量が上限を超えています。');const d=JSON.parse(raw);d.tables??=[];if(d.version!==1 || !['scenarios','panels','characters','tables'].every(k=>Array.isArray(d[k])) || d.tables.length>100 || d.tables.filter(t=>t?.pinned===true).length>5 || d.tables.some(t=>!t || (t.pinned!==undefined && typeof t.pinned!=='boolean') || (t.completed!==undefined && typeof t.completed!=='boolean') || typeof t.name!=='string' || !t.name.trim() || t.name.length>100 || !Array.isArray(t.characterIds) || t.characterIds.length>100 || t.characterIds.some(id=>!d.characters.some(c=>c.id===id)) || (t.scenarioId && !d.scenarios.some(x=>x.id===t.scenarioId)) || answerUrl(t.answerUrl)!==t.answerUrl) || d.panels.some(p=>!['secret','shared'].includes(p.mode)) || d.characters.some(c=>typeof c.txt!=='string' || Buffer.byteLength(c.txt)>MAX_TXT || !d.panels.some(p=>p.id===c.panelId)))throw new Error('卓管理データを読み込めません。');this.data=d;}catch(e){if(e.code!=='ENOENT')throw e;}return this;}
   get(){return structuredClone(this.data);}
   metadata(){const {characters,...rest}=this.data;return structuredClone({...rest,characters:characters.map(({txt,...c})=>c)});}
   character(id,userId,panelId,isAdmin=false){return structuredClone(ownCharacter(this.data,id,userId,panelId,isAdmin));}
@@ -54,8 +54,12 @@ export class TrpgStore {
   table(id){const t=this.data.tables.find(x=>x.id===id);if(!t)throw new Error('卓セットが見つかりません。');return structuredClone(t);}
   saveTable(id,name,url,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');url=answerUrl(url);return this.update(d=>{
     let t=id?d.tables.find(x=>x.id===id):null;if(id && !t)throw new Error('卓セットが見つかりません。');if(id && revision!==undefined && JSON.stringify(t)!==revision)throw new Error('卓セットが変更されました。開き直して編集してください。');
-    if(!t){if(d.tables.length>=100)throw new Error('卓セットは100件までです。');t={id:randomUUID(),scenarioId:null,characterIds:[]};d.tables.push(t);}
+    if(!t){if(d.tables.length>=100)throw new Error('卓セットは100件までです。');t={id:randomUUID(),scenarioId:null,characterIds:[],pinned:false,completed:false};d.tables.push(t);}
     Object.assign(t,{name,answerUrl:url});return t.id;
+  });}
+  setTableState(id,key,value,revision){if(!['pinned','completed'].includes(key) || typeof value!=='boolean')throw new Error('卓の操作が不正です。');return this.update(d=>{
+    const t=d.tables.find(x=>x.id===id);if(!t || JSON.stringify(t)!==revision)throw new Error('卓が変更されました。開き直してください。');
+    if(key==='pinned' && value && !t.pinned && d.tables.filter(x=>x.pinned).length>=5)throw new Error('固定できる卓は5件までです。他の卓の固定を解除してください。');t[key]=value;
   });}
   setTableScenario(id,scenarioId){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !d.scenarios.some(x=>x.id===scenarioId))throw new Error('卓またはシナリオが見つかりません。');t.scenarioId=scenarioId;});}
   changeTableCharacters(id,ids,remove=false){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !Array.isArray(ids) || !ids.length || ids.length>25 || ids.some(id=>!d.characters.some(c=>c.id===id)))throw new Error('参加PCを選び直してください。');t.characterIds=remove?t.characterIds.filter(id=>!ids.includes(id)):[...new Set([...t.characterIds,...ids])];});}
@@ -63,7 +67,7 @@ export class TrpgStore {
   cloneTable(id,name,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');return this.update(d=>{
     const source=d.tables.find(x=>x.id===id);if(!source || JSON.stringify(source)!==revision)throw new Error('元の卓が変更されました。開き直して複製してください。');
     if(d.tables.length>=100)throw new Error('卓セットは100件までです。');
-    const copy={id:randomUUID(),name,scenarioId:source.scenarioId,answerUrl:'',characterIds:[]};d.tables.push(copy);return copy.id;
+    const copy={id:randomUUID(),name,scenarioId:source.scenarioId,answerUrl:'',characterIds:[],pinned:false,completed:false};d.tables.push(copy);return copy.id;
   });}
   update(fn){const job=this.tail.then(async()=>{const d=this.get();const result=fn(d);const raw=JSON.stringify(d);if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの合計容量は32MBまでです。');await mkdir(dirname(this.path),{recursive:true});const temp=`${this.path}.tmp`;await writeFile(temp,raw,{mode:0o600});await rename(temp,this.path);this.data=d;return result;});this.tail=job.catch(()=>{});return job;}
   async scenario(name,url){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{const old=d.scenarios.find(x=>key(x.name)===key(name));if(old){old.name=name;old.url=url;return old.id;}if(d.scenarios.length>=200)throw new Error('シナリオは200件まで登録できます。');const id=randomUUID();d.scenarios.push({id,name,url});return id;});}
