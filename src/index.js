@@ -14,6 +14,7 @@ import {createPanelRefresher} from './panel.js';
 import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {PersonalReadingsStore} from './personal-readings.js';
+import {createBlackjackController} from './blackjack-ui.js';
 import {createProfileController} from './profile-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
@@ -29,7 +30,7 @@ const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.Gui
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,admin,densuke,trpg,profile,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,admin,densuke,trpg,profile,blackjack,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -146,6 +147,7 @@ client.once('clientReady', async () => {
     for(const command of commands()) await guild.commands.create(command.toJSON());
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
+    blackjack=createBlackjackController({guild});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
@@ -158,9 +160,9 @@ client.once('clientReady', async () => {
 });
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
-  const command = interaction.isChatInputCommand() && ['vc','管理'].includes(interaction.commandName);
+  const command = interaction.isChatInputCommand() && ['vc','管理','ゲーム'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|bj):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
@@ -171,6 +173,7 @@ client.on('interactionCreate', async interaction => {
         return;
       }
     }
+    if((command && interaction.commandName==='ゲーム') || (adminComponent && interaction.customId.startsWith('bj:'))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.open(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='管理')) {
       if(stopping)throw new EntryError('Botを終了しています。');
       if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
@@ -202,7 +205,7 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    const components=adminComponent || (command && interaction.commandName==='管理')?[]:[openButton(),personalReadingButton()];
+    const components=adminComponent || (command && ['管理','ゲーム'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton()];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);

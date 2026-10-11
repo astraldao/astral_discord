@@ -5,7 +5,7 @@ import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setBotIconProvider} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
-  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','管理']);
+  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','管理','ゲーム']);
   assert.equal(json[1].options?.length??0,0);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);
