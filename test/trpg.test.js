@@ -264,3 +264,58 @@ test('outdated table modal cannot overwrite another table or concurrent changes'
   await c.handle(submit(oldToken));assert.equal(store.table(a).name,'A');assert.equal(store.table(b).name,'B');
   await store.saveTable(b,'Changed by another admin','');await c.handle(submit(s.tableModal.token));assert.equal(store.table(b).name,'Changed by another admin');
 });
+
+test('table name search keeps the filtered list page when returning from a table',async t=>{
+  const {store}=await fixture(t);for(let n=0;n<45;n++)await store.saveTable(null,`Scene ${n}`,'');
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'tables'});
+  const act=async(a,values,query)=>{const i=interaction(`trpg:${s.id}:${a}`,'admin',true);i.values=values;if(query!==undefined)i.fields={getTextInputValue:()=>query};await c.handle(i);return i;};
+  const form=await act('form-table-search');const id=form.replies.at(-1).toJSON().custom_id;
+  const submit=interaction(id,'admin',true);submit.fields={getTextInputValue:()=> 'ＳＣＥＮＥ'};await c.handle(submit);assert.equal(s.tableQuery,'ＳＣＥＮＥ');
+  await act('next');assert.equal(s.tableListPage,1);
+  await act('table-select',[store.metadata().tables[25].id]);assert.equal(s.view,'table');
+  const back=await act('tables');assert.equal(s.page,1);assert.equal(s.tableQuery,'ＳＣＥＮＥ');assert.ok(JSON.stringify(back.replies).includes('Scene 20'));
+  await act('clear-table-search');assert.equal(s.page,0);assert.equal(s.tableQuery,'');
+});
+test('table scenario and PC searches are separate, bounded and reject obsolete search modals',async t=>{
+  const {store}=await fixture(t);const scenario=await store.scenario('Alpha Scenario','https://ccfolia.com/rooms/alpha');await store.scenario('Beta Scenario','https://ccfolia.com/rooms/beta');
+  const id=await store.saveTable(null,'卓','');const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'table-scenario',tableId:id});
+  const open=async a=>{const i=interaction(`trpg:${s.id}:${a}`,'admin',true);await c.handle(i);return i.replies.at(-1).toJSON().custom_id;};
+  const submit=async(customId,q)=>{const i=interaction(customId,'admin',true);i.fields={getTextInputValue:()=>q};await c.handle(i);return i;};
+  const first=await open('form-table-scenario-search'),second=await open('form-table-scenario-search');await submit(first,'Beta');assert.equal(s.tableScenarioQuery,undefined);
+  const result=await submit(second,'ＡＬＰＨＡ');assert.ok(JSON.stringify(result.replies).includes('Alpha Scenario'));assert.ok(!JSON.stringify(result.replies).includes('Beta Scenario'));
+  const select=interaction(`trpg:${s.id}:table-set-scenario`,'admin',true);select.values=[scenario];await c.handle(select);
+  await c.handle(interaction(`trpg:${s.id}:table-pcs`,'admin',true));await submit(await open('form-table-pc-search'),'秘密');assert.equal(s.tableAddQuery,'秘密');assert.equal(s.tableScenarioQuery,'ＡＬＰＨＡ');
+  const pc=store.metadata().characters[0],add=interaction(`trpg:${s.id}:table-add-characters`,'admin',true);add.values=[pc.id];await c.handle(add);
+  await c.handle(interaction(`trpg:${s.id}:table-remove-pcs`,'admin',true));await submit(await open('form-table-pc-search'),'公開');assert.equal(s.tableRemoveQuery,'公開');assert.equal(s.tableAddQuery,'秘密');
+  assert.ok(!JSON.stringify(result.replies).includes('秘密TXT'));
+});
+test('table PC preview returns to the same participant page and never crosses public panel scope',async t=>{
+  const {store,secret}=await fixture(t);await store.update(d=>{d.characters.push(...Array.from({length:25},(_,n)=>({id:`pc-${n}`,panelId:secret,ownerId:`owner-${n}`,url:`https://iachara.com/view/${800+n}`,name:`PC ${n}`,txt:'PRIVATE BACKUP',updatedAt:Date.now()})));});
+  const id=await store.saveTable(null,'卓','');await store.changeTableCharacters(id,store.metadata().characters.slice(2).map(c=>c.id));
+  let admin=true;const c=createTrpgController({store,access:async()=>admin,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'table-remove-pcs',tableId:id,tableRemoveQuery:'PC',page:1});
+  const select=interaction(`trpg:${s.id}:table-character`,'admin',true);select.values=['pc-20'];await c.handle(select);assert.equal(s.view,'detail');
+  const preview=interaction(`trpg:${s.id}:preview`,'admin',true);await c.handle(preview);assert.ok(JSON.stringify(preview.replies).includes('PRIVATE BACKUP'));assert.ok(componentIds(preview.replies.at(-1)).includes(`trpg:${s.id}:table-return`));
+  const back=interaction(`trpg:${s.id}:table-return`,'admin',true);await c.handle(back);assert.equal(s.view,'table-remove-pcs');assert.equal(s.page,1);assert.equal(s.tableRemoveQuery,'PC');assert.ok(!JSON.stringify(back.replies).includes('PRIVATE BACKUP'));
+  await c.handle(select);admin=false;const revoked=interaction(`trpg:${s.id}:download`,'admin',true);await c.handle(revoked);assert.ok(revoked.replies.every(p=>!p.files));
+  const panel=c.sessions.create('owner');Object.assign(panel,{entry:'panel',view:'characters',panelId:secret,tableId:id});admin=true;
+  const forged=interaction(`trpg:${panel.id}:table-character`,'owner',true);forged.values=['pc-20'];await c.handle(forged);assert.equal(panel.view,'characters');assert.ok(!JSON.stringify(forged.replies).includes('PRIVATE BACKUP'));
+});
+test('base room rename preserves table references and invalid edits keep input for correction',async t=>{
+  const {store}=await fixture(t);const scenario=await store.scenario('Original','https://ccfolia.com/rooms/first'),table=await store.saveTable(null,'卓','');await store.setTableScenario(table,scenario);
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'scenarios',scenario:store.metadata().scenarios[0]});
+  const open=async()=>{const i=interaction(`trpg:${s.id}:form-scenario-edit`,'admin',true);await c.handle(i);return i.replies.at(-1).toJSON();};
+  const submit=async(id,name,url)=>{const i=interaction(id,'admin',true);i.fields={getTextInputValue:k=>k==='name'?name:url};await c.handle(i);return i;};
+  const initial=await open();await submit(initial.custom_id,'Renamed','bad URL');assert.equal(store.metadata().scenarios[0].name,'Original');
+  const fix=await open();assert.equal(fix.components[0].components[0].value,'Renamed');assert.equal(fix.components[1].components[0].value,'bad URL');
+  await submit(fix.custom_id,'Renamed','https://ccfolia.com/rooms/second');assert.equal(store.metadata().scenarios.length,1);assert.equal(store.metadata().scenarios[0].id,scenario);assert.equal(store.table(table).scenarioId,scenario);
+  const again=await open();await store.scenario('Other','https://ccfolia.com/rooms/other');await submit(again.custom_id,'Other','https://ccfolia.com/rooms/new');assert.equal(store.metadata().scenarios.find(x=>x.id===scenario).name,'Renamed');assert.equal(store.metadata().scenarios.length,2);
+});
+test('old base room forms cannot change a different selection or overwrite concurrent edits',async t=>{
+  const {store}=await fixture(t);const a=await store.scenario('A','https://ccfolia.com/rooms/a'),b=await store.scenario('B','https://ccfolia.com/rooms/b');
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'scenarios',scenario:store.metadata().scenarios[0]});
+  const form=async()=>{const i=interaction(`trpg:${s.id}:form-scenario-edit`,'admin',true);await c.handle(i);return i.replies.at(-1).toJSON().custom_id;};
+  const old=await form();s.scenario=store.metadata().scenarios.find(x=>x.id===b);const current=await form();
+  const submit=async(id)=>{const i=interaction(id,'admin',true);i.fields={getTextInputValue:k=>k==='name'?'Overwrite':'https://ccfolia.com/rooms/new'};await c.handle(i);};
+  await submit(old);assert.equal(store.metadata().scenarios.find(x=>x.id===a).name,'A');assert.equal(store.metadata().scenarios.find(x=>x.id===b).name,'B');
+  await store.scenario('B','https://ccfolia.com/rooms/concurrent');await submit(current);assert.equal(store.metadata().scenarios.find(x=>x.id===b).url,'https://ccfolia.com/rooms/concurrent');
+});

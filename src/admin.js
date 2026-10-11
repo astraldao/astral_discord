@@ -20,12 +20,17 @@ export function changeSettings(c,action,value) {
     if(!/^\d+$/.test(value))throw new Error('整数を入力してください。待機は3〜15秒、音量は10〜60%です。');
     c[action]=Number(value);
   } else if(action==='voice' || action==='enforce')c[action]=value;
-  else if(action==='word-add' || action==='word-remove') {
+  else if(action==='word-add' || action==='word-remove' || action==='word-edit') {
     const surface=String(value.surface).normalize('NFKC').trim();
     if(!surface || surface.length>32 || !/^[\p{L}\p{N} ー]+$/u.test(surface))throw new Error('単語は32文字以内の文字・数字・空白で入力してください。');
     if(action==='word-remove' && !(c.words??[]).some(w=>w.surface.toLowerCase()===surface.toLowerCase()))throw new Error('その読み方は登録されていません。');
+    if(action==='word-edit'){
+      if(!(c.words??[]).some(w=>w.surface===value.previousSurface))throw new Error('読み方が変更されました。選び直してください。');
+      if(c.words.some(w=>w.surface!==value.previousSurface && w.surface.toLowerCase()===surface.toLowerCase()))throw new Error('同じ単語が別の登録で使われています。別の単語にしてください。');
+      c.words=c.words.filter(w=>w.surface!==value.previousSurface);
+    }
     c.words=(c.words??[]).filter(w=>w.surface.toLowerCase()!==surface.toLowerCase());
-    if(action==='word-add') {
+    if(action==='word-add' || action==='word-edit') {
       const reading=String(value.reading).normalize('NFKC').trim().replace(/[ぁ-ゖ]/g,ch=>String.fromCharCode(ch.charCodeAt(0)+0x60));
       if(!/^[ァ-ヴー]+$/.test(reading) || reading.length>40)throw new Error('読みは40文字以内のひらがな・カタカナ・長音で入力してください。');
       c.words.push({surface,reading});
@@ -75,8 +80,11 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     const pages=Math.max(1,Math.ceil(c.words.length/10));s.page=Math.max(0,Math.min(s.page,pages-1));
     const words=c.words.slice(s.page*10,s.page*10+10);
     description=`${c.words.length}件 · ${s.page+1}/${pages}ページ\n\n`+(words.map(w=>`**${text(w.surface)}** → ${text(w.reading)}`).join('\n')||'読み方は未登録です。「読み方を登録」から追加できます。');
-    if(words.length)components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:word-remove`).setPlaceholder('削除する読み方を選ぶ（次に確認）').addOptions(words.map(w=>({label:w.surface,value:w.surface,description:w.reading})))));
-    components.push(row(button(s,'form-word','読み方を登録',ButtonStyle.Primary),...pagination('words',s.page,pages)),row(button(s,'nav-audio','音声設定へ')));
+    if(words.length){
+      components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:word-edit`).setPlaceholder('修正する読み方を選ぶ').addOptions(words.map(w=>({label:w.surface,value:w.surface,description:w.reading})))));
+      components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:word-remove`).setPlaceholder('削除する読み方を選ぶ（次に確認）').addOptions(words.map(w=>({label:w.surface,value:w.surface,description:w.reading})))));
+    }
+    components.push(row(button(s,'form-new-word','読み方を登録',ButtonStyle.Primary),...pagination('words',s.page,pages)),row(button(s,'nav-audio','音声設定へ')));
   } else if(s.view==='panel') {
     title='✦  入室パネル';description=`**設置先** ${c.lobbyId?`<#${c.lobbyId}>`:'ロビーVCが未設定'}\n\nロビーVCのチャットに、入室先を選ぶパネルを設置します。\n設置済みのパネルは同じメッセージを更新します。\nロビー変更前のパネルは手動で削除してください。`;
     components=[row(button(s,'install-panel',c.panel?.channelId===c.lobbyId?'パネルを更新':'パネルを設置',ButtonStyle.Primary).setDisabled(!c.lobbyId)),back()];
@@ -100,7 +108,8 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   return payload(title,description,{components});
 }
 export function adminModal(s,kind,c) {
-  const modal=new ModalBuilder().setCustomId(`admin:${s.id}:submit-${kind}`).setTitle({seconds:'待機時間',volume:'音量',word:'読み方の登録・上書き'}[kind]);
+  if(kind==='word'){const current=s.wordEditSurface?c.words.find(w=>w.surface===s.wordEditSurface):null;s.wordModal={token:randomUUID().slice(0,12),previousSurface:s.wordEditSurface,revision:current?JSON.stringify(current):undefined};}
+  const modal=new ModalBuilder().setCustomId(`admin:${s.id}:submit-${kind}${kind==='word'?':'+s.wordModal.token:''}`).setTitle({seconds:'待機時間',volume:'音量',word:'読み方の登録・上書き'}[kind]);
   const input=(id,label,max,value)=>{const field=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMaxLength(max).setRequired(true);if(value)field.setValue(String(value).slice(0,max));return row(field);};
   const draft=s.formDraft?.kind===kind?s.formDraft.value:undefined;
   if(kind==='word')modal.addComponents(input('surface','表示名全体または英単語（32文字以内）',32,draft?.surface??''),input('reading','読み（ひらがな・カタカナ、40文字以内）',40,draft?.reading??''));
@@ -127,7 +136,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(JSON.stringify(c)!==stage.base)throw new Error('別の操作で設定が変わりました。画面を戻り、変更を選び直してください。');
       changeSettings(c,stage.action,stage.value);
     });
-    s.stage=null;delete s.formDraft;changed();
+    s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;changed();
     let note='✓ 設定を保存しました。再起動は不要です。';
     try {await refreshPanel();}catch{note+='\nパネル更新に失敗しました。「入室パネル」から更新してください。';}
     return note;
@@ -139,16 +148,21 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(interaction.isChatInputCommand()) {
         await interaction.deferReply({flags:MessageFlags.Ephemeral});s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;await interaction.editReply(screen(s));return;
       }
-      const [,id,action]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
+      const [,id,action,token]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='open-densuke'){if(!openDensuke)throw new Error('日程調整を利用できません。');await openDensuke(interaction);return;}
       if(action==='open-trpg'){if(!openTrpg)throw new Error('卓管理を利用できません。');await openTrpg(interaction);return;}
+      if(action==='word-edit'){
+        const word=settings.get().words.find(w=>w.surface===interaction.values?.[0]);if(!word)throw new Error('読み方を選び直してください。');
+        s.formDraft={kind:'word',value:{...word}};s.wordEditSurface=word.surface;s.view='words';await interaction.showModal(adminModal(s,'word',settings.get()));return;
+      }
+      if(action==='form-new-word'){delete s.formDraft;delete s.wordEditSurface;await interaction.showModal(adminModal(s,'word',settings.get()));return;}
       if(action.startsWith('form-')) {await interaction.showModal(adminModal(s,action.slice(5),settings.get()));return;}
       if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();
       if(!await access(interaction))throw new Error('管理者権限がありません。');
       let note='';
-      if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
+      if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}
@@ -160,8 +174,9 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         else if(action==='toggle-enforce'){operation='enforce';value=!c.enforce;description=`直接入室を **${value?'検出後ロビーへ戻す':'許可する'}** に変更`;}
         else if(action==='word-remove'){value={surface:interaction.values[0]};description=`読み方 **${text(value.surface)}** を削除`;}
         else if(action.startsWith('submit-')) {
-          const kind=action.slice(7);operation=kind==='word'?'word-add':kind;
+          const kind=action.slice(7);if(kind==='word' && s.wordModal){if(token!==s.wordModal.token)throw new Error('最新の読み方フォームから操作してください。');if(s.wordModal.previousSurface && JSON.stringify(c.words.find(w=>w.surface===s.wordModal.previousSurface))!==s.wordModal.revision)throw new Error('読み方が変更されました。選び直して編集してください。');}operation=kind==='word'?'word-add':kind;
           value=kind==='word'?{surface:interaction.fields.getTextInputValue('surface'),reading:interaction.fields.getTextInputValue('reading')}:interaction.fields.getTextInputValue('value');
+          if(kind==='word' && s.wordEditSurface){operation='word-edit';value.previousSurface=s.wordEditSurface;}
           s.formDraft={kind,value};
           description=kind==='word'?`**${text(value.surface)}** → ${text(value.reading)}`:`**${kind==='seconds'?'待機秒数':'音量'}** ${c[kind]} → ${text(value)}${kind==='seconds'?'秒':'%'}`;
         } else throw new Error('不明な操作です。 /管理 で開き直してください。');
@@ -171,8 +186,9 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }
       await interaction.editReply(screen(s,note));
     } catch(error) {
-      const note=`変更できませんでした：${text(error.message)}`;
-      if(interaction.deferred || interaction.replied)await interaction.editReply(payload('✧  管理画面',note,{state:'error',components:s?[row(button(s,'home','管理メニューへ'),...(s.formDraft?[button(s,`form-${s.formDraft.kind}`,'入力を修正')]:[]))]:[]}));
+      const note=`操作できませんでした：${text(error.message)}`;
+      const recovery=s?[row(button(s,'home','管理メニューへ'),...(s.formDraft?[button(s,`form-${s.formDraft.kind}`,'入力を修正')]:s.view==='diagnostics'?[button(s,'diagnose','診断をやり直す')]:[]))]:[];
+      if(interaction.deferred || interaction.replied)await interaction.editReply(payload('✧  管理画面',note,{state:'error',components:recovery}));
       else await interaction.reply({...payload('✧  管理画面',note),flags:MessageFlags.Ephemeral});
     } finally {if(locked)s.busy=false;}
   }};

@@ -107,3 +107,25 @@ test('invalid setting inputs are retained for correction without being persisted
   assert.equal(word.modal.toJSON().components[0].components[0].value,'Astral');assert.equal(word.modal.toJSON().components[1].components[0].value,'invalid');
   await f.controller.handle(act('nav-audio'));assert.equal(s.formDraft,undefined);
 });
+test('editing a dictionary entry prefills values, renames in place and clears editing context',async()=>{
+  const f=fixture();await f.settings.update(c=>c.words=[{surface:'Astral',reading:'アストラル'},{surface:'Other',reading:'アザー'}]);const s=f.controller.sessions.create('owner');s.view='words';
+  const edit=f.interaction(`admin:${s.id}:word-edit`,{values:['Astral']});await f.controller.handle(edit);assert.ok(edit.modal);assert.equal(edit.deferred,false);
+  assert.deepEqual(edit.modal.toJSON().components.map(r=>r.components[0].value),['Astral','アストラル']);
+  await f.controller.handle(f.interaction(`admin:${s.id}:submit-word:${s.wordModal.token}`,{fields:{getTextInputValue:k=>k==='surface'?'Astral New':'あすとらる'}}));
+  assert.equal(f.settings.get().words.length,2);assert.ok(!f.settings.get().words.some(w=>w.surface==='Astral'));assert.ok(f.settings.get().words.some(w=>w.surface==='Astral New'&&w.reading==='アストラル'));assert.equal(s.wordEditSurface,undefined);
+});
+test('dictionary rename rejects conflicting entries and keeps invalid input for correction',async()=>{
+  const f=fixture();await f.settings.update(c=>c.words=[{surface:'Astral',reading:'アストラル'},{surface:'Other',reading:'アザー'}]);const s=f.controller.sessions.create('owner');s.view='words';
+  const act=(a,extra)=>f.interaction(`admin:${s.id}:${a}${a==='submit-word'?':'+s.wordModal?.token:''}`,extra);await f.controller.handle(act('word-edit',{values:['Astral']}));
+  await f.controller.handle(act('submit-word',{fields:{getTextInputValue:k=>k==='surface'?'Other':'アストラル'}}));assert.equal(f.settings.get().words[0].surface,'Astral');assert.equal(f.settings.get().words[1].reading,'アザー');
+  const fix=act('form-word');await f.controller.handle(fix);assert.equal(fix.modal.toJSON().components[0].components[0].value,'Other');assert.equal(s.wordEditSurface,'Astral');
+  const fresh=act('form-new-word');await f.controller.handle(fresh);assert.equal(s.wordEditSurface,undefined);assert.ok(fresh.modal.toJSON().components.every(r=>!r.components[0].value));
+});
+test('old dictionary edit forms cannot overwrite a different entry or a concurrent correction',async()=>{
+  const f=fixture();await f.settings.update(c=>c.words=[{surface:'Astral',reading:'アストラル'},{surface:'Other',reading:'アザー'}]);const s=f.controller.sessions.create('owner');s.view='words';
+  const edit=async(surface)=>{const i=f.interaction(`admin:${s.id}:word-edit`,{values:[surface]});await f.controller.handle(i);return i.modal.toJSON().custom_id;};
+  const old=await edit('Astral'),current=await edit('Other');
+  const submit=async(customId)=>f.controller.handle(f.interaction(customId,{fields:{getTextInputValue:k=>k==='surface'?'Mistaken':'ミステイク'}}));
+  await submit(old);assert.deepEqual(f.settings.get().words.map(w=>w.surface),['Astral','Other']);
+  await f.settings.update(c=>c.words[1].reading='アザーズ');await submit(current);assert.equal(f.settings.get().words[1].reading,'アザーズ');assert.ok(!f.settings.get().words.some(w=>w.surface==='Mistaken'));
+});
