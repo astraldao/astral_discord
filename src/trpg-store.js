@@ -60,6 +60,11 @@ export class TrpgStore {
   setTableScenario(id,scenarioId){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !d.scenarios.some(x=>x.id===scenarioId))throw new Error('卓またはシナリオが見つかりません。');t.scenarioId=scenarioId;});}
   changeTableCharacters(id,ids,remove=false){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !Array.isArray(ids) || !ids.length || ids.length>25 || ids.some(id=>!d.characters.some(c=>c.id===id)))throw new Error('参加PCを選び直してください。');t.characterIds=remove?t.characterIds.filter(id=>!ids.includes(id)):[...new Set([...t.characterIds,...ids])];});}
   removeTable(id,revision){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || JSON.stringify(t)!==revision)throw new Error('卓セットが変更されました。開き直してください。');d.tables=d.tables.filter(x=>x.id!==id);});}
+  cloneTable(id,name,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');return this.update(d=>{
+    const source=d.tables.find(x=>x.id===id);if(!source || JSON.stringify(source)!==revision)throw new Error('元の卓が変更されました。開き直して複製してください。');
+    if(d.tables.length>=100)throw new Error('卓セットは100件までです。');
+    const copy={id:randomUUID(),name,scenarioId:source.scenarioId,answerUrl:'',characterIds:[]};d.tables.push(copy);return copy.id;
+  });}
   update(fn){const job=this.tail.then(async()=>{const d=this.get();const result=fn(d);const raw=JSON.stringify(d);if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの合計容量は32MBまでです。');await mkdir(dirname(this.path),{recursive:true});const temp=`${this.path}.tmp`;await writeFile(temp,raw,{mode:0o600});await rename(temp,this.path);this.data=d;return result;});this.tail=job.catch(()=>{});return job;}
   async scenario(name,url){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{const old=d.scenarios.find(x=>key(x.name)===key(name));if(old){old.name=name;old.url=url;return old.id;}if(d.scenarios.length>=200)throw new Error('シナリオは200件まで登録できます。');const id=randomUUID();d.scenarios.push({id,name,url});return id;});}
   editScenario(id,name,url,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{

@@ -16,6 +16,7 @@ export function card(title,description,state='normal') {
 export function payload(title,description,{state='normal',components=[]}={}) {
   return {content:null,embeds:[card(title,description,state)],components,allowedMentions:mentions};
 }
+export const personalReadingButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('profile:open').setLabel('自分の読み方').setStyle(ButtonStyle.Secondary));
 export const openButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder()
   .setCustomId('vc:open').setLabel('入室するVCを選ぶ').setStyle(ButtonStyle.Primary));
 export const cancelButton=job=>new ActionRowBuilder().addComponents(new ButtonBuilder()
@@ -31,7 +32,7 @@ export function waitingCard(name,ahead,seconds) {
   return payload('✦  入室待ち',`**${text(name)}**\n\n${ahead?`順番待ち · あなたの前に **${ahead}人**`:'まもなく参加予告を始めます。'}\n告知の終了から **${seconds}秒後** に入室します。`);
 }
 export function panel(c) {
-  return payload('✦  VCに参加',`**1**  ロビーVCに参加する\n**2**  下のボタンで入室先を選ぶ\n**3**  ${c.voice?'音声告知の終了から':'参加予告から'} **${c.seconds}秒後** に入室`,{components:[openButton()]});
+  return payload('✦  VCに参加',`**1**  ロビーVCに参加する\n**2**  下のボタンで入室先を選ぶ\n**3**  ${c.voice?'音声告知の終了から':'参加予告から'} **${c.seconds}秒後** に入室`,{components:[openButton(),personalReadingButton()]});
 }
 export function countdownCard(name,remaining,total) {
   const bar='▰'.repeat(total-remaining)+'▱'.repeat(remaining);

@@ -3,10 +3,11 @@ import {createHash} from 'node:crypto';
 import {existsSync} from 'node:fs';
 import {mkdir,readFile,writeFile,rename,readdir,stat,unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {personalReading as validatePersonalReading} from './personal-readings.js';
 import {readingFor} from './readings.js';
-export function announcementText(name,words=[]) {
+export function announcementText(name,words=[],personalReading=null) {
   const clean=String(name).normalize('NFKC').replace(/https?:\/\/\S+/g,'').replace(/[^\p{L}\p{N} ー]/gu,' ').replace(/\s+/g,' ').trim().slice(0,32);
-  const reading=readingFor(clean,words);
+  const reading=personalReading===null?readingFor(clean,words):validatePersonalReading(personalReading);
   return `${reading ? reading+'さん' : '新しい方'}が、まもなく参加するのだ。`;
 }
 export function gentlePcm(wav,volume=30) {
@@ -33,9 +34,9 @@ export function gentlePcm(wav,volume=30) {
   }
   return out;
 }
-export async function synthesize(name,signal,words=[]) {
+export async function synthesize(name,signal,words=[],personalReading=null) {
   signal.throwIfAborted();
-  const text=announcementText(name,words),hash=createHash('sha256').update('zundamon-dictionaries-v2:'+text).digest('hex');
+  const text=announcementText(name,words,personalReading),hash=createHash('sha256').update('zundamon-dictionaries-v2:'+text).digest('hex');
   const cache=resolve('data/voice-cache'),file=resolve(cache,`${hash}.wav`);
   await mkdir(cache,{recursive:true});
   try {const wav=await readFile(file);gentlePcm(wav);signal.throwIfAborted();return wav;}

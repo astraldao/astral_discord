@@ -13,20 +13,23 @@ import {createAdminController} from './admin.js';
 import {createPanelRefresher} from './panel.js';
 import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
+import {PersonalReadingsStore} from './personal-readings.js';
+import {createProfileController} from './profile-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
-import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider} from './ui.js';
+import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider,personalReadingButton} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
 const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,targetIds:[],seconds:5,voice:true,enforce:true,panel:null});
 await settings.load();
+const personalReadings=await new PersonalReadingsStore('data/personal-readings.json').load();
 const trpgStore=await new TrpgStore('data/trpg.json').load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,admin,densuke,trpg,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,admin,densuke,trpg,profile,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -60,7 +63,7 @@ async function run(job) {
     if (c.voice) {
       await status(job,'✧  音声を準備',`ずんだもんが **${text(member.displayName)}** さんの参加をお知らせします。`,[cancelButton(job)]);
       phase='synthesis';
-      const wav=await synthesize(member.displayName,job.abort.signal,c.words??[]);
+      const wav=await synthesize(member.displayName,job.abort.signal,c.words??[],personalReadings.get(member.id));
       await validate(job);
       phase='connection';
       audio=await connectSpeech(channel,gentlePcm(wav,c.volume??30),job.abort.signal);
@@ -126,7 +129,7 @@ async function choose(interaction,page=0) {
   const menu=new StringSelectMenuBuilder().setCustomId(`vc:select:${page}`).setPlaceholder('入室するVCを選ぶ')
     .addOptions(choices.slice(page*25,page*25+25).map(channel=>({label:channel.name.slice(0,100),value:channel.id,
       description:`${channel.members.filter(m=>!m.user.bot).size}${channel.userLimit?` / ${channel.userLimit}`:''}人 · ${channel.parent?.name??'カテゴリなし'}`.slice(0,100)})));
-  await interaction.editReply(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}));
+  await interaction.editReply(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages),personalReadingButton()]}));
 }
 function settingsChanged() {
   revision++;
@@ -143,6 +146,7 @@ client.once('clientReady', async () => {
     for(const command of commands()) await guild.commands.create(command.toJSON());
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings});
+    profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
     client.user.setActivity('/vc · 入室先を選ぶ');
@@ -156,7 +160,7 @@ client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const command = interaction.isChatInputCommand() && ['vc','管理'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
@@ -169,7 +173,7 @@ client.on('interactionCreate', async interaction => {
     }
     if(adminComponent || (command && interaction.commandName==='管理')) {
       if(stopping)throw new EntryError('Botを終了しています。');
-      if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
+      if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
@@ -198,7 +202,7 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    const components=adminComponent || (command && interaction.commandName==='管理')?[]:[openButton()];
+    const components=adminComponent || (command && interaction.commandName==='管理')?[]:[openButton(),personalReadingButton()];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);

@@ -29,7 +29,7 @@ export function tableScreen(s,d){
     }else if(s.view==='table'){
       body+=`\n\n**シナリオ**\n${scenario?`${text(scenario.name)}\n${scenario.url}`:'未選択'}\n\n**伝助**\n${t.answerUrl||'未登録'}\n\n**参加PC** ${pcs.length}件\n${pcs.slice(0,5).map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||'未登録'}${pcs.length>5?`\nほか ${pcs.length-5}件 · 「参加PCを確認・外す」で確認`:''}`;
       const links=[...(scenario?[link('ベース卓を開く',scenario.url)]:[]),...(t.answerUrl?[link('伝助を開く',t.answerUrl)]:[])];if(links.length)components.push(row(...links));
-      components.push(row(button(s,'table-scenario','シナリオを選ぶ',ButtonStyle.Primary),button(s,'table-pcs','参加PCを追加')),row(button(s,'table-remove-pcs','参加PCを確認・外す'),button(s,'form-table-edit','卓名・伝助を編集')),row(button(s,'delete-table','卓セットを削除',ButtonStyle.Danger),button(s,'tables','卓セット一覧へ')));
+      components.push(row(button(s,'table-scenario','シナリオを選ぶ',ButtonStyle.Primary),button(s,'table-pcs','参加PCを追加')),row(button(s,'table-remove-pcs','参加PCを確認・外す'),button(s,'form-table-edit','卓名・伝助を編集'),button(s,'form-table-copy','この卓を複製')),row(button(s,'delete-table','卓セットを削除',ButtonStyle.Danger),button(s,'tables','卓セット一覧へ')));
     }else if(s.view==='table-scenario'){
       title='✦  シナリオを選択';const n=nav(s,searchScenarios(d.scenarios,s.tableScenarioQuery??''),25);body+=`\n\n${n.label}${s.tableScenarioQuery?`\n検索：**${text(s.tableScenarioQuery)}**`:''}\nベース卓の登録から選んでください。`;
       if(n.part.length)components.push(row(menu(s,'table-set-scenario','シナリオを選ぶ',n.part.map(x=>({label:x.name,value:x.id})))));
