@@ -64,7 +64,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       title='✦  ベース卓';if(s.scenario)s.scenario=d.scenarios.find(x=>x.id===s.scenario.id)??null;const items=searchScenarios(d.scenarios,s.query??'');const pages=Math.max(1,Math.ceil(items.length/20));s.page=Math.max(0,Math.min(s.page,pages-1));
       body=`${items.length}件 · ${s.page+1}/${pages}ページ${s.query?`\n検索：**${text(s.query)}**`:''}\n\n${s.scenario?`**${text(s.scenario.name)}**\n${s.scenario.url}`:items.length?'シナリオを選ぶと、ベース卓のURLが表示されます。':s.query?'該当するシナリオがありません。検索を解除するか、別の名前で検索してください。':'ベース卓は未登録です。「ベース卓を登録」から追加できます。'}`;
       const part=items.slice(s.page*20,s.page*20+20);
-      if(part.length)components.push(row(menu(s,'scenario','ベース卓を選ぶ',part.map(x=>({label:x.name,value:x.id})))));
+      if(part.length)components.push(row(menu(s,'scenario','ベース卓を選ぶ',part.map(x=>({label:x.name,value:x.id,default:x.id===s.scenario?.id})))));
       if(s.scenario)components.push(row(link('ココフォリアで開く',s.scenario.url)));
       components.push(row(button(s,'form-search','名前で検索'),...(s.query?[button(s,'clear-search','検索を解除')]:[]),button(s,s.scenario?'form-scenario-edit':'form-scenario',s.scenario?'選択した卓を修正':'ベース卓を登録')));
       if(pages>1)components.push(row(...pagination(s.page,pages)));
@@ -72,12 +72,12 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
     } else if(s.view==='archives'){
       title='✦  PCの控え';body=d.panels.length?'確認するキャラシパネルを選んでください。管理者は登録されたPCとTXTの控えを閲覧できます。':'キャラシパネルは未設置です。「キャラシパネルを設置」から作成してください。';
       const pages=Math.max(1,Math.ceil(d.panels.length/25));s.page=Math.max(0,Math.min(s.page,pages-1));
-      if(d.panels.length)components.push(row(menu(s,'archive-panel','控えを確認するパネル',d.panels.slice(s.page*25,s.page*25+25).map(p=>({label:`${p.mode==='secret'?'秘匿':'共有'} · ${guild.channels.cache.get(p.channelId)?.name??p.channelId}`.slice(0,100),value:p.id})))));
+      if(d.panels.length)components.push(row(menu(s,'archive-panel','控えを確認するパネル',d.panels.slice(s.page*25,s.page*25+25).map(p=>({label:`${p.mode==='secret'?'秘匿':'共有'} · ${guild.channels.cache.get(p.channelId)?.name??p.channelId}`.slice(0,100),value:p.id,description:`登録PC ${d.characters.filter(c=>c.panelId===p.id).length}件${p.repairPending?' · 復旧結果の確認が必要':''}`})))));
       if(pages>1){body+=`\n\n${s.page+1}/${pages}ページ`;components.push(row(...pagination(s.page,pages)));}
       components.push(row(button(s,'backup-all','全PCの控えをZIPで保存'),button(s,'install','キャラシパネルを設置')),back());
     } else if(s.view==='repairs'){
       title='✦  キャラシパネルの復旧';const pages=Math.max(1,Math.ceil(d.panels.length/25));s.page=Math.max(0,Math.min(s.page,pages-1));body=`${d.panels.length}件 · ${s.page+1}/${pages}ページ\n\n登録済みPCと公開範囲を保持して、パネルの入口を復旧します。`;
-      if(d.panels.length)components.push(row(menu(s,'repair-select','復旧するパネルを選ぶ',d.panels.slice(s.page*25,s.page*25+25).map(p=>({label:`${p.mode==='secret'?'秘匿':'共有'} · ${guild.channels.cache.get(p.channelId)?.name??p.channelId}`.slice(0,100),value:p.id})))));else body+='\n\n復旧対象のパネルはありません。';
+      if(d.panels.length)components.push(row(menu(s,'repair-select','復旧するパネルを選ぶ',d.panels.slice(s.page*25,s.page*25+25).map(p=>({label:`${p.mode==='secret'?'秘匿':'共有'} · ${guild.channels.cache.get(p.channelId)?.name??p.channelId}`.slice(0,100),value:p.id,description:`登録PC ${d.characters.filter(c=>c.panelId===p.id).length}件${p.repairPending?' · 復旧結果の確認が必要':''}`})))));else body+='\n\n復旧対象のパネルはありません。';
       if(pages>1)components.push(row(...pagination(s.page,pages)));components.push(back());
     } else if(s.view==='repair-clear'){
       title='✧  未送信として解除';body='設置先にBotのパネルがないことを確認しましたか？パネルがある場合は「復旧結果を登録」を使ってください。解除だけでは再投稿しません。';components=[row(button(s,'confirm-repair-clear','パネルがないことを確認・解除',ButtonStyle.Danger),button(s,'repair-back','解除せず戻る'))];
@@ -115,7 +115,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         const filtered=s.ownOnly || s.pcQuery;
         body=`${p.mode==='secret'?'秘匿':'共有'}モード · ${s.ownOnly?'自分のPC':'閲覧できるPC'} ${items.length}件 · ${s.page+1}/${pages}ページ${s.pcQuery?`\n検索：**${text(s.pcQuery)}**`:''}\n\n${part.map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||(filtered?'条件に合うPCがありません。条件を解除するか、新しい共有URLを登録してください。':'キャラシは未登録です。「共有URLを登録」から追加できます。')}\n\nTXTは本人と管理者だけが閲覧できます。`;
         const own=part.filter(c=>d.characters.some(x=>x.id===c.id && (x.ownerId===s.userId || s.isAdmin)));
-        if(own.length)components.push(row(menu(s,'character','TXTの控えを確認するPC',own.map(c=>({label:c.name,value:c.id})))));
+        if(own.length)components.push(row(menu(s,'character','TXTの控えを確認するPC',own.map(c=>({label:c.name,value:c.id,description:c.url})))));
         components.push(row(button(s,'form-register','共有URLを登録',ButtonStyle.Primary),button(s,'characters','一覧を更新'),button(s,'form-pc-search','PC名で検索'),button(s,'backup-panel',s.isAdmin?'このパネルの控えをZIPで保存':'自分の控えをZIPで保存')));
         components.push(row(button(s,'mine',s.ownOnly?'すべてのPCを表示':'自分のPCだけ表示'),...(filtered?[button(s,'clear-pc-filter','条件を解除')]:[]),...pagination(s.page,pages)));
         if(managementSession(s))components.push(row(button(s,'archives','パネル一覧へ')));
@@ -192,7 +192,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         requireAdmin(s);if(!s.tableModal || parts[3]!==s.tableModal.token)throw new Error('最新の入力フォームから操作してください。');s.tableDraft={name:i.fields.getTextInputValue('name').slice(0,100),answerUrl:i.fields.getTextInputValue('answer').slice(0,250)};
         s.tableId=await store.saveTable(s.tableModal.id,s.tableDraft.name,s.tableDraft.answerUrl,s.tableModal.revision);delete s.tableDraft;delete s.tableModal;s.tableEditId=null;s.view='table';s.page=0;note='✓ 卓セットを保存しました。';
       }
-      else if(action==='table-select'){requireAdmin(s);store.table(i.values[0]);if(s.tableId!==i.values[0]){s.tableScenarioQuery='';s.tableAddQuery='';s.tableRemoveQuery='';}s.tableId=i.values[0];delete s.tableDraft;s.view='table';s.page=0;}
+      else if(action==='table-select'){requireAdmin(s);store.table(i.values[0]);if(s.tableId!==i.values[0]){s.tableScenarioQuery='';s.tableAddQuery='';s.tableRemoveQuery='';delete s.copyName;delete s.copySource;delete s.copyModal;}s.tableId=i.values[0];delete s.tableDraft;s.view='table';s.page=0;}
       else if(['table','table-scenario','table-pcs','table-remove-pcs'].includes(action)){requireAdmin(s);store.table(s.tableId);delete s.deleteTable;s.view=action;s.page=0;}
       else if(['submit-table-search','submit-table-scenario-search','submit-table-pc-search'].includes(action)){
         requireAdmin(s);const f=s.tableSearch;if(!f || f.kind!==action.slice(7) || parts[3]!==f.token || (f.view!=='tables' && f.tableId!==s.tableId))throw new Error('最新の検索フォームから操作してください。');

@@ -319,3 +319,18 @@ test('old base room forms cannot change a different selection or overwrite concu
   await submit(old);assert.equal(store.metadata().scenarios.find(x=>x.id===a).name,'A');assert.equal(store.metadata().scenarios.find(x=>x.id===b).name,'B');
   await store.scenario('B','https://ccfolia.com/rooms/concurrent');await submit(current);assert.equal(store.metadata().scenarios.find(x=>x.id===b).url,'https://ccfolia.com/rooms/concurrent');
 });
+
+test('table guidance follows setup progress and selected scenario survives search pagination',async t=>{
+  const {store}=await fixture(t);const {tableScreen}=await import('../src/tables-ui.js');const id=await store.saveTable(null,'新しい卓','');
+  let s={id:'session',view:'table',tableId:id,page:0},result=tableScreen(s,store.metadata());assert.ok(result.body.includes('「シナリオを選ぶ」で'));const controls=()=>result.components.flatMap(r=>r.toJSON().components);assert.equal(controls().find(c=>c.custom_id?.endsWith(':table-remove-pcs')).disabled,true);
+  const scenario=await store.scenario('ベース卓','https://ccfolia.com/rooms/base');await store.setTableScenario(id,scenario);result=tableScreen(s,store.metadata());assert.ok(result.body.includes('「参加PCを追加」で'));assert.equal(controls().find(c=>c.custom_id?.endsWith(':table-pcs')).style,1);
+  await store.changeTableCharacters(id,[store.metadata().characters[0].id]);result=tableScreen(s,store.metadata());assert.ok(result.body.includes('日程調整を使う場合'));assert.equal(controls().find(c=>c.custom_id?.endsWith(':table-remove-pcs')).disabled,false);
+  s.view='table-scenario';result=tableScreen(s,store.metadata());assert.equal(result.components[0].toJSON().components[0].options.find(x=>x.value===scenario).default,true);
+  s.view='table-pcs';s.tableAddQuery='存在しない';result=tableScreen(s,store.metadata());assert.ok(result.body.includes('検索を解除'));for(const r of result.components)r.toJSON();assert.ok(result.body.length<4096);
+});
+test('same-name character choices expose only authorized names and shared URLs',async t=>{
+  const {store,secret}=await fixture(t);await store.saveCharacter(secret,'owner','https://iachara.com/view/103',{name:'秘密PC',txt:'SECOND SECRET'});const c=createTrpgController({store,access:async()=>false,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('owner');Object.assign(s,{entry:'panel',view:'characters',panelId:secret,page:0});const i=interaction(`trpg:${s.id}:characters`,'owner');await c.handle(i);const message=i.replies.at(-1),options=message.components.flatMap(r=>r.toJSON().components).find(x=>x.type===3).options;assert.equal(options.length,2);assert.notEqual(options[0].description,options[1].description);assert.ok(!JSON.stringify(message).includes('SECOND SECRET'));assert.ok(!JSON.stringify(message).includes('非公開TXT'));
+});
+test('selecting a different table clears copy draft and rejects the old copy modal',async t=>{
+  const {store}=await fixture(t),a=await store.saveTable(null,'卓A',''),b=await store.saveTable(null,'卓B','');const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'table',tableId:a,page:0});await c.handle(interaction(`trpg:${s.id}:form-table-copy`,'admin',true));const token=s.copyModal.token;s.copyName='古い複製';const i=interaction(`trpg:${s.id}:table-select`,'admin',true);i.values=[b];await c.handle(i);assert.equal(s.copyName,undefined);assert.equal(s.copyModal,undefined);await c.handle(interaction(`trpg:${s.id}:submit-table-copy:${token}`,'admin',true));assert.equal(store.metadata().tables.length,2);assert.equal(s.tableId,b);
+});
