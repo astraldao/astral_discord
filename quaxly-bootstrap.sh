@@ -12,7 +12,7 @@ tar --no-same-owner -xzf "$stage/source.tar.gz" --strip-components=1 -C "$stage/
 test -f "$stage/source/package-lock.json"
 test -f "$stage/source/src/index.js"
 # Copy only application files; keep host secrets, settings and voice runtime.
-for item in src scripts dictionaries test; do
+for item in src scripts dictionaries assets test; do
   cp -R "$stage/source/$item" .
 done
 for item in index.js package.json package-lock.json setup-voicevox.sh start.sh README.md .gitignore .env.example; do
