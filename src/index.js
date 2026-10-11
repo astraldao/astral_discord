@@ -9,6 +9,7 @@ import {SettingsStore} from './settings.js';
 import {commands} from './commands.js';
 import {createAdminController} from './admin.js';
 import {createPanelRefresher} from './panel.js';
+import {InteractionLimits} from './limits.js';
 import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
@@ -17,6 +18,7 @@ const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,ta
 await settings.load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
+const limits=new InteractionLimits();
 let guild,admin,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
@@ -145,6 +147,14 @@ client.on('interactionCreate', async interaction => {
   const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && interaction.customId.startsWith('admin:');
   if (!command && !component && !adminComponent) return;
   try {
+    const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
+    if(!cancellation) {
+      const wait=limits.consume(interaction.user.id,component && interaction.isStringSelectMenu());
+      if(wait) {
+        await quiet(()=>interaction.reply({...payload('✧  少しお待ちください',`操作が続いています。**${wait}秒後** にもう一度お試しください。入室予約はキャンセルできます。`),flags:MessageFlags.Ephemeral}));
+        return;
+      }
+    }
     if(adminComponent || (command && interaction.commandName==='管理')) {
       if(stopping)throw new EntryError('Botを終了しています。');
       await admin.handle(interaction);return;
