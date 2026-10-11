@@ -14,6 +14,7 @@ import {createPanelRefresher} from './panel.js';
 import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {PersonalReadingsStore} from './personal-readings.js';
+import {GameWalletStore} from './game-wallets.js';
 import {createCasinoController} from './casino-ui.js';
 import {createBlackjackController} from './blackjack-ui.js';
 import {createProfileController} from './profile-ui.js';
@@ -27,6 +28,7 @@ const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,ta
 await settings.load();
 const personalReadings=await new PersonalReadingsStore('data/personal-readings.json').load();
 const trpgStore=await new TrpgStore('data/trpg.json').load();
+const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
@@ -147,8 +149,8 @@ client.once('clientReady', async () => {
     refreshPanel=createPanelRefresher({settings,guild});
     await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
-    casino=createCasinoController({guild});
-    blackjack=createBlackjackController({guild,openCasino:(i,kind)=>casino.open(i,kind)});
+    casino=createCasinoController({guild,wallet:gameWallets});
+    blackjack=createBlackjackController({guild,wallet:gameWallets,openCasino:(i,kind)=>casino.open(i,kind)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
