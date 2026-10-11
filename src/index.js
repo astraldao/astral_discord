@@ -7,6 +7,8 @@ import {synthesize,gentlePcm} from './speech.js';
 
 import {SettingsStore} from './settings.js';
 import {commands} from './commands.js';
+import {readFile} from 'node:fs/promises';
+import {createDiagnostics} from './diagnostics.js';
 import {createAdminController} from './admin.js';
 import {createPanelRefresher} from './panel.js';
 import {InteractionLimits} from './limits.js';
@@ -142,7 +144,7 @@ client.once('clientReady', async () => {
     for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings});
     trpg=createTrpgController({store:trpgStore,guild});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i)});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
     client.user.setActivity('/vc · 入室先を選ぶ');
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
     await refreshPanel(false).catch(()=>console.warn('入室パネルを更新できませんでした。/管理 の「入室パネル」から更新してください。'));

@@ -177,3 +177,90 @@ test('invalid registration keeps input for correction and does not spend fetch c
   assert.equal(fetches,1);assert.equal(store.get().characters[0].txt,'new backup');
   assert.ok(valid.replies.some(p=>JSON.stringify(p).includes('キャラシを取得中')));
 });
+
+test('character removal needs confirmation, rejects stale backups, preserves others and frees quota',async t=>{
+  const {store,secret}=await fixture(t);const pc=store.get().characters[0];
+  const c=createTrpgController({store,access:async()=>false,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('owner');Object.assign(s,{entry:'panel',view:'detail',panelId:secret,characterId:pc.id});
+  const act=async a=>{const i=interaction(`trpg:${s.id}:${a}`,'owner');await c.handle(i);return i;};
+  await act('confirm-delete-character');assert.equal(store.get().characters.length,2);
+  await act('delete-character');assert.equal(s.view,'delete-character');assert.equal(store.get().characters.length,2);
+  await act('detail');await act('confirm-delete-character');assert.equal(store.get().characters.length,2);
+  await act('delete-character');await store.saveCharacter(secret,'owner',pc.url,{name:'new',txt:'updated'});
+  await act('confirm-delete-character');assert.equal(store.get().characters.length,2);
+  await act('delete-character');await act('confirm-delete-character');assert.equal(store.get().characters.length,1);assert.equal(s.view,'characters');
+  await store.saveCharacter(secret,'owner',pc.url,{name:'registered again',txt:'fresh'});assert.notEqual(store.get().characters.find(x=>x.url===pc.url).id,pc.id);
+  const reloaded=await new TrpgStore(store.path).load();assert.equal(reloaded.get().characters.length,2);
+});
+test('foreign users and revoked administrators cannot remove PCs or download foreign ZIPs',async t=>{
+  const {store,secret,shared}=await fixture(t);await store.saveCharacter(shared,'other','https://iachara.com/view/333',{name:'other',txt:'foreign secret'});
+  let admin=false;const c=createTrpgController({store,access:async()=>admin,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('stranger');Object.assign(s,{entry:'panel',view:'detail',panelId:secret,characterId:store.get().characters[0].id});
+  await c.handle(interaction(`trpg:${s.id}:delete-character`,'stranger'));assert.equal(store.get().characters.length,3);
+  s.panelId=shared;s.view='characters';const empty=interaction(`trpg:${s.id}:backup-panel`,'stranger');await c.handle(empty);assert.ok(empty.replies.every(p=>!p.files));
+  const owner=c.sessions.create('owner');Object.assign(owner,{entry:'panel',view:'characters',panelId:shared});
+  const own=interaction(`trpg:${owner.id}:backup-panel`,'owner');await c.handle(own);assert.equal(own.replies[0].flags,MessageFlags.Ephemeral);
+  const zip=own.replies.at(-1).files[0].attachment;assert.ok(zip.includes(Buffer.from('非公開TXT')));assert.ok(!zip.includes(Buffer.from('foreign secret')));
+  const forged=interaction(`trpg:${owner.id}:backup-all`,'owner');await c.handle(forged);assert.ok(forged.replies.every(p=>!p.files));
+  const a=c.sessions.create('admin');Object.assign(a,{entry:'admin',view:'archives'});admin=true;
+  const all=interaction(`trpg:${a.id}:backup-all`,'admin',true);await c.handle(all);assert.ok(all.replies.at(-1).files[0].attachment.includes(Buffer.from('foreign secret')));
+  admin=false;const revoked=interaction(`trpg:${a.id}:backup-all`,'admin',true);await c.handle(revoked);assert.ok(revoked.replies.every(p=>!p.files));
+});
+test('late refresh cannot resurrect a character removed during the external fetch',async t=>{
+  const {store,secret}=await fixture(t);const pc=store.get().characters[0];
+  const {characterRevision}=await import('../src/trpg-store.js');
+  const c=createTrpgController({store,access:async()=>false,guild:{channels:{cache:new Map()}},iachara:{async fetchCharacter(){await store.removeCharacter(pc.id,'owner',secret,false,characterRevision(pc));return {name:'late',txt:'late'};}}});
+  const s=c.sessions.create('owner');Object.assign(s,{entry:'panel',view:'detail',panelId:secret,characterId:pc.id});
+  await c.handle(interaction(`trpg:${s.id}:refresh`,'owner'));assert.ok(!store.get().characters.some(x=>x.id===pc.id || x.url===pc.url));
+});
+test('table sets persist privately, reject edit credentials and clean removed PC references',async t=>{
+  const {store,secret}=await fixture(t);const {answerUrl,characterRevision}=await import('../src/trpg-store.js');
+  for(const u of ['https://densuke.biz/edit?cd=abc&pw=secret','https://densuke.biz/list?cd=abc&pw=secret','https://evil.test/list?cd=abc','http://densuke.biz/list?cd=abc','https://densuke.biz/list?cd=a&cd=b'])assert.throws(()=>answerUrl(u));
+  const scenario=await store.scenario('scenario','https://ccfolia.com/rooms/base');
+  const id=await store.saveTable(null,'卓A','https://www.densuke.biz/list?cd=abc');const pc=store.get().characters[0];
+  await store.setTableScenario(id,scenario);await store.changeTableCharacters(id,[pc.id,pc.id]);assert.deepEqual(store.table(id).characterIds,[pc.id]);
+  await assert.rejects(store.changeTableCharacters(id,['unknown']));
+  const reloaded=await new TrpgStore(store.path).load();assert.equal(reloaded.table(id).answerUrl,'https://densuke.biz/list?cd=abc');
+  await store.removeCharacter(pc.id,'owner',secret,false,characterRevision(pc));assert.deepEqual(store.table(id).characterIds,[]);assert.equal(store.table(id).scenarioId,scenario);
+  const revision=JSON.stringify(store.table(id));await store.saveTable(id,'changed','');await assert.rejects(store.removeTable(id,revision));
+  await store.removeTable(id,JSON.stringify(store.table(id)));assert.equal(store.get().tables.length,0);assert.equal(store.get().scenarios.length,1);assert.equal(store.get().characters.length,1);
+});
+test('table workflows cannot be entered from public panel sessions, even by administrators',async t=>{
+  const {store,secret}=await fixture(t);const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('admin');Object.assign(s,{entry:'panel',view:'characters',panelId:secret});
+  for(const action of ['tables','table','table-select','table-scenario','table-pcs','table-remove-pcs','submit-table','form-table','form-table-edit','table-set-scenario','table-add-characters','table-remove-characters','delete-table','confirm-delete-table','backup-all']){
+    const i=interaction(`trpg:${s.id}:${action}`,'admin',true);i.values=['anything'];await c.handle(i);assert.ok(JSON.stringify(i.replies).includes('/管理 から開いてください'),action);assert.equal(s.view,'characters');
+  }
+  assert.equal(store.get().tables.length,0);
+});
+test('table creation, editing, selection and deletion work through private management screens',async t=>{
+  const {store}=await fixture(t);const scenario=await store.scenario('scenario','https://ccfolia.com/rooms/base');const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'tables'});
+  const act=async(a,values,fields)=>{const i=interaction(`trpg:${s.id}:${a}${a==='submit-table'?':'+s.tableModal?.token:''}`,'admin',true);i.values=values;i.fields={getTextInputValue:k=>fields?.[k]??''};await c.handle(i);return i;};
+  await act('form-table');await act('submit-table',[],{name:'卓A',answer:'https://densuke.biz/list?cd=abc'});assert.equal(s.view,'table');const id=s.tableId;
+  await act('table-set-scenario',[scenario]);await act('table-add-characters',[store.get().characters[0].id]);
+  const show=await act('table');const output=JSON.stringify(show.replies);assert.ok(output.includes('秘密PC'));assert.ok(output.includes('rooms/base'));assert.ok(!output.includes('秘密TXT'));assert.equal(show.replies[0].flags,MessageFlags.Ephemeral);
+  const form=await act('form-table-edit');assert.equal(form.replies.at(-1).toJSON().components[0].components[0].value,'卓A');
+  await act('submit-table',[],{name:'卓B',answer:''});assert.equal(store.table(id).name,'卓B');assert.equal(store.table(id).answerUrl,'');
+  await act('confirm-delete-table');assert.equal(store.get().tables.length,1);
+  await act('delete-table');await act('table');await act('confirm-delete-table');assert.equal(store.get().tables.length,1);
+  await act('delete-table');await act('confirm-delete-table');assert.equal(store.get().tables.length,0);assert.equal(store.get().characters.length,2);
+});
+test('maximum table screens fit embed and component limits without exposing TXT',async t=>{
+  const {store}=await fixture(t);const {tableScreen}=await import('../src/tables-ui.js');
+  await store.update(d=>{d.scenarios=Array.from({length:200},(_,n)=>({id:`s${n}`,name:'名'.repeat(100),url:'https://ccfolia.com/rooms/base'}));d.characters=Array.from({length:100},(_,n)=>({id:`c${n}`,name:'*'.repeat(100),url:`https://iachara.com/view/${n}`,panelId:d.panels[0].id,ownerId:'owner',txt:'SECRET'}));d.tables=Array.from({length:100},(_,n)=>({id:`t${n}`,name:'*'.repeat(100),answerUrl:'https://densuke.biz/list?cd=abc',scenarioId:'s0',characterIds:d.characters.map(c=>c.id)}));});
+  for(const view of ['tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table']){const r=tableScreen({id:'session',tableId:'t0',page:0,view},store.metadata());assert.ok(r.body.length<4096,view);assert.ok(!r.body.includes('SECRET'));assert.ok(r.components.length<=5);for(const row of r.components)row.toJSON();}
+});
+test('old stored data migrates without losing character backups or panel privacy',async t=>{
+  const {store}=await fixture(t);const {writeFile}=await import('node:fs/promises');const old=store.get();delete old.tables;await writeFile(store.path,JSON.stringify(old),{mode:0o600});
+  const next=await new TrpgStore(store.path).load();assert.deepEqual(next.get().tables,[]);assert.deepEqual(next.get().characters,old.characters);assert.deepEqual(next.get().panels,old.panels);
+});
+test('outdated table modal cannot overwrite another table or concurrent changes',async t=>{
+  const {store}=await fixture(t);const a=await store.saveTable(null,'A',''),b=await store.saveTable(null,'B','');const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'table',tableId:a});
+  await c.handle(interaction(`trpg:${s.id}:form-table-edit`,'admin',true));const oldToken=s.tableModal.token;
+  s.tableId=b;await c.handle(interaction(`trpg:${s.id}:form-table-edit`,'admin',true));
+  const submit=token=>{const i=interaction(`trpg:${s.id}:submit-table:${token}`,'admin',true);i.fields={getTextInputValue:k=>k==='name'?'OVERWRITE':''};return i;};
+  await c.handle(submit(oldToken));assert.equal(store.table(a).name,'A');assert.equal(store.table(b).name,'B');
+  await store.saveTable(b,'Changed by another admin','');await c.handle(submit(s.tableModal.token));assert.equal(store.table(b).name,'Changed by another admin');
+});

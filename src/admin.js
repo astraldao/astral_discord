@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
 import {payload,text} from './ui.js';
+import {diagnosticsScreen} from './diagnostics.js';
 import {validateSettings} from './settings.js';
 
 export function changeSettings(c,action,value) {
@@ -62,7 +63,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
     description+='\n\n**入室の設定** · VC・音声・入室パネル\n**卓の準備** · 日程調整・ベース卓・キャラシ';
-    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ')),row(button(s,'nav-overview','設定を確認'))];
+    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ')),row(button(s,'nav-overview','設定を確認'),button(s,'diagnose','動作診断'))];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
@@ -106,9 +107,9 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
   const sessions=new AdminSessions();
-  const screen=(s,note='')=>adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note);
+  const screen=(s,note='')=>s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note);
   async function validateChannel(action,value) {
     if(!['lobby','add'].includes(action))return;
     const channel=await guild.channels.fetch(value);
@@ -134,19 +135,21 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
   return {sessions,async handle(interaction){
     let s,locked=false;
     try {
-      if(!canConfigure(interaction.memberPermissions))throw new Error('管理画面は管理者専用です。');
+      if(!await access(interaction))throw new Error('管理画面は管理者専用です。');
       if(interaction.isChatInputCommand()) {
-        await interaction.deferReply({flags:MessageFlags.Ephemeral});s=sessions.create(interaction.user.id);await interaction.editReply(screen(s));return;
+        await interaction.deferReply({flags:MessageFlags.Ephemeral});s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;await interaction.editReply(screen(s));return;
       }
-      const [,id,action]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);
+      const [,id,action]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='open-densuke'){if(!openDensuke)throw new Error('日程調整を利用できません。');await openDensuke(interaction);return;}
       if(action==='open-trpg'){if(!openTrpg)throw new Error('卓管理を利用できません。');await openTrpg(interaction);return;}
       if(action.startsWith('form-')) {await interaction.showModal(adminModal(s,action.slice(5),settings.get()));return;}
       if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();
+      if(!await access(interaction))throw new Error('管理者権限がありません。');
       let note='';
       if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
+      else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}
       else if(action==='save')note=await save(s,true);
@@ -169,7 +172,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       await interaction.editReply(screen(s,note));
     } catch(error) {
       const note=`変更できませんでした：${text(error.message)}`;
-      if(interaction.deferred || interaction.replied)await interaction.editReply(s?screen(s,note):payload('✧  管理画面',note));
+      if(interaction.deferred || interaction.replied)await interaction.editReply(payload('✧  管理画面',note,{state:'error',components:s?[row(button(s,'home','管理メニューへ'),...(s.formDraft?[button(s,`form-${s.formDraft.kind}`,'入力を修正')]:[]))]:[]}));
       else await interaction.reply({...payload('✧  管理画面',note),flags:MessageFlags.Ephemeral});
     } finally {if(locked)s.busy=false;}
   }};

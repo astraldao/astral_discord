@@ -5,11 +5,12 @@ import {AdminSessions,adminScreen,adminModal,changeSettings,createAdminControlle
 const id='111111111111111111',target='222222222222222222';
 const defaults=()=>({version:1,lobbyId:id,targetIds:[target],seconds:5,volume:30,voice:true,enforce:true,words:[],panel:null});
 const permissions=new PermissionsBitField(P.Administrator);
+const canAdmin=i=>i.memberPermissions.has(P.Administrator);
 function fixture(){
   let c=defaults(),reservations=0,changes=0;
   const settings={get:()=>structuredClone(c),async update(fn){const next=structuredClone(c);fn(next);c=next;return settings.get();}};
   const guild={channels:{cache:new Map(),async fetch(){return {type:2,permissionsFor:()=>({has:()=>true})};}},members:{me:{}}};
-  const controller=createAdminController({settings,guild,refreshPanel:async()=>{},changed:()=>changes++,pendingCount:()=>reservations});
+  const controller=createAdminController({settings,guild,access:async i=>canAdmin(i),refreshPanel:async()=>{},changed:()=>changes++,pendingCount:()=>reservations});
   const interaction=(customId,extra={})=>({customId,user:{id:'owner'},memberPermissions:permissions,deferred:false,replied:false,
     isChatInputCommand:()=>!customId,isModalSubmit:()=>customId?.includes('submit-')??false,message:{},
     async deferReply(){this.deferred=true;},async deferUpdate(){this.deferred=true;},async editReply(m){this.result=m;},async reply(m){this.replied=true;this.result=m;},async showModal(m){this.modal=m;},...extra});
