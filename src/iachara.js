@@ -6,7 +6,12 @@ const PUBLIC_WEB_KEY='AIzaSyBRP4ntIWd48qx6Liqk-1DnigSMM_xNLgs';
 const groups=[['battleSkills','戦闘技能'],['searchSkills','探索技能'],['actionSkills','行動技能'],['negotiationSkills','交渉技能'],['knowledgeSkills','知識技能']];
 const num=x=>Number.isFinite(Number(x))?Number(x):0;
 const pretty=x=>typeof x==='string'?x:JSON.stringify(x??'',null,2);
+function boundedTree(data) {
+  const pending=[{value:data,depth:0}];let count=0;
+  while(pending.length){const {value,depth}=pending.pop();if(++count>10000 || depth>16)throw new Error('キャラデータの構造が複雑すぎます。');if(value && typeof value==='object')for(const child of Object.values(value))pending.push({value:child,depth:depth+1});}
+}
 export function characterText(data) {
+  boundedTree(data);
   if(!['6th','7th'].includes(data?.version) || !data.profile?.name || !data.abilities)throw new Error('対応するキャラデータを確認できませんでした。');
   const p=data.profile,a=data.abilities,seventh=data.version==='7th';
   const base=k=>num(a[k]?.value);
@@ -23,15 +28,18 @@ export function characterText(data) {
   out.push('\n【元データ・復元用JSON】',JSON.stringify(data,null,2));
   const txt=out.join('\n')+'\n';if(Buffer.byteLength(txt)>MAX_TXT)throw new Error('TXTが256KBを超えています。');return txt;
 }
-export function createIacharaClient({fetchImpl=fetch,now=()=>Date.now()}={}) {
-  let token,expires=0,authJob,busy=false,last=0;
-  async function json(url,options={}) {
-    const r=await fetchImpl(url,{...options,redirect:'error',signal:AbortSignal.timeout(20000)});
-    if(!r.ok)throw new Error('いあきゃらから取得できませんでした。公開設定や稼働状況を確認してください。');
-    if(num(r.headers.get('content-length'))>1024*1024)throw new Error('取得データが大きすぎます。');
-    const reader=r.body.getReader();let size=0;const chunks=[];try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>1024*1024)throw new Error('取得データが大きすぎます。');chunks.push(value);}}finally{await reader.cancel();}
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+export function createIacharaClient({fetchImpl=fetch,now=()=>Date.now(),timeoutSignal=()=>AbortSignal.timeout(60000)}={}) {
+  let token,expires=0,authJob,busy=false,last=-Infinity;
+  async function json(url,options={},operation) {
+    operation.signal.throwIfAborted();
+    const signal=AbortSignal.any([operation.signal,AbortSignal.timeout(20000)]);
+    const r=await fetchImpl(url,{...options,redirect:'error',signal});
+    if(!r.ok){if(r.status===401){token=null;expires=0;}await r.body?.cancel().catch(()=>{});throw new Error('いあきゃらから取得できませんでした。公開設定や稼働状況を確認してください。');}
+    if(num(r.headers.get('content-length'))>operation.remaining){await r.body?.cancel().catch(()=>{});throw new Error('取得データの合計が256KBを超えています。');}
+    const reader=r.body.getReader();const chunks=[];try{while(true){signal.throwIfAborted();const {done,value}=await reader.read();if(done)break;operation.remaining-=value.length;if(operation.remaining<0)throw new Error('取得データの合計が256KBを超えています。');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
+    signal.throwIfAborted();
+    try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new Error('取得データの形式を確認できませんでした。');}
   }
-  async function auth(){if(token && now()<expires)return token;if(!authJob)authJob=(async()=>{const guest=await json(`${API}/v3/auth/guestToken`,{method:'POST',headers:{'Content-Type':'application/json'}});const t=await json(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${PUBLIC_WEB_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:guest.token,returnSecureToken:true})});if(typeof t.idToken!=='string')throw new Error('ゲスト接続を確認できませんでした。');token=t.idToken;expires=now()+Math.max(0,Math.min(num(t.expiresIn)-60,3300))*1000;return token;})().finally(()=>{authJob=null;});return authJob;}
-  return {async fetchCharacter(url){url=iacharaUrl(url);if(busy || (last && now()-last<5000))throw new Error('キャラ取得が続いています。少し待って更新してください。');busy=true;last=now();try{const bearer=await auth();const r=await json(`${API}/v3/charasheet/${url.split('/').pop()}`,{headers:{Authorization:`Bearer ${bearer}`}});const d=r.data?.data;if(!r.success || !d)throw new Error('共有キャラを読み込めませんでした。');if((d.additionalMemoIds??[]).length>20)throw new Error('追加メモが多すぎます。');const additionalMemo=[];for(const id of d.additionalMemoIds??[]){if(!/^[A-Za-z0-9_-]{1,128}$/.test(id))throw new Error('追加メモの形式を確認できません。');const m=await json(`${API}/v3/memo/${id}?password=undefined`,{headers:{Authorization:`Bearer ${bearer}`}});if(!m.memo)throw new Error('追加メモを取得できませんでした。以前の控えを保持します。');additionalMemo.push(m.memo);}const full={...d,additionalMemo};return {name:full.profile?.name,txt:characterText(full)};}finally{busy=false;}}};
+  async function auth(operation){if(token && now()<expires)return token;if(!authJob)authJob=(async()=>{const guest=await json(`${API}/v3/auth/guestToken`,{method:'POST',headers:{'Content-Type':'application/json'}},operation);const t=await json(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${PUBLIC_WEB_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:guest.token,returnSecureToken:true})},operation);if(typeof t.idToken!=='string')throw new Error('ゲスト接続を確認できませんでした。');token=t.idToken;expires=now()+Math.max(0,Math.min(num(t.expiresIn)-60,3300))*1000;return token;})().finally(()=>{authJob=null;});return authJob;}
+  return {async fetchCharacter(url){url=iacharaUrl(url);if(busy || now()-last<5000)throw new Error('キャラ取得が続いています。少し待って更新してください。');busy=true;last=now();const operation={signal:timeoutSignal(),remaining:MAX_TXT};try{const bearer=await auth(operation);const r=await json(`${API}/v3/charasheet/${url.split('/').pop()}`,{headers:{Authorization:`Bearer ${bearer}`}},operation);const d=r.data?.data;if(!r.success || !d)throw new Error('共有キャラを読み込めませんでした。');if((d.additionalMemoIds??[]).length>20)throw new Error('追加メモが多すぎます。');const additionalMemo=[];for(const id of d.additionalMemoIds??[]){if(typeof id!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))throw new Error('追加メモの形式を確認できません。');const m=await json(`${API}/v3/memo/${id}?password=undefined`,{headers:{Authorization:`Bearer ${bearer}`}},operation);if(!m.memo)throw new Error('追加メモを取得できませんでした。以前の控えを保持します。');additionalMemo.push(m.memo);}operation.signal.throwIfAborted();const full={...d,additionalMemo};return {name:full.profile?.name,txt:characterText(full)};}finally{busy=false;}}};
 }
