@@ -60,7 +60,7 @@ test('administrator panel entry stays in character views and keeps authorized TX
     const forged=interaction(`trpg:${s.id}:${action}`,'admin',true);
     forged.values=['shared'];
     await c.handle(forged);
-    assert.ok(JSON.stringify(forged.replies).includes('/管理 から開いてください'),action);
+    assert.ok(JSON.stringify(forged.replies).includes('/admin から開いてください'),action);
     assert.equal(s.view,'characters',action);
     assert.deepEqual(store.get(),before,action);
   }
@@ -87,7 +87,7 @@ test('sessions without explicit management entry fail closed even for administra
   const s=c.sessions.create('admin');
   const i=interaction(`trpg:${s.id}:home`,'admin',true);
   await c.handle(i);
-  assert.ok(JSON.stringify(i.replies).includes('/管理 から開いてください'));
+  assert.ok(JSON.stringify(i.replies).includes('/admin から開いてください'));
   assert.ok(!JSON.stringify(i.replies).includes('ベース卓を登録'));
 });
 test('existing character panels refresh in place, preserve privacy and isolate unavailable messages',async t=>{
@@ -229,7 +229,7 @@ test('table workflows cannot be entered from public panel sessions, even by admi
   const {store,secret}=await fixture(t);const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
   const s=c.sessions.create('admin');Object.assign(s,{entry:'panel',view:'characters',panelId:secret});
   for(const action of ['tables','table','table-select','table-scenario','table-pcs','table-remove-pcs','submit-table','form-table','form-table-edit','table-set-scenario','table-add-characters','table-remove-characters','delete-table','confirm-delete-table','backup-all']){
-    const i=interaction(`trpg:${s.id}:${action}`,'admin',true);i.values=['anything'];await c.handle(i);assert.ok(JSON.stringify(i.replies).includes('/管理 から開いてください'),action);assert.equal(s.view,'characters');
+    const i=interaction(`trpg:${s.id}:${action}`,'admin',true);i.values=['anything'];await c.handle(i);assert.ok(JSON.stringify(i.replies).includes('/admin から開いてください'),action);assert.equal(s.view,'characters');
   }
   assert.equal(store.get().tables.length,0);
 });

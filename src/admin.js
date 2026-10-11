@@ -49,7 +49,7 @@ export class AdminSessions {
   }
   get(id,userId){
     const s=this.sessions.get(id);
-    if(!s || s.userId!==userId || s.expires<=this.now())throw new Error('この画面は終了しています。元のパネルまたは /管理 から開き直してください。');
+    if(!s || s.userId!==userId || s.expires<=this.now())throw new Error('この画面は終了しています。元のパネルまたは /admin から開き直してください。');
     return s;
   }
 }
@@ -179,7 +179,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
           if(kind==='word' && s.wordEditSurface){operation='word-edit';value.previousSurface=s.wordEditSurface;}
           s.formDraft={kind,value};
           description=kind==='word'?`**${text(value.surface)}** → ${text(value.reading)}`:`**${kind==='seconds'?'待機秒数':'音量'}** ${c[kind]} → ${text(value)}${kind==='seconds'?'秒':'%'}`;
-        } else throw new Error('不明な操作です。 /管理 で開き直してください。');
+        } else throw new Error('不明な操作です。 /admin で開き直してください。');
         await validateChannel(operation,value);changeSettings(structuredClone(c),operation,value);
         s.stage={action:operation,value,base:JSON.stringify(c),description};
         if(pendingCount() || ['lobby','remove','word-remove'].includes(operation))s.stage.description+=`\n\n現在の入室予約：${pendingCount()}件`;else note=await save(s);

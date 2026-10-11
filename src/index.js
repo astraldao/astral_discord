@@ -6,7 +6,7 @@ import {connectSpeech} from './audio.js';
 import {synthesize,gentlePcm} from './speech.js';
 
 import {SettingsStore} from './settings.js';
-import {commands} from './commands.js';
+import {registerCommands} from './commands.js';
 import {readFile} from 'node:fs/promises';
 import {createDiagnostics} from './diagnostics.js';
 import {createAdminController} from './admin.js';
@@ -38,7 +38,7 @@ const cancelJob=(job,reason)=>{
   job.abort.abort(new EntryError(reason));
   if(!job.started && pending.get(job.userId)===job)pending.delete(job.userId);
 };
-const configured=()=>{const c=settings.get();if(!c.lobbyId || !c.targetIds.length)throw new EntryError('管理者が /管理 の「VC設定」でロビーと行き先を設定してください。');return c;};
+const configured=()=>{const c=settings.get();if(!c.lobbyId || !c.targetIds.length)throw new EntryError('管理者が /admin の「VC設定」でロビーと行き先を設定してください。');return c;};
 class EntryError extends Error {}
 
 async function validate(job) {
@@ -144,8 +144,7 @@ client.once('clientReady', async () => {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
     refreshPanel=createPanelRefresher({settings,guild});
-    for(const command of commands()) await guild.commands.create(command.toJSON());
-    for(const old of (await guild.commands.fetch()).values())if(['vc-panel','vc設定'].includes(old.name))await old.delete();
+    await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
     blackjack=createBlackjackController({guild});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
@@ -153,14 +152,14 @@ client.once('clientReady', async () => {
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
     client.user.setActivity('/vc · 入室先を選ぶ');
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
-    await refreshPanel(false).catch(()=>console.warn('入室パネルを更新できませんでした。/管理 の「入室パネル」から更新してください。'));
+    await refreshPanel(false).catch(()=>console.warn('入室パネルを更新できませんでした。/admin の「入室パネル」から更新してください。'));
     const panels=await trpg.refreshPanels();
     if(panels.failed)console.warn(`キャラシパネルの更新に失敗: ${panels.failed}件。設置先の権限・メッセージを確認してください。`);
   } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); client.destroy(); process.exitCode = 1;}
 });
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
-  const command = interaction.isChatInputCommand() && ['vc','管理','ゲーム'].includes(interaction.commandName);
+  const command = interaction.isChatInputCommand() && ['vc','admin','game'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
   const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|bj):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
@@ -173,8 +172,8 @@ client.on('interactionCreate', async interaction => {
         return;
       }
     }
-    if((command && interaction.commandName==='ゲーム') || (adminComponent && interaction.customId.startsWith('bj:'))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.open(interaction);else await blackjack.handle(interaction);return;}
-    if(adminComponent || (command && interaction.commandName==='管理')) {
+    if((command && interaction.commandName==='game') || (adminComponent && interaction.customId.startsWith('bj:'))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.open(interaction);else await blackjack.handle(interaction);return;}
+    if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
       if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
     }
@@ -205,7 +204,7 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    const components=adminComponent || (command && ['管理','ゲーム'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton()];
+    const components=adminComponent || (command && ['admin','game'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton()];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);

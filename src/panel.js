@@ -5,7 +5,7 @@ export function createPanelRefresher({settings,guild}) {
   let tail=Promise.resolve();
   async function refresh(create) {
     const c=settings.get();
-    if(!c.lobbyId)throw new Error('先に /管理 の「VC設定」でロビーを設定してください。');
+    if(!c.lobbyId)throw new Error('先に /admin の「VC設定」でロビーを設定してください。');
     const lobby=await guild.channels.fetch(c.lobbyId);
     if(!lobby || lobby.type!==ChannelType.GuildVoice)throw new Error('ロビーVCが見つかりません。再設定してください。');
     if(c.panel?.channelId===c.lobbyId) {

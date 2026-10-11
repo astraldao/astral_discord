@@ -47,7 +47,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
   const sessions=new AdminSessions();const cooldown=new Map(),backupCooldown=new Map();
   const isAdmin=i=>access(i);const repair=createTrpgRepair({store,guild,render:trpgPanel});
   const managementSession=s=>s.entry==='admin' && s.isAdmin;
-  const requireAdmin=s=>{if(!managementSession(s))throw new Error('管理者専用の操作です。/管理 から開いてください。');};
+  const requireAdmin=s=>{if(!managementSession(s))throw new Error('管理者専用の操作です。/admin から開いてください。');};
   function screen(s,note=''){
     if(['home','install','scenarios','archives','tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table','repairs','repair','repair-clear'].includes(s.view) && !managementSession(s))throw new Error('管理者専用の画面です。');
     const d=store.metadata();let title='✦  卓・キャラシ',body='',components=[];

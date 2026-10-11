@@ -5,7 +5,7 @@ import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setBotIconProvider} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
-  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','管理','ゲーム']);
+  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','admin','game']);
   assert.equal(json[1].options?.length??0,0);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);
@@ -15,7 +15,7 @@ test('all commands and embed/component payloads serialize under Discord builder 
 });
 test('settings commands default to administrators and enforce the same permission at execution',()=>{
   const json=commands().map(command=>command.toJSON());
-  assert.equal(json.find(command=>command.name==='管理').default_member_permissions,String(P.Administrator));
+  assert.equal(json.find(command=>command.name==='admin').default_member_permissions,String(P.Administrator));
   assert.ok(!json.find(command=>command.name==='vc').default_member_permissions);
   assert.equal(canConfigure(new PermissionsBitField(P.Administrator)),true);
   assert.equal(canConfigure(new PermissionsBitField(P.ManageGuild)),false);
@@ -49,4 +49,8 @@ test('footer uses Japan date and the current bot icon on every render',t=>{
   assert.equal(payload('画面','本文').embeds[0].toJSON().footer.icon_url,icon);
   icon='https://cdn.discordapp.com/embed/avatars/1.png';
   assert.equal(panel({seconds:5,voice:true}).embeds[0].toJSON().footer.icon_url,icon);
+});
+
+test('English command migration creates every replacement before deleting only retired names',async()=>{
+  const {registerCommands}=await import('../src/commands.js'),events=[];const old=['管理','ゲーム','vc-panel','vc設定','admin','game','unrelated'].map(name=>({name,delete:async()=>events.push(`delete:${name}`)}));const guild={commands:{create:async c=>events.push(`create:${c.name}`),fetch:async()=>new Map(old.map(c=>[c.name,c]))}};await registerCommands(guild);assert.deepEqual(events.slice(0,3),['create:vc','create:admin','create:game']);assert.deepEqual(events.slice(3),['delete:管理','delete:ゲーム','delete:vc-panel','delete:vc設定']);const json=commands().map(c=>c.toJSON());assert.ok(json.every(c=>/^[a-z]+$/.test(c.name)));assert.equal(json.find(c=>c.name==='game').options[0].name,'blackjack');events.length=0;guild.commands.create=async c=>{events.push(`create:${c.name}`);if(c.name==='game')throw new Error('registration failed');};await assert.rejects(registerCommands(guild));assert.ok(!events.some(x=>x.startsWith('delete:')));
 });

@@ -29,17 +29,30 @@ test('ordinary members can play privately; foreign users and channels cannot mut
   const {c,s,open}=await fixture();assert.equal(open.replies[0].flags,MessageFlags.Ephemeral);const before=structuredClone(s.game);for(const i of [interaction(`bj:${s.id}:0:hit`,'other'),Object.assign(interaction(`bj:${s.id}:0:hit`),{channelId:'other-channel'})]){await c.handle(i);assert.deepEqual(s.game,before);assert.ok(!JSON.stringify(i.replies).includes('♠10'));}
 });
 test('replayed buttons do not draw again; current game remains available',async()=>{
-  const {c,s}=await fixture(),i=interaction(`bj:${s.id}:0:hit`);await c.handle(i);assert.equal(s.game.player.length,3);assert.equal(s.turn,1);const replay=interaction(`bj:${s.id}:0:hit`);await c.handle(replay);assert.equal(s.game.player.length,3);assert.ok(replay.replies.at(-1).components.length>0);assert.ok(JSON.stringify(replay.replies).includes('古いボタン'));
+  const {c,s}=await fixture(),i=interaction(`bj:${s.id}:0:hit`);await c.handle(i);assert.equal(s.game.player.length,3);assert.equal(s.turn,1);const replay=interaction(`bj:${s.id}:0:hit`);await c.handle(replay);assert.equal(s.game.player.length,3);assert.ok(replay.replies.at(-1).components.length>0);assert.ok(JSON.stringify(replay.replies).includes('最新の状態'));
 });
 test('concurrent clicks draw at most one card',async()=>{
   const {c,s}=await fixture();await Promise.all([c.handle(interaction(`bj:${s.id}:0:hit`)),c.handle(interaction(`bj:${s.id}:0:hit`))]);assert.equal(s.game.player.length,3);assert.equal(s.turn,1);
 });
 test('stop, rematch and session expiry reject stale or invalid transitions',async()=>{
-  const {c,s,time}=await fixture();await c.handle(interaction(`bj:${s.id}:0:again`));assert.equal(s.turn,0);await c.handle(interaction(`bj:${s.id}:0:stop`));assert.equal(s.game.result,'stopped');await c.handle(interaction(`bj:${s.id}:1:again`));assert.equal(s.game.phase,'playing');assert.equal(s.turn,2);const before=structuredClone(s.game);time(600001);const i=interaction(`bj:${s.id}:2:hit`);await c.handle(i);assert.deepEqual(s.game,before);assert.ok(JSON.stringify(i.replies).includes('/ゲーム'));assert.ok(!JSON.stringify(i.replies).includes('/管理'));
+  const {c,s,time}=await fixture();await c.handle(interaction(`bj:${s.id}:0:again`));assert.equal(s.turn,0);await c.handle(interaction(`bj:${s.id}:0:stop`));assert.equal(s.game.phase,'playing');await c.handle(interaction(`bj:${s.id}:1:confirm-stop`));assert.equal(s.game.result,'stopped');await c.handle(interaction(`bj:${s.id}:2:again`));assert.equal(s.game.phase,'playing');assert.equal(s.turn,3);const before=structuredClone(s.game);time(600001);const i=interaction(`bj:${s.id}:3:hit`);await c.handle(i);assert.deepEqual(s.game,before);assert.ok(JSON.stringify(i.replies).includes('/game'));assert.ok(!JSON.stringify(i.replies).includes('/admin'));
 });
 test('revoked channel access and invalid actions do not mutate a hand',async()=>{
   const {c,s,allow}=await fixture(),before=structuredClone(s.game);allow(false);const revoked=interaction(`bj:${s.id}:0:hit`);await c.handle(revoked);assert.deepEqual(s.game,before);assert.ok(!JSON.stringify(revoked.replies).includes('♠10'));allow(true);await c.handle(interaction(`bj:${s.id}:0:unknown`));assert.deepEqual(s.game,before);assert.equal(s.turn,0);
 });
-test('new game replaces only that user’s previous game and the command remains public',async()=>{
-  const {c,s}=await fixture();await c.open(interaction('unused','other'));assert.equal(c.sessions.sessions.size,2);await c.open(interaction());assert.equal(c.sessions.sessions.size,2);await c.handle(interaction(`bj:${s.id}:0:hit`));assert.equal(s.turn,0);const command=commands().find(x=>x.name==='ゲーム').toJSON();assert.equal(command.default_member_permissions,undefined);assert.equal(command.options[0].name,'ブラックジャック');
+test('opening the command resumes that user’s game and the command remains public',async()=>{
+  const {c,s}=await fixture();await c.open(interaction('unused','other'));assert.equal(c.sessions.sessions.size,2);await c.open(interaction());assert.equal(c.sessions.sessions.size,2);await c.handle(interaction(`bj:${s.id}:0:hit`));assert.equal(s.turn,1);await c.open(interaction());assert.equal(s.turn,1);const command=commands().find(x=>x.name==='game').toJSON();assert.equal(command.default_member_permissions,undefined);assert.equal(command.options[0].name,'blackjack');
+});
+
+test('rules open in a separate private reply and returning does not draw or record',async()=>{
+  const {c,s}=await fixture(),before=structuredClone(s.game);const i=interaction(`bj:${s.id}:0:rules`);await c.handle(i);assert.equal(i.replies[0].flags,MessageFlags.Ephemeral);assert.ok(JSON.stringify(i.replies).includes('遊び方'));assert.deepEqual(s.game,before);assert.equal(s.turn,0);await c.handle(interaction(`bj:${s.id}:0:resume`));assert.deepEqual(s.game,before);assert.deepEqual(s.stats,{win:0,lose:0,draw:0});
+});
+test('stop confirmation can be cancelled and stale confirmations cannot end play',async()=>{
+  const {c,s}=await fixture();await c.handle(interaction(`bj:${s.id}:0:stop`));assert.equal(s.confirmStop,true);await c.handle(interaction(`bj:${s.id}:1:resume`));assert.equal(s.confirmStop,false);await c.handle(interaction(`bj:${s.id}:1:confirm-stop`));assert.equal(s.game.phase,'playing');assert.equal(s.turn,2);await c.handle(interaction(`bj:${s.id}:2:stop`));await c.handle(interaction(`bj:${s.id}:3:confirm-stop`));assert.equal(s.game.result,'stopped');assert.deepEqual(s.stats,{win:0,lose:0,draw:0});
+});
+test('completed rounds count once and rematches retain scores while renewing the expiry',async()=>{
+  let clock=0;const c=createBlackjackController({now:()=>clock,access:async()=>{},deal:()=>newRound(deck(9,0,7,5))});await c.open(interaction());const s=[...c.sessions.sessions.values()][0];await c.handle(interaction(`bj:${s.id}:0:stand`));assert.equal(s.stats.win,1);await c.handle(interaction(`bj:${s.id}:0:stand`));assert.equal(s.stats.win,1);clock=500000;await c.handle(interaction(`bj:${s.id}:1:again`));assert.equal(s.round,2);assert.equal(s.expires,1100000);assert.equal(s.stats.win,1);await c.handle(interaction(`bj:${s.id}:2:stand`));assert.equal(s.stats.win,2);
+});
+test('expired screens have a working button to start again without another command',async()=>{
+  const {c,s,time}=await fixture();time(600001);const expired=interaction(`bj:${s.id}:0:hit`);await c.handle(expired);assert.equal(expired.replies.at(-1).components[0].toJSON().components[0].custom_id,'bj:new');await c.handle(interaction('bj:new'));const latest=[...c.sessions.sessions.values()][0];assert.notEqual(latest.id,s.id);assert.equal(latest.game.phase,'playing');
 });
