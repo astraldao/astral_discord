@@ -1,6 +1,7 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,StringSelectMenuBuilder,AttachmentBuilder,PermissionFlagsBits as P} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {payload} from './ui.js';
+import {casinoKinds} from './casino.js';
 import {blackjackImage} from './blackjack-art.js';
 import {newRound,play,handValue,cardName} from './blackjack.js';
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
@@ -8,7 +9,7 @@ const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCus
 const startButton=()=>row(new ButtonBuilder().setCustomId('game:open').setLabel('ゲームを選ぶ').setStyle(ButtonStyle.Primary));
 export function gameLobby(s){
   const ongoing=s?.game.phase==='playing';
-  const components=[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions({label:'ブラックジャック',value:'blackjack',description:'ディーラーと21点を目指すカードゲーム',emoji:'♠️'}))];
+  const components=[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions({label:'ブラックジャック',value:'blackjack',description:'ディーラーと21点を目指すカードゲーム',emoji:'♠️'}, {label:'スロット',value:'slots',description:'3つの絵柄を揃える · 架空チップ',emoji:'🎰'}, {label:'ルーレット',value:'roulette',description:'赤か黒を予想する · 架空チップ',emoji:'🔴'}, {label:'ダイス',value:'dice',description:'2個の合計を予想する · 架空チップ',emoji:'🎲'}))];
   if(s)components.push(row(button(s,'resume',ongoing?'続きから遊ぶ':'前の結果を見る',ButtonStyle.Primary)));
   return payload('✦  PLAY ROOM',s?`**ブラックジャック · ${ongoing?'プレイ中':'ラウンド終了'}**\n${ongoing?'続きから遊ぶか、ゲームを選んでください。':'結果を確認するか、ゲームを選んでください。'}`:'遊ぶゲームを選んでください。',{components});
 }
@@ -22,7 +23,7 @@ export function blackjackScreen(s,note=''){
   const components=s.confirmStop?[row(button(s,'confirm-stop','終了する'),button(s,'resume','プレイを続ける',ButtonStyle.Primary))]:active?[row(button(s,'hit','1枚引く',ButtonStyle.Primary),button(s,'stand','この手で勝負')),row(button(s,'rules','遊び方'),button(s,'stop','終了する'))]:[row(button(s,'again','もう一度遊ぶ',ButtonStyle.Primary),button(s,'rules','遊び方'))];
   const message=payload('♠  BLACKJACK',(note?`${note}\n\n`:'')+body,{state:!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});message.embeds[0].setImage('attachment://blackjack.png');message.files=[new AttachmentBuilder(blackjackImage(g),{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`})];message.attachments=[];message.components.at(-1).addComponents(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary));return message;
 }
-export function createBlackjackController({guild,now=()=>Date.now(),deal=newRound,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルではゲームを操作できません。');}}){
+export function createBlackjackController({guild,now=()=>Date.now(),deal=newRound,openCasino,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルではゲームを操作できません。');}}){
   const sessions=new AdminSessions(now);
   const get=(id,user)=>{try{return sessions.get(id,user);}catch{throw new Error('この画面は終了しています。下のボタンか /game から開き直せます。');}};
   async function acknowledge(i){if(i.deferred || i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
@@ -32,7 +33,7 @@ export function createBlackjackController({guild,now=()=>Date.now(),deal=newRoun
   return {sessions,open,lobby,async handle(i){let s,locked=false,authorized=false;
     try{
       if(i.customId==='game:open'){await lobby(i);return;}
-      if(i.customId==='game:select'){if(i.values?.length!==1 || i.values[0]!=='blackjack')throw new Error('ゲームを選び直してください。');await open(i);return;}
+      if(i.customId==='game:select'){if(i.values?.length!==1 || !['blackjack',...casinoKinds].includes(i.values[0]))throw new Error('ゲームを選び直してください。');if(i.values[0]==='blackjack')await open(i);else if(openCasino)await openCasino(i,i.values[0]);else throw new Error('このゲームは準備中です。');return;}
       if(i.customId==='bj:new'){await open(i);return;}
       const [,id,turn,action]=i.customId.split(':');s=get(id,i.user.id);if(s.channelId!==i.channelId)throw new Error('ゲームを始めたチャンネルから操作してください。');if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
       if(action==='rules' || !i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferReply({flags:MessageFlags.Ephemeral});else await i.deferUpdate();

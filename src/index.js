@@ -14,6 +14,7 @@ import {createPanelRefresher} from './panel.js';
 import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {PersonalReadingsStore} from './personal-readings.js';
+import {createCasinoController} from './casino-ui.js';
 import {createBlackjackController} from './blackjack-ui.js';
 import {createProfileController} from './profile-ui.js';
 import {TrpgStore} from './trpg-store.js';
@@ -30,7 +31,7 @@ const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.Gui
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,admin,densuke,trpg,profile,blackjack,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,admin,densuke,trpg,profile,blackjack,casino,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -146,7 +147,8 @@ client.once('clientReady', async () => {
     refreshPanel=createPanelRefresher({settings,guild});
     await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
-    blackjack=createBlackjackController({guild});
+    casino=createCasinoController({guild});
+    blackjack=createBlackjackController({guild,openCasino:(i,kind)=>casino.open(i,kind)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
@@ -161,7 +163,7 @@ client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const command = interaction.isChatInputCommand() && ['vc','admin','game'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|bj|game):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|bj|casino|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
@@ -172,7 +174,7 @@ client.on('interactionCreate', async interaction => {
         return;
       }
     }
-    if((command && interaction.commandName==='game') || (adminComponent && /^(bj|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else await blackjack.handle(interaction);return;}
+    if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
       if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
