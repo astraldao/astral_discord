@@ -56,7 +56,7 @@ test('administrator panel entry stays in character views and keeps authorized TX
   assert.equal(s.view,'characters');
   assert.ok(componentIds(back.replies.at(-1)).every(id=>!id.endsWith(':home')));
   const before=store.get();
-  for(const action of ['home','scenarios','archives','install','mode','channel','place','form-scenario','form-search','submit-scenario','submit-search','clear-search','scenario','archive-panel']){
+  for(const action of ['home','scenarios','archives','install','mode','channel','place','form-scenario','form-scenario-edit','form-search','submit-scenario','submit-search','clear-search','scenario','archive-panel']){
     const forged=interaction(`trpg:${s.id}:${action}`,'admin',true);
     forged.values=['shared'];
     await c.handle(forged);
@@ -112,4 +112,68 @@ test('search can be cleared and TXT preview returns to detail without crossing p
   const detail=interaction(`trpg:${s.id}:detail`,'admin',true);await c.handle(detail);
   assert.equal(s.view,'detail');assert.ok(componentIds(detail.replies.at(-1)).includes(`trpg:${s.id}:characters`));
   assert.ok(componentIds(detail.replies.at(-1)).every(id=>!id?.endsWith(':home')&&!id?.endsWith(':archives')));
+});
+
+test('direct registration opens a private scoped modal without an intermediate screen',async t=>{
+  const {store,secret}=await fixture(t);
+  await store.update(d=>{d.panels.find(p=>p.id===secret).messageId='message';});
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const i=interaction(`trpg:p:${secret}:register`,'owner',true);await c.handle(i);
+  assert.ok(!i.deferred);
+  const modal=i.replies.at(-1).toJSON();const s=[...c.sessions.sessions.values()][0];
+  assert.equal(modal.custom_id,`trpg:${s.id}:submit-register`);assert.equal(s.entry,'panel');assert.equal(s.panelId,secret);
+  const wrong=interaction(`trpg:p:${secret}:register`,'attacker');wrong.message.id='copied-message';await c.handle(wrong);
+  assert.equal(wrong.replies.at(-1).flags,MessageFlags.Ephemeral);assert.ok(!wrong.replies.at(-1).toJSON);
+});
+test('PC search and own filter only inspect already-visible metadata and never expose foreign TXT',async t=>{
+  const {store,secret,shared}=await fixture(t);
+  await store.saveCharacter(shared,'other','https://iachara.com/view/103',{name:'Other PC',txt:'other private backup'});
+  const c=createTrpgController({store,access:async()=>false,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('owner');Object.assign(s,{entry:'panel',view:'characters',panelId:shared,page:0});
+  const act=async(action,query)=>{const i=interaction(`trpg:${s.id}:${action}`,'owner');if(query!==undefined)i.fields={getTextInputValue:()=>query};await c.handle(i);return i.replies.at(-1);};
+  assert.ok(JSON.stringify(await act('characters')).includes('Other PC'));
+  const mine=JSON.stringify(await act('mine'));assert.ok(mine.includes('公開PC'));assert.ok(!mine.includes('Other PC'));
+  assert.ok(!mine.includes('非公開TXT'));assert.ok(!mine.includes('other private backup'));
+  await act('clear-pc-filter');
+  const search=JSON.stringify(await act('submit-pc-search','ＯＴＨＥＲ'));assert.ok(search.includes('Other PC'));assert.ok(!search.includes('公開PC'));
+  const foreign=store.metadata().characters.find(c=>c.ownerId==='other');
+  const select=interaction(`trpg:${s.id}:character`,'owner');select.values=[foreign.id];await c.handle(select);
+  assert.ok(!JSON.stringify(select.replies).includes('other private backup'));
+  s.panelId=secret;await act('clear-pc-filter');
+  const hidden=JSON.stringify(await act('submit-pc-search','Other'));assert.ok(!hidden.includes('Other PC'));assert.ok(!hidden.includes(foreign.url));
+});
+test('returning from a character detail preserves search and list page',async t=>{
+  const {store,secret}=await fixture(t);
+  await store.update(d=>{d.characters.push(...Array.from({length:25},(_,n)=>({id:`pc-${n}`,panelId:secret,ownerId:`owner-${n}`,url:`https://iachara.com/view/${500+n}`,name:`PC ${n}`,txt:'*'.repeat(2800),updatedAt:Date.now()})));});
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('admin');Object.assign(s,{entry:'panel',view:'characters',panelId:secret,pcQuery:'PC',page:0});
+  await c.handle(interaction(`trpg:${s.id}:next`,'admin',true));assert.equal(s.page,1);
+  const select=interaction(`trpg:${s.id}:character`,'admin',true);select.values=['pc-10'];await c.handle(select);
+  await c.handle(interaction(`trpg:${s.id}:preview`,'admin',true));
+  await c.handle(interaction(`trpg:${s.id}:next`,'admin',true));
+  const back=interaction(`trpg:${s.id}:characters`,'admin',true);await c.handle(back);
+  assert.equal(s.page,1);assert.equal(s.pcQuery,'PC');assert.equal(s.view,'characters');
+  const p=back.replies.at(-1);assert.ok(JSON.stringify(p).includes('PC 10'));assert.ok(p.components.length<=5);p.components.forEach(r=>r.toJSON());
+});
+test('editing a selected base room prefills values while new registration stays blank',async t=>{
+  const {store}=await fixture(t);await store.scenario('シナリオ','https://ccfolia.com/rooms/original');
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'scenarios',scenario:store.metadata().scenarios[0]});
+  const edit=interaction(`trpg:${s.id}:form-scenario-edit`,'admin',true);await c.handle(edit);
+  const fields=edit.replies.at(-1).toJSON().components.map(r=>r.components[0]);
+  assert.equal(fields[0].value,'シナリオ');assert.equal(fields[1].value,'https://ccfolia.com/rooms/original');
+  const fresh=interaction(`trpg:${s.id}:form-scenario`,'admin',true);await c.handle(fresh);
+  assert.ok(fresh.replies.at(-1).toJSON().components.every(r=>!r.components[0].value));
+});
+test('invalid registration keeps input for correction and does not spend fetch cooldown',async t=>{
+  const {store,secret}=await fixture(t);let fetches=0;
+  const c=createTrpgController({store,access:async()=>false,guild:{channels:{cache:new Map()}},iachara:{async fetchCharacter(){fetches++;return {name:'updated',txt:'new backup'};}}});
+  const s=c.sessions.create('owner');Object.assign(s,{entry:'panel',view:'characters',panelId:secret});
+  const invalid=interaction(`trpg:${s.id}:submit-register`,'owner');invalid.fields={getTextInputValue:()=> 'invalid URL'};await c.handle(invalid);
+  assert.equal(fetches,0);assert.ok(componentIds(invalid.replies.at(-1)).includes(`trpg:${s.id}:form-register`));
+  const fix=interaction(`trpg:${s.id}:form-register`,'owner');await c.handle(fix);
+  assert.equal(fix.replies.at(-1).toJSON().components[0].components[0].value,'invalid URL');
+  const valid=interaction(`trpg:${s.id}:submit-register`,'owner');await c.handle(valid);
+  assert.equal(fetches,1);assert.equal(store.get().characters[0].txt,'new backup');
+  assert.ok(valid.replies.some(p=>JSON.stringify(p).includes('キャラシを取得中')));
 });
