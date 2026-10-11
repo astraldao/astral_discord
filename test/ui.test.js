@@ -36,3 +36,7 @@ test('explicit destination list does not admit other VCs in same category',()=>{
   assert.equal(canEnter(c,{}, {},'lobby',['123']),true);
   assert.equal(canEnter({...c,id:'private'},{},{},'lobby',['123']),false);
 });
+test('single-page VC choices keep refresh without useless pagination',()=>{
+  const controls=choiceNavigation(0,1).toJSON().components;
+  assert.equal(controls.length,1);assert.equal(controls[0].custom_id,'vc:page:0');assert.ok(!controls[0].disabled);
+});

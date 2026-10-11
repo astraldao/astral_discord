@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text} from './ui.js';
+import {payload,text,privateScreen} from './ui.js';
 import {validateSettings} from './settings.js';
 
 export function changeSettings(c,action,value) {
@@ -43,60 +43,63 @@ export class AdminSessions {
   }
   get(id,userId){
     const s=this.sessions.get(id);
-    if(!s || s.userId!==userId || s.expires<=this.now())throw new Error('操作期限が切れました。 /管理 で開き直してください。');
+    if(!s || s.userId!==userId || s.expires<=this.now())throw new Error('この画面は終了しています。元のパネルまたは /管理 から開き直してください。');
     return s;
   }
 }
 const row=(...components)=>new ActionRowBuilder().addComponents(...components);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${action}`).setLabel(label).setStyle(style);
-const summary=c=>`**ロビー** ${c.lobbyId?`<#${c.lobbyId}>`:'未設定'}\n**行き先** ${c.targetIds.length}件\n**待機** ${c.seconds}秒\n**音声** ${c.voice?'ON':'OFF'} · 音量 ${c.volume}%\n**直接入室** ${c.enforce?'検出後ロビーへ戻す':'許可'}`;
+const summary=c=>`**ロビーVC** ${c.lobbyId?`<#${c.lobbyId}>`:'未設定'}\n**入室先** ${c.targetIds.length}件 · **待機** ${c.seconds}秒\n**音声告知** ${c.voice?'ON':'OFF'} · ${c.volume}%\n**直接入室** ${c.enforce?'ロビーへ戻す':'許可'}`;
 export function adminScreen(s,c,channelName=id=>id,note='') {
-  let title='✦  管理',description=summary(c),components=[];
-  const back=()=>row(button(s,'home','戻る'));
+  let title='✦  管理メニュー',description='',components=[];
+  const back=()=>row(button(s,'home','管理メニューへ'));
+  const pagination=(prefix,page,pages)=>pages>1?[button(s,`${prefix}-prev`,'前のページ').setDisabled(page===0),button(s,`${prefix}-next`,'次のページ').setDisabled(page>=pages-1)]:[];
   if(s.stage) {
-    title='✧  変更を確認';description=`${s.stage.description}\n\n保存すると待機中の入室予約を取り消します。\n内容を確認して保存してください。`;
-    components=[row(button(s,'save','保存する',ButtonStyle.Primary),button(s,`nav-${s.view}`,'戻る'))];
+    const destructive=['remove','word-remove'].includes(s.stage.action);
+    title='✦  変更内容を確認';description=`${s.stage.description}\n\n保存すると待機中の入室予約を取り消します。\n戻ると、この変更を破棄します。`;
+    components=[row(button(s,'save',destructive?'削除を確定':'変更を保存',destructive?ButtonStyle.Danger:ButtonStyle.Primary),button(s,`nav-${s.view}`,'変更せず戻る'))];
   } else if(s.view==='home') {
-    description+='\n\n変更したい項目を選んでください。';
-    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定',ButtonStyle.Primary)),row(button(s,'nav-panel','パネル管理'),button(s,'nav-overview','設定一覧'),button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ'))];
+    const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
+    description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
+    description+='\n\n**入室の設定** · VC・音声・入室パネル\n**卓の準備** · 日程調整・ベース卓・キャラシ';
+    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ')),row(button(s,'nav-overview','設定を確認'))];
   } else if(s.view==='vc') {
-    title='✦  VC設定';
-    components=[row(button(s,'pick-lobby','ロビーを変更'),button(s,'pick-add','行き先を追加'),button(s,'pick-remove','行き先を削除')),row(button(s,'form-seconds','待機秒数を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可する':'直接入室を制御する')),back()];
+    title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
+    components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
   } else if(s.view==='audio') {
-    title='✦  音声設定';description=`**ずんだもん** ${c.voice?'ON':'OFF'}\n**音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件`;
-    components=[row(button(s,'toggle-voice',c.voice?'告知をOFFにする':'告知をONにする'),button(s,'form-volume','音量を変更'),button(s,'nav-words','読み方辞書')),back()];
+    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n\n読み方辞書では、名前や英単語の読みを指定できます。`;
+    components=[row(button(s,'toggle-voice',c.voice?'音声告知をOFF':'音声告知をON',ButtonStyle.Primary),button(s,'form-volume','音量を変更'),button(s,'nav-words','読み方辞書')),back()];
   } else if(s.view==='words') {
-    title=`✦  読み方辞書 · ${c.words.length}件`;
+    title='✦  読み方辞書';
     const pages=Math.max(1,Math.ceil(c.words.length/10));s.page=Math.max(0,Math.min(s.page,pages-1));
     const words=c.words.slice(s.page*10,s.page*10+10);
-    description=(words.map(w=>`**${text(w.surface)}** → ${text(w.reading)}`).join('\n')||'読み方はまだ登録されていません。')+`\n\n${s.page+1} / ${pages}ページ`;
-    if(words.length)components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:word-remove`).setPlaceholder('削除する読み方を選ぶ').addOptions(words.map(w=>({label:w.surface,value:w.surface,description:w.reading})))));
-    components.push(row(button(s,'form-word','登録・上書き',ButtonStyle.Primary),button(s,'words-prev','前へ').setDisabled(s.page===0),button(s,'words-next','次へ').setDisabled(s.page>=pages-1)),row(button(s,'nav-audio','戻る')));
+    description=`${c.words.length}件 · ${s.page+1}/${pages}ページ\n\n`+(words.map(w=>`**${text(w.surface)}** → ${text(w.reading)}`).join('\n')||'読み方は未登録です。「読み方を登録」から追加できます。');
+    if(words.length)components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:word-remove`).setPlaceholder('削除する読み方を選ぶ（次に確認）').addOptions(words.map(w=>({label:w.surface,value:w.surface,description:w.reading})))));
+    components.push(row(button(s,'form-word','読み方を登録',ButtonStyle.Primary),...pagination('words',s.page,pages)),row(button(s,'nav-audio','音声設定へ')));
   } else if(s.view==='panel') {
-    title='✦  パネル管理';description=`**設置先** ${c.lobbyId?`<#${c.lobbyId}>`:'ロビー未設定'}\n\n同じロビーのパネルは更新します。ロビーを変更した場合、古いパネルは管理者が削除してください。`;
-    components=[row(button(s,'install-panel','設置・更新',ButtonStyle.Primary)),back()];
+    title='✦  入室パネル';description=`**設置先** ${c.lobbyId?`<#${c.lobbyId}>`:'ロビーVCが未設定'}\n\nロビーVCのチャットに、入室先を選ぶパネルを設置します。\n設置済みのパネルは同じメッセージを更新します。\nロビー変更前のパネルは手動で削除してください。`;
+    components=[row(button(s,'install-panel',c.panel?.channelId===c.lobbyId?'パネルを更新':'パネルを設置',ButtonStyle.Primary).setDisabled(!c.lobbyId)),back()];
   } else if(s.view==='overview') {
-    title='✦  設定一覧';description+='\n\n**行き先**\n'+(c.targetIds.slice(0,25).map(id=>`<#${id}>`).join('\n')||'未設定')+(c.targetIds.length>25?`\nほか ${c.targetIds.length-25}件`:'')+`\n\n**読み方辞書** ${c.words.length}件\n設定は自動保存されます。`;
+    title='✦  現在の設定';description=summary(c)+'\n\n**入室先VC**\n'+(c.targetIds.slice(0,25).map(id=>`<#${id}>`).join('\n')||'未登録')+(c.targetIds.length>25?`\nほか ${c.targetIds.length-25}件`:'')+`\n\n**読み方辞書** ${c.words.length}件\n設定の保存後は、再起動せずに反映されます。`;
     components=[back()];
   } else if(s.view.startsWith('pick-')) {
-    title='✦  チャンネルを選択';const action=s.view.slice(5);
-    description=summary(c)+'\n\n'+({lobby:'新しいロビーVCを選んでください。',add:'追加する行き先VCを選んでください。',remove:'削除する行き先を選んでください。'}[action]);
+    const action=s.view.slice(5);
+    title={lobby:'✦  ロビーVCを選択',add:'✦  入室先VCを追加',remove:'✦  入室先VCを削除'}[action];
+    description={lobby:'メンバーが入室先を選ぶまで待機するVCを選んでください。',add:'メンバーの入室先一覧に追加するVCを選んでください。',remove:'一覧から削除するVCを選んでください。VC自体は削除しません。'}[action];
     if(action==='remove') {
       const pages=Math.max(1,Math.ceil(c.targetIds.length/25));s.page=Math.max(0,Math.min(s.page,pages-1));
       const ids=c.targetIds.slice(s.page*25,s.page*25+25);
-      if(ids.length)components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:remove`).setPlaceholder('行き先を削除').addOptions(ids.map(id=>({label:channelName(id).slice(0,100),value:id})))));
-      else description+='\n登録された行き先はありません。';
-      components.push(row(button(s,'targets-prev','前へ').setDisabled(s.page===0),button(s,'targets-next','次へ').setDisabled(s.page>=pages-1)));
-    } else components.push(row(new ChannelSelectMenuBuilder().setCustomId(`admin:${s.id}:${action}`).setPlaceholder('通常のVCを選ぶ').addChannelTypes(ChannelType.GuildVoice)));
-    components.push(row(button(s,'nav-vc','戻る')));
+      if(ids.length)components.push(row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:remove`).setPlaceholder('一覧から削除するVC（次に確認）').addOptions(ids.map(id=>({label:channelName(id).slice(0,100),value:id})))));
+      else description+='\n\n入室先VCは未登録です。';
+      if(pages>1){description+=`\n\n${s.page+1}/${pages}ページ`;components.push(row(...pagination('targets',s.page,pages)));}
+    } else components.push(row(new ChannelSelectMenuBuilder().setCustomId(`admin:${s.id}:${action}`).setPlaceholder(action==='lobby'?'ロビーにするVCを選ぶ':'追加する入室先VCを選ぶ').addChannelTypes(ChannelType.GuildVoice)));
+    components.push(row(button(s,'nav-vc','VC設定へ')));
   }
   if(note)description=`${note}\n\n${description}`;
-  const message=payload(title,description,{components});
-  message.embeds[0].setFooter({text:'管理者専用 · 操作期限10分 · /管理 で開き直せます'});
-  return message;
+  return privateScreen(payload(title,description,{components}),'管理者専用 · 操作期限10分 · /管理 で開き直す');
 }
 export function adminModal(s,kind,c) {
-  const modal=new ModalBuilder().setCustomId(`admin:${s.id}:submit-${kind}`).setTitle({seconds:'待機秒数',volume:'音量',word:'読み方の登録・上書き'}[kind]);
+  const modal=new ModalBuilder().setCustomId(`admin:${s.id}:submit-${kind}`).setTitle({seconds:'待機時間',volume:'音量',word:'読み方の登録・上書き'}[kind]);
   const input=(id,label,max,value)=>{const field=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMaxLength(max).setRequired(true);if(value)field.setValue(value);return row(field);};
   if(kind==='word')modal.addComponents(input('surface','表示名全体または英単語（32文字以内）',32,''),input('reading','読み（ひらがな・カタカナ、40文字以内）',40,''));
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,String(c[kind])));
@@ -118,13 +121,13 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     const stage=s.stage;if(!stage)throw new Error('保存する変更がありません。');
     await validateChannel(stage.action,stage.value);
     await settings.update(c=>{
-      if(!confirmed && pendingCount())throw new Error('入室予約が増えました。確認画面の「保存する」で確定してください。');
+      if(!confirmed && pendingCount())throw new Error('入室予約が増えました。確認画面で保存を確定で確定してください。');
       if(JSON.stringify(c)!==stage.base)throw new Error('別の操作で設定が変わりました。画面を戻り、変更を選び直してください。');
       changeSettings(c,stage.action,stage.value);
     });
     s.stage=null;changed();
     let note='✓ 設定を保存しました。再起動は不要です。';
-    try {await refreshPanel();}catch{note+='\nパネル更新に失敗しました。「パネル管理」から設置・更新してください。';}
+    try {await refreshPanel();}catch{note+='\nパネル更新に失敗しました。「入室パネル」から更新してください。';}
     return note;
   }
   return {sessions,async handle(interaction){

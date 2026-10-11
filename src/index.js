@@ -13,7 +13,7 @@ import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
-import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard} from './ui.js';
+import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,privateScreen} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -26,7 +26,7 @@ const limits=new InteractionLimits();
 let guild,admin,densuke,trpg,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
-const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
+const status=(job,title,description,components=[],state='normal')=>updateJob(job,privateScreen(payload(title,description,{components,state}),state==='success'?'入室完了':components.some(r=>r.components.some(b=>b.data.custom_id?.startsWith('vc:cancel:')))?'入室までキャンセルできます':'/vc から選び直せます'));
 const cancelJob=(job,reason)=>{
   job.abort.abort(new EntryError(reason));
   if(!job.started && pending.get(job.userId)===job)pending.delete(job.userId);
@@ -90,7 +90,7 @@ async function run(job) {
     const completed=payload('✦  入室しました',`**${text(member.displayName)}** さん、ようこそ。`,{state:'success'});
     if(c.voice)completed.embeds[0].setFooter({text:'VOICEVOX:ずんだもん'});
     await quiet(() => notice.edit(completed));
-    await status(job,'✦  入室しました',`**${text(channel.name)}** で、よいひとときを。`,[],'success');
+    await status(job,'✦  入室しました',`**${text(channel.name)}** に移動しました。`,[],'success');
   } catch (error) {
     if (notice) {
       const cancelled=payload('✧  入室取り消し','この参加予告は取り消されました。',{state:'error'});
@@ -117,13 +117,13 @@ async function choose(interaction,page=0) {
   const choices = [...guild.channels.cache.values()].filter(channel => canEnter(channel, member, guild.members.me, c.lobbyId, c.targetIds)
     && (!c.voice || channel.permissionsFor(guild.members.me).has(P.Speak))).sort((a,b) => a.rawPosition - b.rawPosition);
   if (!choices.length) throw new EntryError('現在入室できるVCがありません。');
-  if (choices.length > 125) throw new EntryError('対象カテゴリのVCを125個以下にしてください。');
+  if (choices.length > 125) throw new EntryError('入室先VCの数を125個以下にしてください。');
   const pages=Math.ceil(choices.length/25);
   page=Math.max(0,Math.min(Number.isInteger(page)?page:0,pages-1));
   const menu=new StringSelectMenuBuilder().setCustomId(`vc:select:${page}`).setPlaceholder('入室するVCを選ぶ')
     .addOptions(choices.slice(page*25,page*25+25).map(channel=>({label:channel.name.slice(0,100),value:channel.id,
       description:`${channel.members.filter(m=>!m.user.bot).size}${channel.userLimit?` / ${channel.userLimit}`:''}人 · ${channel.parent?.name??'カテゴリなし'}`.slice(0,100)})));
-  await interaction.editReply(payload('✦  行き先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1} / ${pages}ページ`:''}\n選ぶと参加予告が始まります。待機中はキャンセルできます。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}));
+  await interaction.editReply(privateScreen(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages)]}),'入室までキャンセルできます'));
 }
 function settingsChanged() {
   revision++;
@@ -142,8 +142,11 @@ client.once('clientReady', async () => {
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i)});
-    client.user.setActivity('✦ /vc で次の会話へ');
+    client.user.setActivity('/vc · 入室先を選ぶ');
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
+    await refreshPanel(false).catch(()=>console.warn('入室パネルを更新できませんでした。/管理 の「入室パネル」から更新してください。'));
+    const panels=await trpg.refreshPanels();
+    if(panels.failed)console.warn(`キャラシパネルの更新に失敗: ${panels.failed}件。設置先の権限・メッセージを確認してください。`);
   } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); client.destroy(); process.exitCode = 1;}
 });
 client.on('interactionCreate', async interaction => {
@@ -167,11 +170,11 @@ client.on('interactionCreate', async interaction => {
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
-      if (!job || interaction.customId !== `vc:cancel:${job.interaction.id}` || job.moving) return interaction.reply({...payload('✧  予約終了','この予約は終了済み、または移動を開始しています。'),flags:MessageFlags.Ephemeral});
+      if (!job || interaction.customId !== `vc:cancel:${job.interaction.id}` || job.moving) return interaction.reply({...payload('✦  キャンセルできません','この予約は終了済み、またはVCへの移動を開始しています。'),flags:MessageFlags.Ephemeral});
       await interaction.deferUpdate();
       cancelJob(job,'入室をキャンセルしました。');
       await job.updates;
-      await interaction.editReply(payload('✧  キャンセル','入室予約を取り消しました。行き先を選び直せます。',{components:[openButton()]})); return;
+      await interaction.editReply(payload('✦  入室をキャンセルしました','入室先を選び直せます。',{components:[openButton()]})); return;
     }
     if (interaction.isStringSelectMenu() || (interaction.isButton() && interaction.customId.startsWith('vc:page:'))) await interaction.deferUpdate();
     else await interaction.deferReply({flags: MessageFlags.Ephemeral});
@@ -192,8 +195,9 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error'})));
-    else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error'}),flags:MessageFlags.Ephemeral}));
+    const components=adminComponent || (command && interaction.commandName==='管理')?[]:[openButton()];
+    if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
+    else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);
   }
 });

@@ -135,3 +135,19 @@ test('existing event recovery works after restart without creation or exposing e
   assert.equal(s.phase,'done');assert.equal(f.calls(),0);
   await f.controller.handle(act('share'));assert.equal(f.posts.length,1);assert.ok(!JSON.stringify(f.posts[0]).includes('Secret123'));
 });
+test('new-event shortcut clears old secrets and sharing state without resetting creation limits',async()=>{
+  const f=fixture(),s=await f.open();s.event=event();s.phase='review';
+  const act=a=>f.interaction(`densuke:${s.id}:${a}`);
+  await f.controller.handle(act('create'));await f.controller.handle(act('share'));
+  assert.equal(s.shared,true);
+  await f.controller.handle(act('restart'));
+  assert.equal(s.phase,'draft');assert.equal(s.event.password,'');assert.equal(s.event.name,'');
+  assert.equal(s.result,undefined);assert.equal(s.shared,undefined);
+  s.event=event();s.phase='review';await f.controller.handle(act('create'));assert.equal(f.calls(),1);
+});
+test('uncertain creation cannot use new-event shortcut to recreate an event',async()=>{
+  const f=fixture(true),s=await f.open();s.event=event();s.phase='review';
+  await f.controller.handle(f.interaction(`densuke:${s.id}:create`));
+  await f.controller.handle(f.interaction(`densuke:${s.id}:restart`));
+  assert.equal(s.phase,'uncertain');assert.equal(f.calls(),1);
+});

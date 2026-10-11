@@ -56,7 +56,7 @@ test('administrator panel entry stays in character views and keeps authorized TX
   assert.equal(s.view,'characters');
   assert.ok(componentIds(back.replies.at(-1)).every(id=>!id.endsWith(':home')));
   const before=store.get();
-  for(const action of ['home','scenarios','archives','install','mode','channel','place','form-scenario','form-search','submit-scenario','submit-search','scenario','archive-panel']){
+  for(const action of ['home','scenarios','archives','install','mode','channel','place','form-scenario','form-search','submit-scenario','submit-search','clear-search','scenario','archive-panel']){
     const forged=interaction(`trpg:${s.id}:${action}`,'admin',true);
     forged.values=['shared'];
     await c.handle(forged);
@@ -75,7 +75,9 @@ test('management entry retains archive navigation and back to management',async 
   await c.handle(interaction(`trpg:${s.id}:archives`,'admin',true));
   const select=interaction(`trpg:${s.id}:archive-panel`,'admin',true);select.values=[secret];
   await c.handle(select);
-  assert.ok(componentIds(select.replies.at(-1)).includes(`trpg:${s.id}:home`));
+  assert.ok(componentIds(select.replies.at(-1)).includes(`trpg:${s.id}:archives`));
+  await c.handle(interaction(`trpg:${s.id}:archives`,'admin',true));
+  assert.equal(s.view,'archives');
   await c.handle(interaction(`trpg:${s.id}:home`,'admin',true));
   assert.equal(s.view,'home');
 });
@@ -87,4 +89,27 @@ test('sessions without explicit management entry fail closed even for administra
   await c.handle(i);
   assert.ok(JSON.stringify(i.replies).includes('/管理 から開いてください'));
   assert.ok(!JSON.stringify(i.replies).includes('ベース卓を登録'));
+});
+test('existing character panels refresh in place, preserve privacy and isolate unavailable messages',async t=>{
+  const {store,secret,shared}=await fixture(t);
+  await store.update(d=>{d.panels[0].messageId='message';d.panels[1].messageId='missing';});
+  const edits=[];
+  const c=createTrpgController({store,guild:{channels:{async fetch(channelId){return {messages:{async fetch(messageId){if(messageId==='missing')throw new Error('not found');return {async edit(payload){edits.push({channelId,messageId,payload});}};}}};}}}});
+  assert.deepEqual(await c.refreshPanels(),{updated:1,failed:1});
+  assert.equal(edits[0].channelId,'channel');assert.equal(edits[0].messageId,'message');
+  const panel=JSON.stringify(edits[0].payload);
+  assert.ok(panel.includes(`trpg:p:${secret}:open`));assert.ok(panel.includes('秘匿'));
+  assert.ok(!panel.includes('秘密PC'));assert.ok(!panel.includes('秘密TXT'));
+  assert.equal(store.metadata().panels.find(p=>p.id===shared).messageId,'missing');
+});
+test('search can be cleared and TXT preview returns to detail without crossing panel scope',async t=>{
+  const {store,secret}=await fixture(t);
+  const c=createTrpgController({store,access:async()=>true,guild:{channels:{cache:new Map()}}});
+  const s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'scenarios',query:'no match',page:0});
+  const clear=interaction(`trpg:${s.id}:clear-search`,'admin',true);await c.handle(clear);
+  assert.equal(s.query,'');assert.equal(s.view,'scenarios');
+  Object.assign(s,{entry:'panel',view:'preview',panelId:secret,characterId:store.metadata().characters[0].id});
+  const detail=interaction(`trpg:${s.id}:detail`,'admin',true);await c.handle(detail);
+  assert.equal(s.view,'detail');assert.ok(componentIds(detail.replies.at(-1)).includes(`trpg:${s.id}:characters`));
+  assert.ok(componentIds(detail.replies.at(-1)).every(id=>!id?.endsWith(':home')&&!id?.endsWith(':archives')));
 });

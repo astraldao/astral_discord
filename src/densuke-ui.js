@@ -1,34 +1,37 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,escapeMarkdown} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload} from './ui.js';
+import {payload,privateScreen} from './ui.js';
 import {choices,eventData,eventLinks,UncertainCreation,createDensukeClient} from './densuke.js';
 import {validDensukeEmail} from './settings.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`densuke:${s.id}:${action}`).setLabel(label).setStyle(style);
 const safe=(value,max)=>{const escaped=escapeMarkdown(String(value)).replace(/@/g,'＠');return escaped.length>max?escaped.slice(0,max-1)+'…':escaped;};
 export function densukeScreen(s,note='') {
-  const e=s.event;let description,components=[];
+  const e=s.event;let title='✦  日程調整',description,components=[];
   if(s.phase==='done') {
-    description=`**${safe(e.name,250)}** を作成しました。\n\n回答用：${s.result.answer}\n編集用：${s.result.edit}\n\n編集用URLは公開しないでください。パスワードは共有文に含めません。`;
-    components=[row(new ButtonBuilder().setLabel('回答ページ').setStyle(ButtonStyle.Link).setURL(s.result.answer),button(s,'share',s.shared?'共有済み':'このチャンネルに共有',ButtonStyle.Primary).setDisabled(!!s.shared))];
+    title='✦  日程調整を作成しました';
+    description=`**${safe(e.name,250)}**\n\n**回答用URL**\n${s.result.answer}\n\n**編集用URL · 非公開**\n${s.result.edit}\n\n共有ボタンで、回答用URLだけをこのチャンネルに投稿します。編集用URLとパスワードは投稿しません。`;
+    components=[row(new ButtonBuilder().setLabel('回答ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.answer),button(s,'share',s.shared?'回答URLは共有済み':'回答URLを共有',ButtonStyle.Primary).setDisabled(!!s.shared)),row(button(s,'restart','別のイベントを作る'))];
   } else if(s.phase==='uncertain'){
-    description='作成結果を確認できませんでした。控えメールを確認してください。作成済みなら、メールの回答用・編集用URLを登録して共有できます。重複を避けるため、再作成はしません。';
-    components=[row(button(s,'form-recover','作成済みURLを登録',ButtonStyle.Primary))];
+    title='✦  作成結果の確認が必要です';
+    description='伝助で作成されている可能性があります。控えメールを確認してください。\n\n**作成済みの場合**\nメールの回答用・編集用URLを登録すると、回答用URLを共有できます。\n\n重複を防ぐため、この画面から再作成はしません。';
+    components=[row(button(s,'form-recover','メールのURLを登録',ButtonStyle.Primary))];
+  } else if(s.phase==='closed'){
+    title='✦  作成をキャンセルしました';description='伝助には作成リクエストを送信していません。';components=[row(button(s,'restart','新しいイベントを入力',ButtonStyle.Primary))];
+  } else {
+    title=s.phase==='review'?'✦  内容を確認して作成':'✦  日程調整を準備';
+    description=e.name?`**イベント名**\n${safe(e.name,250)}\n\n**候補日程**\n${safe(e.schedule,1200)}\n\n**イベント説明**\n${e.description?safe(e.description,800):'なし'}\n\n**パスワード** ${e.password?'設定あり（非表示）':'なし'}\n**回答の選択肢** ${choices[e.choice]}\n\n内容がよければ「この内容で作成」を押してください。控えメールは設定済みの固定宛先に送信します。`:'**1**  回答の選択肢を選ぶ\n**2**  イベント名と候補日程を入力する\n**3**  内容を確認して伝助を作成する\n\nイベント説明・パスワードは任意です。候補日程は1行に1候補を入力してください。';
+    if(escapeMarkdown(e.schedule).length>1200 || escapeMarkdown(e.description).length>800)description+='\n\n表示は一部省略しています。「内容を修正」で全文を確認できます。伝助には全文を送ります。';
+    components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice`).setPlaceholder('回答の選択肢を選ぶ').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'イベント内容を入力',s.phase==='review'?ButtonStyle.Secondary:ButtonStyle.Primary),...(s.phase==='review'?[button(s,'create','この内容で作成',ButtonStyle.Primary)]:[]),button(s,'cancel','作成をキャンセル')),row(button(s,'form-email','控えメールの宛先'),button(s,'form-recover','作成済みURLを登録'))];
   }
-  else if(s.phase==='closed')description='作成を取り消しました。伝助への作成送信は行っていません。';
-  else {
-    description=e.name?`**イベント名**\n${safe(e.name,250)}\n\n**候補日程**\n${safe(e.schedule,1200)}\n\n**説明**\n${e.description?safe(e.description,800):'なし'}\n\n**パスワード** ${e.password?'設定あり（非表示）':'なし'}\n**回答** ${choices[e.choice]}\n\nメールは管理者の固定アドレスに送ります。作成前に内容を確認してください。`:'イベント名・候補日程は必須です。説明とパスワードは任意です。候補日程は1行に1候補を入力してください。\n\n回答の選択肢を選び、「内容を入力」を押してください。';
-    if(escapeMarkdown(e.schedule).length>1200 || escapeMarkdown(e.description).length>800)description+='\n\n長い内容は一部省略しています。「内容を修正」で全文を確認できます。伝助には全文を送ります。';
-    components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice`).setPlaceholder('回答の選択肢').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'内容を入力',ButtonStyle.Primary),...(s.phase==='review'?[button(s,'create','確認して作成',ButtonStyle.Success)]:[]),button(s,'cancel','取り消す'))];
-    components.push(row(button(s,'form-email','固定メール設定'),button(s,'form-recover','作成済みURLを登録')));
-  }
-  return payload('✦  伝助 · 日程調整',note?`${note}\n\n${description}`:description,{components});
+  return privateScreen(payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?'success':s.phase==='uncertain'?'error':'normal',components}),'管理者専用 · 操作期限10分 · /管理 から開き直す');
 }
 export function densukeModal(s) {
   const modal=new ModalBuilder().setCustomId(`densuke:${s.id}:submit`).setTitle('伝助のイベント内容');
   for(const [key,label,max,required,paragraph] of [['name','イベント名（必須）',250,true,false],['schedule','候補日程（必須・1行に1候補）',4000,true,true],['description','イベント説明（任意）',2000,false,true],['password','パスワード（任意・半角英数字8文字以内）',8,false,false]]) {
     const input=new TextInputBuilder().setCustomId(key).setLabel(label).setMaxLength(max).setRequired(required).setStyle(paragraph?TextInputStyle.Paragraph:TextInputStyle.Short);
+    input.setPlaceholder({name:'例：週末のセッション',schedule:'例：10/17 20:00〜\n10/18 20:00〜',description:'集合時間・参加条件など',password:'半角英数字のみ・8文字以内'}[key]);
     if(s.event[key])input.setValue(s.event[key]);modal.addComponents(row(input));
   }
   return modal;
@@ -36,7 +39,7 @@ export function densukeModal(s) {
 export function densukeEmailModal(s,email) {
   const input=new TextInputBuilder().setCustomId('email').setLabel('控えメールの固定宛先').setStyle(TextInputStyle.Short).setMaxLength(254).setRequired(true);
   if(email)input.setValue(email);
-  return new ModalBuilder().setCustomId(`densuke:${s.id}:submit-email`).setTitle('固定メール設定・保存').addComponents(row(input));
+  return new ModalBuilder().setCustomId(`densuke:${s.id}:submit-email`).setTitle('控えメールの宛先を保存').addComponents(row(input));
 }
 export function createDensukeController({email,settings,client=createDensukeClient(),now=()=>Date.now()}) {
   const sessions=new AdminSessions(now),attempts=new Map();let nextGlobal=0;
@@ -45,7 +48,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
   return {sessions,async open(i){
     authorize(i);await i.deferReply({flags:MessageFlags.Ephemeral});
     const s=sessions.create(i.user.id);s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};s.channelId=i.channelId;s.reviewEmail=currentEmail();
-    await i.editReply(densukeScreen(s,currentEmail()?'':'「固定メール設定」で宛先を設定してください。'));
+    await i.editReply(densukeScreen(s,currentEmail()?'':'「控えメールの宛先」で宛先を設定してください。'));
   },async handle(i){
     let s,locked=false;
     try {
@@ -69,14 +72,15 @@ export function createDensukeController({email,settings,client=createDensukeClie
         s.shared=true;
         try {await i.channel.send(payload('✦  日程調整',`**${safe(s.event.name,250)}**\n候補日程への回答をお願いします。`,{components:[row(new ButtonBuilder().setLabel('伝助で回答する').setStyle(ButtonStyle.Link).setURL(s.result.answer))]}));note='✓ 回答用URLを共有しました。';}
         catch{note='共有結果を確認できませんでした。チャンネルを確認し、必要なら回答用URLを手動で共有してください。';}
-      } else if(!['draft','review'].includes(s.phase))throw new Error('この作成操作は終了しています。');
+      } else if(action==='restart' && ['done','closed'].includes(s.phase)){s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};delete s.result;delete s.shared;s.reviewEmail=currentEmail();}
+      else if(!['draft','review'].includes(s.phase))throw new Error('この作成操作は終了しています。');
       else if(action==='cancel'){s.phase='closed';s.event.password='';}
       else if(action==='choice'){if(!Object.hasOwn(choices,i.values[0]))throw new Error('回答の選択肢が不正です。');s.event.choice=i.values[0];}
       else if(action==='submit-email') {
         const value=i.fields.getTextInputValue('email').trim();
         if(!validDensukeEmail(value))throw new Error('254文字以内の半角メールアドレスを入力してください。');
         if(!settings)throw new Error('メール設定を保存できません。');
-        if(!Object.hasOwn(s,'emailEditBase'))throw new Error('「固定メール設定」を開き直してください。');
+        if(!Object.hasOwn(s,'emailEditBase'))throw new Error('「控えメールの宛先」を開き直してください。');
         await settings.update(c=>{
           if((c.densukeEmail??email)!==s.emailEditBase)throw new Error('別の操作で固定メールが変更されました。設定画面を開き直してください。');
           c.densukeEmail=value;
@@ -91,7 +95,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
       } else if(action==='create') {
         if(s.phase!=='review')throw new Error('先に内容を入力してください。');
         const destination=currentEmail();
-        if(!validDensukeEmail(destination))throw new Error('「固定メール設定」で宛先を設定してください。');
+        if(!validDensukeEmail(destination))throw new Error('「控えメールの宛先」で宛先を設定してください。');
         if(s.reviewEmail!==destination)throw new Error('別の操作で固定メールが変更されました。「内容を修正」から再確認してください。');
         for(const [id,until] of attempts)if(until<=now())attempts.delete(id);
         const wait=Math.ceil((Math.max(nextGlobal,attempts.get(i.user.id)??0)-now())/1000);

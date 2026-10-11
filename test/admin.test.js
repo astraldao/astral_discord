@@ -82,3 +82,11 @@ test('forms are opened without deferring the interaction and denied channel perm
   await f.controller.handle(f.interaction(`admin:${s.id}:add`,{values:['333333333333333333']}));
   assert.deepEqual(f.settings.get().targetIds,[target]);assert.equal(f.changes(),0);
 });
+test('setup guidance and unavailable install/delete actions reflect actual configuration',()=>{
+  const s=new AdminSessions().create('owner'),c=defaults();c.lobbyId=null;c.targetIds=[];
+  assert.ok(adminScreen(s,c).embeds[0].toJSON().description.includes('未設定'));
+  s.view='panel';assert.equal(adminScreen(s,c).components[0].toJSON().components[0].disabled,true);
+  s.view='vc';assert.equal(adminScreen(s,c).components[0].toJSON().components[2].disabled,true);
+  s.stage={action:'remove',description:'入室先から削除'};
+  assert.equal(adminScreen(s,c).components[0].toJSON().components[0].style,4);
+});
