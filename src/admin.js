@@ -68,7 +68,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
     description+='\n\n**入室の設定** · VC・音声・入室パネル\n**卓の準備** · 日程調整・ベース卓・キャラシ';
-    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ')),row(button(s,'nav-overview','設定を確認'),button(s,'diagnose','動作診断'))];
+    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ'),button(s,'open-forum','投稿タグ')),row(button(s,'nav-overview','設定を確認'),button(s,'diagnose','動作診断'))];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
@@ -116,7 +116,7 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
   const sessions=new AdminSessions();
   const screen=(s,note='')=>s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note);
   async function validateChannel(action,value) {
@@ -152,6 +152,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='open-densuke'){if(!openDensuke)throw new Error('日程調整を利用できません。');await openDensuke(interaction);return;}
+      if(action==='open-forum'){if(!openForum)throw new Error('投稿タグを利用できません。');await openForum(interaction);return;}
       if(action==='open-trpg'){if(!openTrpg)throw new Error('卓管理を利用できません。');await openTrpg(interaction);return;}
       if(action==='word-edit'){
         const word=settings.get().words.find(w=>w.surface===interaction.values?.[0]);if(!word)throw new Error('読み方を選び直してください。');
