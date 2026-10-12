@@ -14,13 +14,16 @@ export function transferScreen(s,balance,note=''){
   else{description=`**残高 ${number(balance)} チップ**\n${to?`相手 ${to}\n枚数を入力してください。`:'チップを渡す相手を選んでください。'}`;components=[row(new UserSelectMenuBuilder().setCustomId(`chips:${s.id}:${s.turn}:target`).setPlaceholder('渡す相手を選ぶ').setMinValues(1).setMaxValues(1)),row(button('chips',s,'amount','枚数を入力',ButtonStyle.Primary).setDisabled(!s.target),home())];}
   return {...payload('✦  チップを渡す',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?'success':'normal',components}),attachments:[]};
 }
+const animals=[{emoji:'🐔',name:'ニワトリ'},{emoji:'🐤',name:'ひよこ'},{emoji:'🦆',name:'アヒル'},{emoji:'🐇',name:'ウサギ'},{emoji:'🐈',name:'ネコ'}];
+const sequenceText=s=>s.sequence.map(n=>animals[n].emoji).join(' → ');
 export function workScreen(s,balance,note=''){
-  let description,components;
-  if(s.view==='done'){description=`**ニワトリを連れ戻しました！**\n${s.reward?`お礼 **+${s.reward}チップ**`:({solvent:'今回はチップの追加なし。',blackjack:'勝負中のため、お礼は今回なし。',limit:'この1時間のお礼は受け取り済み。',cooldown:'お礼の受け取りは30秒ごとです。'}[s.rewardReason]??'今回はお手伝いだけ。')}\n残高 ${number(balance)} チップ`;components=[row(button('work',s,'again','もう一度お手伝い'),home().setStyle(balance>=10?ButtonStyle.Primary:ButtonStyle.Secondary))];}
-  else if(s.view==='claim'){description='**3羽とも確保！**\n最後まで卵を守り抜きました。お礼を受け取ってください。';components=[row(button('work',s,'claim','お礼を受け取る',ButtonStyle.Primary),home())];}
-  else if(s.view==='ready'){description=`**残高 ${number(balance)} チップ**\n逃げたニワトリを3回捕まえる、無料のお手伝い。\n**いつでも無料で遊べます。**\nチップ不足時のお礼は5枚。受け取りは30秒ごと・1時間で最大30枚。`;components=[row(button('work',s,'start','ニワトリを探す',ButtonStyle.Primary),home())];}
-  else{description=`**🐔 ぴよぴよ脱走劇**\n捕獲 ${s.caught}/3 · ニワトリを押して連れ戻そう。`;components=[row(...Array.from({length:5},(_,n)=>button('work',s,`pick-${n}`,n===s.target?'🐔':'🥚',ButtonStyle.Secondary))),row(home())];}
-  return {...payload('✦  ニワトリのお手伝い',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?'success':'normal',components}),attachments:[]};
+  let description,components;const score=`成功 ${s.caught??0}/${s.length??3} · 自己ベスト ${s.best??0}個`;
+  if(s.view==='done'){description=`**${s.failed?'あれ？別の仲間でした。':'全員、おかえり！'}**\n${score}\n\n${s.failed?`正しい順番\n${sequenceText(s)}`:s.reward?`お礼 **+${s.reward}チップ**`:({solvent:'今回はチップの追加なし。',blackjack:'勝負中のため、お礼は今回なし。',limit:'この1時間のお礼は受け取り済み。',cooldown:'お礼の受け取りは30秒ごとです。'}[s.rewardReason]??'今回はお手伝いだけ。')}\n\n残高 ${number(balance)} チップ`;components=[row(button('work',s,'again','もう一度',ButtonStyle.Primary),button('work',s,'difficulty','難易度を変える'),home())];}
+  else if(s.view==='claim'){description=`**全員捕まえました！**\n${score}`;components=[row(button('work',s,'claim','結果を確定',ButtonStyle.Primary),home())];}
+  else if(s.view==='ready'){description=`逃げた仲間の順番を覚えて、同じ順番で捕まえよう。\n\n**いつでも無料** · 自己ベスト ${s.best??0}個\nチップ不足時のお礼は5枚。受け取りは30秒ごと・1時間で最大30枚。`;components=[row(button('work',s,'start-3','かんたん · 3個',ButtonStyle.Primary),button('work',s,'start-5','ふつう · 5個'),button('work',s,'start-7','むずかしい · 7個')),row(home())];}
+  else if(s.view==='watch'){description=`**逃げた順番を覚えよう**\n\n${sequenceText(s)}\n\n「覚えた」を押すと順番を隠します。`;components=[row(button('work',s,'remember','覚えた',ButtonStyle.Primary),home())];}
+  else{description=`**${s.caught+1}番目に逃げたのは？**\n成功 ${s.caught}/${s.length}\n\n覚えた順番で、仲間を選んでください。`;components=[row(...animals.map((a,n)=>button('work',s,`pick-${n}`,a.emoji))),row(home())];}
+  return {...payload('🐔  ぴよぴよ脱走劇',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?(s.failed?'error':'success'):'normal',components}),attachments:[]};
 }
 export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomInt,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルでは操作できません。');},recipient=async(id,user)=>{if(!/^\d{17,20}$/.test(id)||id===user)throw new Error('自分以外のメンバーを選んでください。');const member=await guild.members.fetch({user:id,force:true});if(!member || member.user.bot)throw new Error('Bot以外のサーバーメンバーを選んでください。');return member;}}){
   const transfers=new AdminSessions(now),work=new AdminSessions(now);
@@ -28,8 +31,9 @@ export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomIn
   const screen=(prefix,s,note)=>(prefix==='chips'?transferScreen:workScreen)(s,wallet.balance(s.userId),note);
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
   const chooseTarget=()=>{const n=random(5);if(!Number.isInteger(n)||n<0||n>4)throw new Error('ニワトリを見失いました。画面を開き直してください。');return n;};
-  async function start(s,i,check){const target=chooseTarget(),ticketId=randomUUID();const ticket=await wallet.beginWork(s.userId,ticketId,check);Object.assign(s,{ticketId,target,caught:0,view:'playing',expires:ticket.expires});}
-  async function open(i,prefix){await ack(i);await access(i);const sessions=prefix==='chips'?transfers:work;const other=[...sessions.sessions.values()].find(x=>x.userId===i.user.id&&x.expires>now());if(other?.busy)throw new Error('前の操作を処理中です。');if(prefix==='work'&&other&&other.channelId!==i.channelId&&['playing','claim'].includes(other.view))throw new Error('進行中のニワトリを元のチャンネルから捕まえてください。');let s=[...sessions.sessions.values()].find(x=>x.userId===i.user.id&&x.channelId===i.channelId&&x.expires>now());if(s?.busy)throw new Error('前の操作を処理中です。');if(!s){s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,turn:0,view:prefix==='chips'?'draft':'ready'});}await i.editReply(screen(prefix,s));}
+  async function start(s,i,check,length){if(![3,5,7].includes(length))throw new Error('難易度を選び直してください。');const sequence=Array.from({length},()=>chooseTarget()),ticketId=randomUUID();const ticket=await wallet.beginWork(s.userId,ticketId,check);Object.assign(s,{ticketId,sequence,length,caught:0,failed:false,reward:0,rewardReason:null,best:wallet.memoryBest(s.userId),view:'watch',expires:ticket.expires});}
+  async function complete(s,check){const result=await wallet.earnWork(s.userId,s.ticketId,check,{score:s.caught});Object.assign(s,{reward:result.reward,rewardReason:result.reason,best:result.best,view:'done'});}
+  async function open(i,prefix){await ack(i);await access(i);const sessions=prefix==='chips'?transfers:work;const other=[...sessions.sessions.values()].find(x=>x.userId===i.user.id&&x.expires>now());if(other?.busy)throw new Error('前の操作を処理中です。');if(prefix==='work'&&other&&other.channelId!==i.channelId&&['watch','playing','claim'].includes(other.view))throw new Error('進行中のニワトリを元のチャンネルから捕まえてください。');let s=[...sessions.sessions.values()].find(x=>x.userId===i.user.id&&x.channelId===i.channelId&&x.expires>now());if(s?.busy)throw new Error('前の操作を処理中です。');if(!s){s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,turn:0,view:prefix==='chips'?'draft':'ready',best:prefix==='work'?wallet.memoryBest(i.user.id):undefined});}await i.editReply(screen(prefix,s));}
   async function handle(i){let s,prefix,locked=false,authorized=false;try{
     const parts=i.customId.split(':');prefix=parts[0];if(!['chips','work'].includes(prefix))throw new Error('操作を確認してください。');if(parts[1]==='open'){await open(i,prefix);return;}
     const [,id,turn,action,token]=parts;s=get(prefix,id,i);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
@@ -43,12 +47,14 @@ export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomIn
       else if(action==='amount-form'){if(s.view!=='draft'||!token||token!==s.formToken)throw new Error('最新の枚数入力から操作してください。');const value=i.fields.getTextInputValue('amount').trim();if(!/^[1-9]\d{0,8}$/.test(value)||Number(value)>MAX_CHIPS)throw new Error('枚数は1以上の整数で入力してください。');const amount=Number(value);if(wallet.balance(s.userId)<amount)throw new Error('チップが不足しています。');s.amount=amount;s.view='confirm';s.sendId=randomUUID();delete s.formToken;}
       else if(action==='back'){if(s.view!=='confirm')throw new Error('確認画面から操作してください。');s.view='draft';delete s.sendId;}
       else if(action==='restart'){if(s.view!=='done')throw new Error('この譲渡はまだ完了していません。');s.view='draft';s.target=null;s.amount=null;delete s.sendId;}
-      else if(action==='confirm'){if(s.view!=='confirm'||!s.sendId)throw new Error('譲渡の確認画面から操作してください。');await wallet.transfer(s.userId,s.target,s.amount,s.sendId,async()=>{await check();authorized=false;authorized=false;await recipient(s.target,s.userId);await access(i);get(prefix,id,i);authorized=true;authorized=true;});s.view='done';}
+      else if(action==='confirm'){if(s.view!=='confirm'||!s.sendId)throw new Error('譲渡の確認画面から操作してください。');await wallet.transfer(s.userId,s.target,s.amount,s.sendId,async()=>{await check();authorized=false;await recipient(s.target,s.userId);await access(i);get(prefix,id,i);authorized=true;});s.view='done';}
       else throw new Error('操作を確認してください。');
     }else{
-      if(action==='start'||action==='again'){if(!['ready','done'].includes(s.view))throw new Error('今のニワトリを先に捕まえてください。');await start(s,i,check);}
-      else if(/^pick-[0-4]$/.test(action)){if(s.view!=='playing')throw new Error('ニワトリの画面から操作してください。');if(Number(action.slice(5))!==s.target)note='🥚 それは卵です。ニワトリは隣で堂々と逃げています。';else{const target=s.caught<2?chooseTarget():null;s.caught++;s.target=target;if(s.caught===3)s.view='claim';}}
-      else if(action==='claim'){if(s.view!=='claim'||s.caught!==3)throw new Error('3回捕まえてから受け取ってください。');const result=await wallet.earnWork(s.userId,s.ticketId,check);s.reward=result.reward;s.rewardReason=result.reason;s.view='done';}
+      if(action==='start'||action==='again'||/^start-[357]$/.test(action)){if(!['ready','done'].includes(s.view))throw new Error('今のゲームを先に終えてください。');const length=action==='again'?(s.length??3):action==='start'?3:Number(action.slice(6));await start(s,i,check,length);}
+      else if(action==='difficulty'){if(s.view!=='done')throw new Error('ゲームを終えてから選んでください。');s.view='ready';}
+      else if(action==='remember'){if(s.view!=='watch')throw new Error('順番を覚える画面から操作してください。');s.view='playing';}
+      else if(/^pick-[0-4]$/.test(action)){if(s.view!=='playing')throw new Error('回答の画面から操作してください。');if(Number(action.slice(5))!==s.sequence[s.caught]){const result=await wallet.failWork(s.userId,s.ticketId,s.caught,check);s.best=result.best;s.failed=true;s.reward=0;s.view='done';}else{s.caught++;if(s.caught===s.length){s.view='claim';await complete(s,check);}}}
+      else if(action==='claim'){if(s.view!=='claim'||s.caught!==s.length)throw new Error('全員捕まえてから確定してください。');await complete(s,check);}
       else throw new Error('操作を確認してください。');
     }
     s.turn++;await i.editReply(screen(prefix,s,note));
