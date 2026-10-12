@@ -16,9 +16,9 @@ export function transferScreen(s,balance,note=''){
 }
 export function workScreen(s,balance,note=''){
   let description,components;
-  if(s.view==='done'){description=`**ニワトリを連れ戻しました！**\n${s.reward?`お礼 **+${s.reward}チップ**`:'チップが足りているので、今回はお手伝いだけ。'}\n残高 ${number(balance)} チップ`;components=[row(button('work',s,'again','もう一度お手伝い').setDisabled(balance>=10),home().setStyle(balance>=10?ButtonStyle.Primary:ButtonStyle.Secondary))];}
+  if(s.view==='done'){description=`**ニワトリを連れ戻しました！**\n${s.reward?`お礼 **+${s.reward}チップ**`:({solvent:'今回はチップの追加なし。',blackjack:'勝負中のため、お礼は今回なし。',limit:'この1時間のお礼は受け取り済み。',cooldown:'お礼の受け取りは30秒ごとです。'}[s.rewardReason]??'今回はお手伝いだけ。')}\n残高 ${number(balance)} チップ`;components=[row(button('work',s,'again','もう一度お手伝い'),home().setStyle(balance>=10?ButtonStyle.Primary:ButtonStyle.Secondary))];}
   else if(s.view==='claim'){description='**3羽とも確保！**\n最後まで卵を守り抜きました。お礼を受け取ってください。';components=[row(button('work',s,'claim','お礼を受け取る',ButtonStyle.Primary),home())];}
-  else if(s.view==='ready'){description=`**残高 ${number(balance)} チップ**\n逃げたニワトリを3回捕まえる、無料のお手伝い。\nお礼は **5チップ**。\n30秒に1回・1時間で最大30チップ。`;components=[row(button('work',s,'start','ニワトリを探す',ButtonStyle.Primary).setDisabled(balance>=10),home())];}
+  else if(s.view==='ready'){description=`**残高 ${number(balance)} チップ**\n逃げたニワトリを3回捕まえる、無料のお手伝い。\n**いつでも無料で遊べます。**\nチップ不足時のお礼は5枚。受け取りは30秒ごと・1時間で最大30枚。`;components=[row(button('work',s,'start','ニワトリを探す',ButtonStyle.Primary),home())];}
   else{description=`**🐔 ぴよぴよ脱走劇**\n捕獲 ${s.caught}/3 · ニワトリを押して連れ戻そう。`;components=[row(...Array.from({length:5},(_,n)=>button('work',s,`pick-${n}`,n===s.target?'🐔':'🥚',ButtonStyle.Secondary))),row(home())];}
   return {...payload('✦  ニワトリのお手伝い',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?'success':'normal',components}),attachments:[]};
 }
@@ -48,7 +48,7 @@ export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomIn
     }else{
       if(action==='start'||action==='again'){if(!['ready','done'].includes(s.view))throw new Error('今のニワトリを先に捕まえてください。');await start(s,i,check);}
       else if(/^pick-[0-4]$/.test(action)){if(s.view!=='playing')throw new Error('ニワトリの画面から操作してください。');if(Number(action.slice(5))!==s.target)note='🥚 それは卵です。ニワトリは隣で堂々と逃げています。';else{const target=s.caught<2?chooseTarget():null;s.caught++;s.target=target;if(s.caught===3)s.view='claim';}}
-      else if(action==='claim'){if(s.view!=='claim'||s.caught!==3)throw new Error('3回捕まえてから受け取ってください。');const result=await wallet.earnWork(s.userId,s.ticketId,check);s.reward=result.reward;s.view='done';}
+      else if(action==='claim'){if(s.view!=='claim'||s.caught!==3)throw new Error('3回捕まえてから受け取ってください。');const result=await wallet.earnWork(s.userId,s.ticketId,check);s.reward=result.reward;s.rewardReason=result.reason;s.view='done';}
       else throw new Error('操作を確認してください。');
     }
     s.turn++;await i.editReply(screen(prefix,s,note));

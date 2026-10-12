@@ -37,12 +37,13 @@ export class GameWalletStore {
   },check);}
   workBudget(a){const time=this.now();const w=a.work??{windowStarted:time,earned:0,notBefore:0,ticket:null};if(time-w.windowStarted>=3600000){w.windowStarted=time;w.earned=0;}a.work=w;return w;}
   beginWork(user,id,check){return this.update(user,a=>{
-    const time=this.now();if(!validId(id))throw new Error('ゲームを開き直してください。');if(a.balance>=10)throw new Error('ゲームを遊べるチップがあります。ゲーム選択へ戻れます。');if(a.pending && a.pending.expires>time)throw new Error('進行中のブラックジャックを終了してから遊んでください。');
-    const w=this.workBudget(a);if(w.ticket && w.ticket.expires>time)throw new Error('進行中のニワトリを元の画面から捕まえてください。');if(w.earned>=30)throw new Error('この1時間のお手伝いは完了です。少し休んでください。');if(w.notBefore>time)throw new Error(`次のお手伝いは${Math.ceil((w.notBefore-time)/1000)}秒後に始められます。`);
-    w.ticket={id,expires:time+600000};w.notBefore=time+30000;return {id,expires:w.ticket.expires};
+    const time=this.now();if(!validId(id))throw new Error('ゲームを開き直してください。');
+    const w=this.workBudget(a);if(w.ticket && w.ticket.expires>time)throw new Error('進行中のニワトリを元の画面から捕まえてください。');
+    w.ticket={id,expires:time+600000};return {id,expires:w.ticket.expires};
   },check);}
   earnWork(user,id,check){return this.update(user,a=>{
-    const w=this.workBudget(a),time=this.now();if(!w.ticket || w.ticket.id!==id || w.ticket.expires<=time)throw new Error('このお手伝いは終了しています。');if(a.pending && a.pending.expires>time)throw new Error('ブラックジャックを終了してから受け取ってください。');
-    const reward=a.balance>=10?0:Math.min(5,30-w.earned);a.balance+=reward;w.earned+=reward;w.ticket=null;return {reward,balance:a.balance};
+    const w=this.workBudget(a),time=this.now();if(!w.ticket || w.ticket.id!==id || w.ticket.expires<=time)throw new Error('このお手伝いは終了しています。');
+    const reason=a.balance>=10?'solvent':a.pending && a.pending.expires>time?'blackjack':w.earned>=30?'limit':w.notBefore>time?'cooldown':null;
+    const reward=reason?0:Math.min(5,30-w.earned);a.balance+=reward;w.earned+=reward;w.ticket=null;if(reward)w.notBefore=time+30000;return {reward,balance:a.balance,reason};
   },check);}
 }

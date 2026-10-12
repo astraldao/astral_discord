@@ -13,7 +13,7 @@ export function gameLobby(s,balance){
   const ongoing=s?.game.phase==='playing';
   const components=[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions({label:'ブラックジャック',value:'blackjack',description:'ディーラーと21点を目指す · 共通チップ',emoji:'♠️'}, {label:'スロット',value:'slots',description:'3つの絵柄を揃える · 架空チップ',emoji:'🎰'}, {label:'ルーレット',value:'roulette',description:'赤か黒を予想する · 架空チップ',emoji:'🔴'}, {label:'ダイス',value:'dice',description:'2個の合計を予想する · 架空チップ',emoji:'🎲'}))];
   if(s)components.push(row(button(s,'resume',ongoing?'続きから遊ぶ':'前の結果を見る',ButtonStyle.Primary)));
-  if(balance!==undefined)components.push(row(new ButtonBuilder().setCustomId('chips:open').setLabel('チップを渡す').setStyle(ButtonStyle.Secondary),...(balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Primary)]:[])));
+  if(balance!==undefined)components.push(row(new ButtonBuilder().setCustomId('chips:open').setLabel('チップを渡す').setStyle(ButtonStyle.Secondary),new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(balance<10?ButtonStyle.Primary:ButtonStyle.Secondary)));
   return payload('✦  PLAY ROOM',(balance===undefined?'':`**残高 ${balance.toLocaleString('ja-JP')} チップ**\n\n`)+(s?`**ブラックジャック · ${ongoing?'プレイ中':'ラウンド終了'}**\n${ongoing?'続きから遊ぶか、ゲームを選んでください。':'結果を確認するか、ゲームを選んでください。'}`:'遊ぶゲームを選んでください。'),{components});
 }
 const results={blackjack:'ブラックジャック！あなたの勝ち',win:'あなたの勝ち',lose:'ディーラーの勝ち',push:'引き分け',bust:'21を超えました · ディーラーの勝ち','dealer-bust':'ディーラーが21を超えました · あなたの勝ち',stopped:'ゲームを終了しました'};
