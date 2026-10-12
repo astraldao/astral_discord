@@ -30,6 +30,12 @@ export class GameWalletStore {
   hasActiveBlackjack(user){const p=this.accounts.get(user)?.pending;return !!p && p.expires>this.now();}
   assertBlackjack(user,id){const p=this.accounts.get(user)?.pending;if(!p || p.id!==id || p.expires<=this.now())throw new Error('このラウンドは終了しています。ゲーム選択から開き直してください。');}
   finishBlackjack(user,id,result,check){return this.update(user,a=>{if(!a.pending || a.pending.id!==id || a.pending.expires<=this.now())throw new Error('このラウンドは精算済み、または終了しています。');const payout=blackjackPayout(a.pending.bet,result);a.balance+=payout;a.pending=null;return {balance:a.balance,payout};},check);}
+  doubleBlackjack(user,id,result,check){return this.update(user,a=>{
+    const pending=a.pending;if(!pending || pending.id!==id || pending.expires<=this.now())throw new Error('このラウンドは精算済み、または終了しています。');
+    if(!['win','dealer-bust','push','lose','bust'].includes(result))throw new Error('ダブルの結果を確認できません。');
+    if(a.balance<pending.bet)throw new Error('追加のチップが不足しています。');
+    const bet=pending.bet*2,payout=blackjackPayout(pending.bet,result)*2;a.balance=a.balance-pending.bet+payout;a.pending=null;return {balance:a.balance,payout,bet};
+  },check);}
   async refill(){throw new Error('無料ゲームで少しずつチップを獲得してください。');}
   transfer(user,target,amount,id,check){return this.update(user,(a,next)=>{
     if(!validId(target) || target===user || !validId(id) || !Number.isSafeInteger(amount) || amount<1 || amount>MAX_CHIPS)throw new Error('相手と譲渡枚数を確認してください。');

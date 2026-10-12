@@ -1,6 +1,6 @@
 import {randomInt,randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,UserSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
-import {AdminSessions} from './admin.js';
+import {GameSessions} from './game-sessions.js';
 import {payload,text} from './ui.js';
 import {MAX_CHIPS} from './game-wallets.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
@@ -26,7 +26,7 @@ export function workScreen(s,balance,note=''){
   return {...payload('🐔  ぴよぴよ脱走劇',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?(s.failed?'error':'success'):'normal',components}),attachments:[]};
 }
 export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomInt,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルでは操作できません。');},recipient=async(id,user)=>{if(!/^\d{17,20}$/.test(id)||id===user)throw new Error('自分以外のメンバーを選んでください。');const member=await guild.members.fetch({user:id,force:true});if(!member || member.user.bot)throw new Error('Bot以外のサーバーメンバーを選んでください。');return member;}}){
-  const transfers=new AdminSessions(now),work=new AdminSessions(now);
+  const transfers=new GameSessions(now),work=new GameSessions(now,s=>['watch','playing','claim'].includes(s.view));
   const get=(prefix,id,i)=>{let s;try{s=(prefix==='chips'?transfers:work).get(id,i.user.id);}catch{throw new Error('この画面は終了しています。/game から開き直してください。');}if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');return s;};
   const screen=(prefix,s,note)=>(prefix==='chips'?transferScreen:workScreen)(s,wallet.balance(s.userId),note);
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}

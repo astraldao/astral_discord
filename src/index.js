@@ -154,7 +154,7 @@ client.once('clientReady', async () => {
     forumTags=createForumTagsController({guild});
     chipTools=createChipTools({guild,wallet:gameWallets});
     casino=createCasinoController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i)});
-    blackjack=createBlackjackController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind)});
+    blackjack=createBlackjackController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
@@ -176,7 +176,7 @@ client.on('interactionCreate', async interaction => {
     if(!cancellation) {
       const wait=limits.consume(interaction.user.id,component && interaction.isStringSelectMenu());
       if(wait) {
-        await quiet(()=>interaction.reply({...payload('✧  少しお待ちください',`操作が続いています。**${wait}秒後** にもう一度お試しください。入室予約はキャンセルできます。`),flags:MessageFlags.Ephemeral}));
+        await quiet(()=>interaction.reply({...payload('✧  少しお待ちください',`操作が続いています。**${wait}秒後** にもう一度お試しください。${pending.has(interaction.user.id)?'入室予約はキャンセルできます。':''}`),flags:MessageFlags.Ephemeral}));
         return;
       }
     }
