@@ -1,9 +1,10 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,StringSelectMenuBuilder,AttachmentBuilder,PermissionFlagsBits as P} from 'discord.js';
+import {wagerRow,wagerChoice,chipNumber,chipDelta} from './game-ui.js';
 import {GameSessions} from './game-sessions.js';
 import {payload} from './ui.js';
 import {randomUUID} from 'node:crypto';
 import {GameWalletStore} from './game-wallets.js';
-import {casinoKinds,bets,casinoNames} from './casino.js';
+import {casinoKinds,casinoNames} from './casino.js';
 import {blackjackImage} from './blackjack-art.js';
 import {newRound,play,handValue,cardName} from './blackjack.js';
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
@@ -23,12 +24,14 @@ export function blackjackRules(s){return payload('♠  ブラックジャック�
 export function blackjackScreen(s,note=''){
   const g=s.game,active=g.phase==='playing',score=stats(s);
 
-  const betRow=()=>row(new StringSelectMenuBuilder().setCustomId(`bj:${s.id}:${s.turn}:bet`).setPlaceholder(g.phase==='ready'?'掛けチップを選ぶ':'次の掛けチップを選ぶ').addOptions(bets.map(n=>({label:`${n}チップ`,value:String(n),default:n===(s.bet??10)}))));
-  if(g.phase==='ready')return {...payload('♠  BLACKJACK',`${note?`${note}\n\n`:''}**残高 ${(s.balance??0).toLocaleString('ja-JP')} チップ**\n${s.balance>=10?'掛けチップを選んで始めてください。':'無料のお手伝いでチップを獲得できます。'}`,{components:[...(s.balance>=10?[betRow()]:[]),row(s.balance>=10?button(s,'again',`${s.bet??10}チップで始める`,ButtonStyle.Primary).setDisabled(s.balance<s.bet):new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Primary),button(s,'rules','遊び方'),new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary))],}),attachments:[]};
-  const body=`${s.confirmStop?'**このラウンドを終了しますか？**\n掛けチップは返金されません。':active?'**あなたのターン**':`**${results[g.result]}**`}\nラウンド ${s.round??1} · ${score.win}勝 ${score.lose}敗 ${score.draw}分${s.balance===undefined?'':`\n残高 ${s.balance.toLocaleString('ja-JP')} · 掛け ${s.roundBet??10}${active?'':` → 払い戻し ${s.payout??0}`}`}`;
-  const components=s.confirmStop?[row(button(s,'confirm-stop','終了する'),button(s,'resume','プレイを続ける',ButtonStyle.Primary))]:active?[row(button(s,'hit','1枚引く',ButtonStyle.Primary),button(s,'stand','この手で勝負'),...(g.player.length===2&&s.roundBet!==undefined?[button(s,'double',`ダブル · 追加${s.roundBet}`).setDisabled(s.balance<s.roundBet)]:[])),row(button(s,'rules','遊び方'),button(s,'stop','終了する'))]:[row(button(s,'again','もう一度遊ぶ',ButtonStyle.Primary).setDisabled(s.balance!==undefined && s.balance<(s.bet??10)),button(s,'rules','遊び方'))];
+  const betRow=()=>wagerRow('bj',s,s.balance);
+  if(g.phase==='ready')return {...payload('♠  BLACKJACK',`${note?`${note}\n\n`:''}**残高 ${(s.balance??0).toLocaleString('ja-JP')} チップ**\n${s.balance>=10?(s.balance>=(s.bet??10)?'掛け枚数を選んで始めてください。':'残高以内の掛け枚数を選んでください。'):'無料の記憶ゲームで遊べます。'}`,{components:[...(s.balance>=10?[betRow()]:[]),row(s.balance>=10?button(s,'again',`${s.bet??10}枚で始める`,ButtonStyle.Primary).setDisabled(s.balance<s.bet):new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Primary),button(s,'rules','遊び方'),...(s.balance<(s.bet??10)?[button(s,'refresh','残高を更新')]:[]),new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary))],}),attachments:[]};
+  const budgetNote=!active&&s.balance!==undefined&&s.balance<(s.bet??10)?(s.balance<10?'\n無料の記憶ゲームで遊べます。':'\n次の掛け枚数を残高以内に変更してください。'):'';
+  const body=`${s.confirmStop?'**このラウンドを終了しますか？**\n掛けチップは返金されません。':active?'**あなたのターン**':`**${results[g.result]}**`}\nラウンド ${s.round??1} · ${score.win}勝 ${score.lose}敗 ${score.draw}分${s.balance===undefined?'':`\n残高 ${s.balance.toLocaleString('ja-JP')} · 掛け ${s.roundBet??10}${active?'':` → 払い戻し ${chipNumber(s.payout??0)} · **${chipDelta((s.payout??0)-(s.roundBet??10))}枚**`}`}`;
+  const components=s.confirmStop?[row(button(s,'confirm-stop','終了する'),button(s,'resume','プレイを続ける',ButtonStyle.Primary))]:active?[row(button(s,'hit','1枚引く',ButtonStyle.Primary),button(s,'stand','この手で勝負'),...(g.player.length===2&&s.roundBet!==undefined?[button(s,'double',`ダブル · 追加${s.roundBet}`).setDisabled(s.balance<s.roundBet)]:[])),row(button(s,'rules','遊び方'),button(s,'stop','終了する'))]:[row(button(s,'again',`${s.bet??10}枚で次のラウンド`,ButtonStyle.Primary).setDisabled(s.balance!==undefined && s.balance<(s.bet??10)),...(s.balance===undefined?[button(s,'rules','遊び方')]:[])),...(s.balance!==undefined?[row(button(s,'rules','遊び方'))]:[])];
+  if(s.balance!==undefined&&s.balance<(active?(s.roundBet??10):(s.bet??10)))components.at(-1).addComponents(button(s,'refresh','残高を更新'));
   if(!active && s.balance!==undefined){components.unshift(betRow());if(s.balance<10)components.at(-1).addComponents(new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Secondary));}
-  const message=payload('♠  BLACKJACK',(note?`${note}\n\n`:'')+body,{state:!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});message.embeds[0].setImage('attachment://blackjack.png');message.files=[new AttachmentBuilder(blackjackImage(g),{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`})];message.attachments=[];message.components.at(-1).addComponents(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary));return message;
+  const message=payload('♠  BLACKJACK',(note?`${note}\n\n`:'')+body+budgetNote,{state:!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});message.embeds[0].setImage('attachment://blackjack.png');message.files=[new AttachmentBuilder(blackjackImage(g),{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`})];message.attachments=[];message.components.at(-1).addComponents(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary));return message;
 }
 export function createBlackjackController({guild,now=()=>Date.now(),deal=newRound,openCasino,casinoCurrent=()=>undefined,openWork,wallet=new GameWalletStore(null,{now}),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルではゲームを操作できません。');}}){
   const sessions=new GameSessions(now,s=>s.game?.phase==='playing');
@@ -38,7 +41,7 @@ export function createBlackjackController({guild,now=()=>Date.now(),deal=newRoun
   async function acknowledge(i){if(i.deferred || i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
   const current=i=>[...sessions.sessions.values()].find(x=>x.userId===i.user.id && x.channelId===i.channelId && x.expires>now());
   async function lobby(i){await acknowledge(i);await access(i);await i.editReply({...gameLobby(current(i),wallet.balance(i.user.id),casinoCurrent(i)),attachments:[]});}
-  async function open(i){await acknowledge(i);await access(i);let s=current(i);if([...sessions.sessions.values()].some(x=>x.userId===i.user.id&&x.busy))throw new Error('前の操作を処理中です。');if(s){await i.editReply(screen(s,'続きのゲームを開きました。'));return;}if(wallet.hasActiveBlackjack(i.user.id))throw new Error('進行中のブラックジャックを元のチャンネルで終了してください。');s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,game:{phase:'ready'},bet:10,turn:0,round:1,stats:{win:0,lose:0,draw:0},busy:true});try{await i.editReply(screen(s));}finally{s.busy=false;}}
+  async function open(i){await acknowledge(i);await access(i);let s=current(i);if([...sessions.sessions.values()].some(x=>x.userId===i.user.id&&x.busy))throw new Error('前の操作を処理中です。');if(s){await i.editReply(screen(s));return;}if(wallet.hasActiveBlackjack(i.user.id))throw new Error('進行中のブラックジャックを元のチャンネルで終了してください。');s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,game:{phase:'ready'},bet:10,turn:0,round:1,stats:{win:0,lose:0,draw:0},busy:true});try{await i.editReply(screen(s));}finally{s.busy=false;}}
   return {sessions,wallet,open,lobby,async handle(i){let s,locked=false,authorized=false;
     try{
       if(i.customId==='game:open'){await lobby(i);return;}
@@ -49,10 +52,11 @@ export function createBlackjackController({guild,now=()=>Date.now(),deal=newRoun
       await access(i);get(s.id,s.userId);authorized=true;
       const commitCheck=async()=>{authorized=false;await access(i);get(s.id,s.userId);authorized=true;};
       if(action==='rules'){await i.editReply(blackjackRules(s));return;}
+      if(action==='refresh'){await i.editReply(screen(s));return;}
       if(action==='resume'){if(s.confirmStop){s.confirmStop=false;s.turn++;}await i.editReply(screen(s));return;}
       if(String(s.turn)!==turn)throw new Error('画面を最新の状態に戻しました。ボタンから続けてください。');
       if(action==='again'){if(!['done','ready'].includes(s.game.phase))throw new Error('今のラウンドを終えてから操作してください。');const rematch=s.game.phase==='done';await begin(s,i,commitCheck);if(rematch)s.round=(s.round??1)+1;}
-      else if(action==='bet'){if(s.game.phase==='playing' || i.values?.length!==1 || !bets.some(n=>String(n)===i.values[0]))throw new Error('勝負が終わってから10・50・100チップを選んでください。');s.bet=Number(i.values[0]);}
+      else if(action==='bet'||action.startsWith('bet-')){if(s.game.phase==='playing')throw new Error('掛け枚数は次のラウンドから変更できます。');s.bet=wagerChoice(action,i.values);}
       else if(['refill','confirm-refill'].includes(action)){if(openWork){await openWork(i);return;}throw new Error('無料のお手伝いからチップを獲得してください。');}
       else if(action==='double'){
         if(s.confirmStop || s.game.phase!=='playing' || s.game.player.length!==2)throw new Error('ダブルは最初の2枚で選んでください。');

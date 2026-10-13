@@ -1,7 +1,8 @@
-import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,AttachmentBuilder,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
+import {ActionRowBuilder,ButtonBuilder,ButtonStyle,AttachmentBuilder,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
+import {wagerRow,wagerChoice,chipDelta} from './game-ui.js';
 import {GameSessions} from './game-sessions.js';
 import {payload} from './ui.js';
-import {casinoKinds,bets,casinoChoices,winningPayout,drawRank,rankName,animals,casinoNames} from './casino.js';
+import {casinoKinds,casinoChoices,winningPayout,drawRank,rankName,animals,casinoNames} from './casino.js';
 import {GameWalletStore} from './game-wallets.js';
 import {casinoImage} from './casino-art.js';
 export {casinoNames} from './casino.js';
@@ -12,7 +13,7 @@ const labels={spin:'スピン',red:'赤',black:'黒',odd:'奇数',even:'偶数',
 const label=(kind,choice)=>kind==='highlow'&&choice==='lower'?'低い':labels[choice];
 const symbols=['★','♥','♦','♣','♠','7'];
 const format=n=>n.toLocaleString('ja-JP');
-const signed=n=>`${n>0?'+':''}${format(n)}`;
+const signed=chipDelta;
 const instructions={slots:'同じ絵柄が3つで20倍、2つで1倍。それ以外は0です。\n6種類の絵柄を1つずつ独立に抽選します。',roulette:'赤・黒・奇数・偶数・1〜18・19〜36のどれかを予想。当たれば2倍。0はすべての予想で外れです。\n0〜36の37個から同じ確率で抽選します。',dice:'サイコロ2個の合計を予想。7未満・7超えは2.3倍、ちょうど7は5.8倍。\n1〜6を独立に抽選します。',highlow:'次のカードが基準より高い・同じ・低いかを予想します。\n**A=1、J=11、Q=12、K=13**。1〜13を毎回同じ確率で抽選し、同じ数字も出ます。次の基準は今回出たカードです。\n払い戻しは当たりやすさに応じて変化し、各ボタンに合計枚数を表示。端数は切り捨てます。当たる可能性がない選択はできません。',race:'4匹の中から1着になる動物を選びます。当たれば3.9倍。\n全24通りの着順を同じ確率で抽選するため、どの動物も1着の確率は25%です。1人で遊ぶレースです。'};
 function resultText(r){
   if(!r)return '';
@@ -21,12 +22,12 @@ function resultText(r){
 }
 export function casinoScreen(s,note=''){
   const r=s.results[s.kind],choices=casinoChoices(s.kind);
-  const components=[row(new StringSelectMenuBuilder().setCustomId(`casino:${s.id}:${s.turn}:bet`).setPlaceholder('掛けチップを選ぶ').addOptions(bets.map(n=>({label:`${n}チップ`,value:String(n),default:n===s.bet}))))];
+  const components=[wagerRow('casino',s,s.balance)];
   for(let start=0;start<choices.length;start+=['roulette','race'].includes(s.kind)?2:5){
     const group=choices.slice(start,start+(['roulette','race'].includes(s.kind)?2:5));
-    components.push(row(...group.map(action=>{const payout=winningPayout(s.kind,action,s.bet,s.card);return button(s,action,s.kind==='slots'?'スピン':`${label(s.kind,action)}｜${format(payout)}枚`,s.kind==='slots'?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(s.balance<s.bet||!payout);}))); 
+    components.push(row(...group.map(action=>{const payout=winningPayout(s.kind,action,s.bet,s.card);return button(s,action,s.kind==='slots'?`${s.bet}枚でスピン`:`${label(s.kind,action)}｜${format(payout)}枚`,s.kind==='slots'?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(s.balance<s.bet||!payout);}))); 
   }
-  components.push(row(button(s,'rules','遊び方・配当'),...(s.balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Secondary)]:[]),home()));
+  components.push(row(button(s,'rules','遊び方・配当'),...(s.balance<s.bet?[button(s,'refresh','残高を更新')]:[]),...(s.balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Secondary)]:[]),home()));
   const prompt=s.kind==='highlow'?`**基準カード ${rankName(s.card)}** · 次の大小を予想`:s.kind==='race'?'1着になる動物を選ぶ':s.kind==='slots'?'絵柄を揃える':'予想を選ぶ';
   const description=`${note?`${note}\n\n`:''}**残高 ${format(s.balance)} チップ**${s.balance<10?'\n無料のお手伝いでチップを獲得できます。':s.balance<s.bet?'\n残高以内の掛けチップに変更してください。':''}\n\n${prompt}\n${format(s.bet)}チップで開始${s.kind==='slots'?' · 3つ一致20倍 / 2つ一致1倍':' · ボタンの枚数は当選時の払い戻し'}${r?`\n\n${resultText(r)}`:''}`;
   const m=payload(`✦  ${casinoNames[s.kind]}`,description,{state:r?.delta>0?'success':'normal',components});
@@ -54,12 +55,12 @@ export function createCasinoController({guild,now=()=>Date.now(),random,openWork
     await acknowledge(i,action==='rules');await access(i);get(id,i);authorized=true;
     const commitCheck=async()=>{authorized=false;await access(i);get(id,i);authorized=true;};
     if(action==='rules'){await i.editReply(casinoRules(s));return;}
-    if(action==='resume'){await i.editReply(screen(s));return;}
+    if(action==='resume'||action==='refresh'){await i.editReply(screen(s));return;}
     s.balance=wallet.balance(s.userId);
     if(String(s.turn)!==turn)throw new Error('画面を最新の状態に戻しました。もう一度選んでください。');
     if(['refill','confirm-refill'].includes(action)){if(openWork){await openWork(i);return;}throw new Error('無料のお手伝いからチップを獲得してください。');}
     else{
-      if(action==='bet'){if(i.values?.length!==1 || !bets.some(n=>String(n)===i.values[0]))throw new Error('10・50・100チップから選んでください。');s.bet=Number(i.values[0]);}
+      if(action==='bet'||action.startsWith('bet-')){s.bet=wagerChoice(action,i.values);}
       else{const r=await wallet.playCasino(s.userId,{kind:s.kind,choice:action,bet:s.bet,card:s.card},random,commitCheck);s.results[s.kind]=r;if(s.kind==='highlow')s.card=r.values[1];s.balance=r.balance;s.rounds++;}
     }
     s.turn++;s.expires=now()+600000;await i.editReply(screen(s));
