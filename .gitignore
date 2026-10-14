@@ -8,3 +8,7 @@ __pycache__/
 dictionaries/japanese-plus/
 dictionaries/japanese-plus.tar.gz
 .quaxly-bootstrap.sh
+
+.astral-updates/
+.astral-commit
+.astral-update.*/

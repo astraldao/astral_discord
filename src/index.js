@@ -1,6 +1,7 @@
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
   StringSelectMenuBuilder, MessageFlags} from 'discord.js';
 import {setTimeout as delay} from 'node:timers/promises';
+import {createUpdateLifecycle,updateBusy} from './update-lifecycle.js';
 import {SerialQueue, canEnter} from './queue.js';
 import {connectSpeech} from './audio.js';
 import {synthesize,gentlePcm} from './speech.js';
@@ -169,15 +170,16 @@ client.once('clientReady', async () => {
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size})});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
-    ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
+    ready = process.env.ASTRAL_SUPERVISED!=='1'; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
     await resourcePresence.track(()=>refreshPanel(false)).catch(()=>console.warn('入室パネルを更新できませんでした。/admin の「入室パネル」から更新してください。'));
     const schedulePanels=await resourcePresence.track(()=>schedule.refresh());
     if(schedulePanels.failed)console.warn(`予定表の更新に失敗: ${schedulePanels.failed}件。管理画面から投稿情報を確認してください。`);
     const panels=await resourcePresence.track(()=>trpg.refreshPanels());
     if(panels.failed)console.warn(`キャラシパネルの更新に失敗: ${panels.failed}件。設置先の権限・メッセージを確認してください。`);
+    if(process.connected)process.send({type:'worker-ready'});
   } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); resourcePresence.stop();client.destroy(); process.exitCode = 1;}
 });
 client.on('interactionCreate', async interaction => {
@@ -237,7 +239,7 @@ client.on('interactionCreate', async interaction => {
   }finally{finishActivity();}
 });
 client.on('voiceStateUpdate',(before,after) => {
-  if (!ready || after.guild.id !== guild.id || after.member?.user.bot || before.channelId === after.channelId) return;
+  if (!ready || stopping || after.guild.id !== guild.id || after.member?.user.bot || before.channelId === after.channelId) return;
   const c=settings.get();
   const grant = grants.get(after.id);
   if (grant?.channelId === after.channelId) {grants.delete(after.id); return;}
@@ -251,7 +253,15 @@ client.on('voiceStateUpdate',(before,after) => {
   }
 });
 client.on('error',error => console.error('Discord接続:',error.code ?? error.name));
+const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();};
+const drain=async()=>{await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
+if(process.env.ASTRAL_SUPERVISED==='1' && process.connected){
+  const lifecycle=createUpdateLifecycle({busy:()=>updateBusy({active:resourcePresence.activeCount,pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});
+  process.on('message',message=>{if(message?.type==='activate'&&!stopping)ready=true;else void lifecycle(message);});
+}
 for (const signal of ['SIGTERM','SIGINT']) process.once(signal,() => {
-  stopping = true;resourcePresence.stop(); for (const job of pending.values()) job.abort.abort(); client.destroy();
+  freeze();for(const job of pending.values())job.abort.abort();
+  const force=setTimeout(()=>process.exit(0),12000);force.unref();
+  void (async()=>{while(resourcePresence.activeCount>0)await delay(50);await drain();process.exit(0);})().catch(()=>process.exit(1));
 });
 client.login(env.DISCORD_TOKEN).catch(error => {console.error('ログイン:',error.code ?? error.name);process.exitCode=1;});

@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {existsSync} from 'node:fs';
 import {mkdir,readFile,writeFile,rename,readdir,stat,unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {personalReading as validatePersonalReading} from './personal-readings.js';
 import {readingFor} from './readings.js';
 export function announcementText(name,words=[],personalReading=null) {
@@ -44,7 +45,7 @@ export async function synthesize(name,signal,words=[],personalReading=null) {
   const python=process.env.VOICEVOX_PYTHON || (existsSync('.voicevox-venv/bin/python')?resolve('.voicevox-venv/bin/python'):'python3');
   const wav=await new Promise((done,fail)=>{
     const combined=AbortSignal.any([signal,AbortSignal.timeout(60000)]);
-    const child=spawn(python,[resolve('scripts/synthesize.py')],{signal:combined,killSignal:'SIGKILL',stdio:['pipe','pipe','pipe'],env:{...process.env,OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1'}});
+    const child=spawn(python,[fileURLToPath(new URL('../scripts/synthesize.py',import.meta.url))],{signal:combined,killSignal:'SIGKILL',stdio:['pipe','pipe','pipe'],env:{...process.env,OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1'}});
     const chunks=[];let size=0,stderr='';
     child.on('error',fail);
     child.stdin.on('error',()=>{});

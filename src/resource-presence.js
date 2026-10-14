@@ -37,5 +37,5 @@ export function createResourcePresence(client,{sample=createResourceSampler(),ve
   }
   async function refresh(){if(stopped||busy||!client.isReady())return;busy=true;try{metrics=await sample();publish();}catch{onError();}finally{busy=false;}}
   function activity(){active++;activeUntil=Math.max(activeUntil,now()+5000);publish();let released=false;return ()=>{if(released)return;released=true;active=Math.max(0,active-1);publish();if(!active&&!stopped&&now()<activeUntil&&pending===undefined){pending=after(()=>{pending=undefined;publish();},activeUntil-now());pending?.unref?.();}};}
-  return {refresh,activity,async track(operation){const done=activity();try{return await operation();}finally{done();}},start(){if(!stopped)return;stopped=false;void refresh();timer=schedule(()=>void refresh(),30000);timer?.unref?.();},stop(){stopped=true;if(timer!==undefined)cancel(timer);if(pending!==undefined)cancelAfter(pending);timer=undefined;pending=undefined;}};
+  return {get activeCount(){return active;},refresh,activity,async track(operation){const done=activity();try{return await operation();}finally{done();}},start(){if(!stopped)return;stopped=false;void refresh();timer=schedule(()=>void refresh(),30000);timer?.unref?.();},stop(){stopped=true;if(timer!==undefined)cancel(timer);if(pending!==undefined)cancelAfter(pending);timer=undefined;pending=undefined;}};
 }
