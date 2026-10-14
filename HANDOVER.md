@@ -1,0 +1,67 @@
+# 開発・運用の引き継ぎ
+
+2026-10-14 時点。調査基準は `main` の `35520e121d7c156f880fa8bb2adcbbee105c7551`（v3.24.0）。
+この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
+
+## 更新先と検証
+
+- 正式な更新先は https://github.com/astraldao/astral_discord 。
+- 依頼された変更はこのリポジトリにコミットし、変更内容・検証結果・コミットを報告する。
+- 開発環境は Node.js 24.17.0 以上。検証前に `npm ci`、変更後に `npm run check` と `npm test` を実行する。
+- `npm run check` は構文とコード実行ポリシーの検査。開発依存の acorn が必要。
+- CI は `.github/workflows/check.yml`。Node.js 24 で依存導入・検査・テストを実行する。
+- 実機確認は自動テストと分けて記録する。Discordの表示・音声・Quaxlyの容量や接続はテストだけでは確認できない。
+
+## 構成
+
+| 役割 | 主なファイル |
+|---|---|
+| 起動・環境設定読込 | `index.js` |
+| Discord初期化・イベント・VC入室処理 | `src/index.js` |
+| コマンド登録 | `src/commands.js` |
+| 管理画面・設定・診断 | `src/admin.js`、`src/settings.js`、`src/diagnostics.js` |
+| 音声生成・再生・入室待ち | `src/speech.js`、`src/audio.js`、`src/queue.js` |
+| TRPG・キャラシ・卓セット | `src/trpg-store.js`、`src/trpg-ui.js`、`src/iachara.js` |
+| 伝助・予定表 | `src/densuke*.js`、`src/schedule-*.js`、`src/calendar-image.js` |
+| ゲーム・チップ台帳 | `src/blackjack*.js`、`src/casino*.js`、`src/game-wallets.js`、`src/chip-*.js` |
+| 自動更新・プロセス監督 | `scripts/auto-update.js`、`scripts/supervisor.js`、`src/update-lifecycle.js` |
+
+コマンドは `/vc`、管理者専用の `/admin`、`/game`、`/chips`。
+単一のDiscordサーバーを `GUILD_ID` で指定する。外部DBは使わずJSONへ保存する。
+
+## 起動と保存データ
+
+- 必須設定は `DISCORD_TOKEN` と `GUILD_ID`。`DENSUKE_EMAIL` はDiscordで宛先を設定するまでの予備値。
+- ローカルの起動入口は `npm start`。Quaxlyへの導入コマンドと音声環境の要件は [README.md](README.md) を参照する。
+- 音声は同じサーバー上のVOICEVOX Coreを利用する。Python 3.10以上など追加の実行環境が必要。
+- `data/settings.json`：VC・音声・辞書・伝助などの設定。
+- `data/personal-readings.json`：本人用の読み方。
+- `data/trpg.json`：卓・パネル・PCとTXTの控え。
+- `data/schedules.json`：予定表・予定・投稿情報。
+- `data/game-wallets.json`：チップ残高・履歴・集計・管理者調整記録。
+- `.env`、`data/`、音声環境、更新用の作業ファイルはGit管理対象外。トークンや実データをコミットしない。
+- データ形式を変える場合は旧データからの移行と復元を確認する。チップ台帳v2を旧版へ戻す際は対応する旧データも必要。
+
+## mainへの反映と自動更新
+
+自動更新対応の起動方式を導入した環境では、標準で `main` を300秒ごとに確認する。
+`ASTRAL_AUTO_UPDATE=0` で無効化、`ASTRAL_UPDATE_INTERVAL` は60〜3600秒。
+本番で有効かどうかは起動ログ・設定を別途確認する。
+
+新しいコミットはSHAを固定して取得し、構文と構成を検証して準備する。
+操作やゲームの終了を待ち、保存データの控えを作成してワーカーを切り替える。
+新版が90秒以内に準備完了しない場合はデータと旧版へ戻り、同じ失敗SHAは再適用しない。
+実装上、この準備処理はCIの成功を確認せず、`npm test` も実行しないため、mainへ反映する前の検証が必要。
+
+VOICEVOX環境と常駐する監督プロセス自体の刷新は通常のワーカー更新とは別に扱う。
+更新後は稼働SHA・バージョン、`/admin → 動作診断`、変更した機能を確認する。
+診断画面は音声の生成・再生やVC接続を試験しない。
+
+## 引き継ぎ時点の確認状況
+
+- リポジトリの読み取り・書き込み権限を確認済み。
+- v3.24.0の [CI実行](https://github.com/astraldao/astral_discord/actions/runs/38576162443) は `npm ci` の `ECONNRESET` で失敗。コード検査とテストはスキップされており、コード不具合の有無はこの実行から判断できない。
+- 本番のQuaxly接続情報・Discordトークンはこの作業環境に設定されていない。本番の稼働版、音声、実画面、保存データは未確認。
+- 通常のgit cloneは作業環境のプロキシ接続エラーで失敗したため、調査にはGitHub連携を利用した。手元の取得ファイルは完全なcloneではない。
+
+詳細な利用方法は [README.md](README.md)、既存の仕様と経緯は [ROADMAP.md](ROADMAP.md)、権限・公開範囲・外部取得の制約は [SECURITY.md](SECURITY.md) を参照する。
