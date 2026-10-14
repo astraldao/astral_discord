@@ -2,11 +2,13 @@
 from PIL import Image,ImageDraw,ImageFont
 from pathlib import Path
 import json,zlib,base64
+from art_palette import compact_art
 root=Path(__file__).resolve().parent.parent
 font='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 def f(n):return ImageFont.truetype(font,n)
 chunks=[]
 def pack(im):
+ im=im.resize((round(im.width*0.6),round(im.height*0.6)),Image.Resampling.LANCZOS)
  offset=sum(map(len,chunks));chunks.append(im.tobytes());return {'w':im.width,'h':im.height,'offset':offset}
 base=Image.new('RGBA',(800,280),'#121b2a');d=ImageDraw.Draw(base);d.rounded_rectangle((16,16,784,264),24,fill='#19263a',outline='#30435a',width=2)
 slots=[]
@@ -60,5 +62,5 @@ for i in range(4):
  for x in range(704,728,8):
   for yy in range(y+2,y+42,8):p.rectangle((x,yy,x+7,yy+7),fill='#c0cbd9' if (x//8+yy//8)%2==0 else '#3e526d')
 art['track']=pack(track)
-art['pixels']=base64.b64encode(zlib.compress(b''.join(chunks),9)).decode();(root/'assets/casino-art.json').write_text(json.dumps(art,separators=(',',':')))
+art['scale']=0.6;art=compact_art(art,chunks);(root/'assets/casino-art.json').write_text(json.dumps(art,separators=(',',':')))
 print((root/'assets/casino-art.json').stat().st_size)

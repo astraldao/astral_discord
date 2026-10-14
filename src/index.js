@@ -11,6 +11,7 @@ import {readFile} from 'node:fs/promises';
 import {createDiagnostics} from './diagnostics.js';
 import {createAdminController} from './admin.js';
 import {createPanelRefresher} from './panel.js';
+import {createResourcePresence,updateProfileVersion} from './resource-presence.js';
 import {InteractionLimits} from './limits.js';
 import {createDensukeController} from './densuke-ui.js';
 import {PersonalReadingsStore} from './personal-readings.js';
@@ -31,7 +32,9 @@ await settings.load();
 const personalReadings=await new PersonalReadingsStore('data/personal-readings.json').load();
 const trpgStore=await new TrpgStore('data/trpg.json').load();
 const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates],presence:{status:'idle'}});
+const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
+const resourcePresence=createResourcePresence(client,{version:botVersion});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
@@ -60,7 +63,7 @@ async function validate(job) {
   return {member, channel};
 }
 async function run(job) {
-  job.started=true;
+  job.started=true;const finishActivity=resourcePresence.activity();
   let audio, notice,phase='validation';
   try {
     const c=job.config;
@@ -113,8 +116,7 @@ async function run(job) {
     await status(job,'✧  入室を中止',job.abort.signal.aborted ? job.abort.signal.reason?.message??'入室をキャンセルしました。' : error instanceof EntryError ? error.message : failures[phase]??'行き先や権限を確認して、もう一度選んでください。',[openButton()],'error');
     if(!job.abort.signal.aborted)console.error('入室処理:',phase,error.code ?? error.name);
   } finally {
-    audio?.close();
-    if (pending.get(job.userId) === job) pending.delete(job.userId);
+    try{audio?.close();}finally{finishActivity();if(pending.get(job.userId)===job)pending.delete(job.userId);}
   }
 }
 async function choose(interaction,page=0) {
@@ -158,12 +160,13 @@ client.once('clientReady', async () => {
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
-    client.user.setActivity('/vc · 入室先を選ぶ');
+    resourcePresence.start();
+    void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
-    await refreshPanel(false).catch(()=>console.warn('入室パネルを更新できませんでした。/admin の「入室パネル」から更新してください。'));
-    const panels=await trpg.refreshPanels();
+    await resourcePresence.track(()=>refreshPanel(false)).catch(()=>console.warn('入室パネルを更新できませんでした。/admin の「入室パネル」から更新してください。'));
+    const panels=await resourcePresence.track(()=>trpg.refreshPanels());
     if(panels.failed)console.warn(`キャラシパネルの更新に失敗: ${panels.failed}件。設置先の権限・メッセージを確認してください。`);
-  } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); client.destroy(); process.exitCode = 1;}
+  } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); resourcePresence.stop();client.destroy(); process.exitCode = 1;}
 });
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
@@ -171,6 +174,7 @@ client.on('interactionCreate', async interaction => {
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
   const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|forum|bj|casino|chips|work|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
+  let finishActivity=()=>{};
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
     if(!cancellation) {
@@ -180,6 +184,7 @@ client.on('interactionCreate', async interaction => {
         return;
       }
     }
+    finishActivity=resourcePresence.activity();
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
@@ -216,7 +221,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);
-  }
+  }finally{finishActivity();}
 });
 client.on('voiceStateUpdate',(before,after) => {
   if (!ready || after.guild.id !== guild.id || after.member?.user.bot || before.channelId === after.channelId) return;
@@ -229,11 +234,11 @@ client.on('voiceStateUpdate',(before,after) => {
     if(!job.started)void status(job,'✧  予約を取り消しました',job.abort.signal.reason.message,[openButton()]);
   }
   if (c.enforce && c.lobbyId && c.targetIds.includes(after.channelId) && after.channelId !== c.lobbyId) {
-    after.setChannel(c.lobbyId,'予告付き入室にはロビーをご利用ください').catch(error => console.error('ロビー移動:',error.code ?? error.name));
+    resourcePresence.track(()=>after.setChannel(c.lobbyId,'予告付き入室にはロビーをご利用ください')).catch(error => console.error('ロビー移動:',error.code ?? error.name));
   }
 });
 client.on('error',error => console.error('Discord接続:',error.code ?? error.name));
 for (const signal of ['SIGTERM','SIGINT']) process.once(signal,() => {
-  stopping = true; for (const job of pending.values()) job.abort.abort(); client.destroy();
+  stopping = true;resourcePresence.stop(); for (const job of pending.values()) job.abort.abort(); client.destroy();
 });
 client.login(env.DISCORD_TOKEN).catch(error => {console.error('ログイン:',error.code ?? error.name);process.exitCode=1;});

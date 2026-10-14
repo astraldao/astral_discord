@@ -2,12 +2,14 @@
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import json,zlib,base64
+from art_palette import compact_art
 ROOT=Path(__file__).resolve().parent.parent
 font='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 bold='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 def f(n,b=False):return ImageFont.truetype(bold if b else font,n)
 chunks=[]
 def pack(im):
+ im=im.resize((round(im.width*0.6),round(im.height*0.6)),Image.Resampling.LANCZOS)
  offset=sum(len(c) for c in chunks);chunks.append(im.tobytes());return {'w':im.width,'h':im.height,'offset':offset}
 base=Image.new('RGBA',(800,440),'#121b2a');d=ImageDraw.Draw(base)
 d.rounded_rectangle((16,16,784,424),radius=24,fill='#19263a',outline='#30435a',width=2)
@@ -29,5 +31,5 @@ scores=[]
 for n in range(32):
  im=Image.new('RGBA',(100,66));p=ImageDraw.Draw(im);p.rounded_rectangle((0,0,99,65),radius=16,fill='#253a50');p.text((50,30),str(n),font=f(32,True),fill='#e7edf5',anchor='mm');scores.append(pack(im))
 im=Image.new('RGBA',(100,66));p=ImageDraw.Draw(im);p.rounded_rectangle((0,0,99,65),radius=16,fill='#253a50');p.text((50,30),'?',font=f(32,True),fill='#a5b5c8',anchor='mm');scores.append(pack(im))
-art={'base':pack(base),'cards':cards,'scores':scores};art['pixels']=base64.b64encode(zlib.compress(b''.join(chunks),9)).decode();(ROOT/'assets/blackjack-art.json').write_text(json.dumps(art,separators=(',',':')))
+art={'base':pack(base),'cards':cards,'scores':scores};art['scale']=0.6;art=compact_art(art,chunks);(ROOT/'assets/blackjack-art.json').write_text(json.dumps(art,separators=(',',':')))
 print((ROOT/'assets/blackjack-art.json').stat().st_size)
