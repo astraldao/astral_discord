@@ -68,7 +68,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
     description+='\n\n**入室の設定** · VC・音声・入室パネル\n**卓の準備** · 日程調整・ベース卓・キャラシ\n**ゲーム** · チップの確認・調整';
-    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ'),button(s,'open-forum','投稿タグ')),row(button(s,'nav-overview','設定を確認'),button(s,'diagnose','動作診断'),button(s,'open-chips','チップ管理'))];
+    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ'),button(s,'open-forum','投稿タグ'),button(s,'open-schedule','予定表')),row(button(s,'nav-overview','設定を確認'),button(s,'diagnose','動作診断'),button(s,'open-chips','チップ管理'))];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
@@ -116,7 +116,7 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
   const sessions=new AdminSessions();
   const screen=(s,note='')=>s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note);
   async function validateChannel(action,value) {
@@ -151,6 +151,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       const [,id,action,token]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
+      if(action==='open-schedule'){if(!openSchedule)throw new Error('予定表を利用できません。');await openSchedule(interaction);return;}
       if(action==='open-chips'){if(!openChips)throw new Error('チップ管理を利用できません。');await openChips(interaction);return;}
       if(action==='open-densuke'){if(!openDensuke)throw new Error('日程調整を利用できません。');await openDensuke(interaction);return;}
       if(action==='open-forum'){if(!openForum)throw new Error('投稿タグを利用できません。');await openForum(interaction);return;}

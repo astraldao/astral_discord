@@ -18,6 +18,8 @@ import {PersonalReadingsStore} from './personal-readings.js';
 import {createForumTagsController} from './forum-tags.js';
 import {createChipTools} from './chip-tools.js';
 import {GameWalletStore} from './game-wallets.js';
+import {ScheduleStore} from './schedule-store.js';
+import {createScheduleController} from './schedule-ui.js';
 import {createFourController} from './four-ui.js';
 import {createChipAccountController} from './chip-account-ui.js';
 import {createRpsController} from './rps-ui.js';
@@ -34,6 +36,7 @@ const settings=new SettingsStore('data/settings.json',{version:1,lobbyId:null,ta
 await settings.load();
 const personalReadings=await new PersonalReadingsStore('data/personal-readings.json').load();
 const trpgStore=await new TrpgStore('data/trpg.json').load();
+const scheduleStore=await new ScheduleStore('data/schedules.json').load();
 const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates],presence:{status:'idle'}});
 const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
@@ -41,7 +44,7 @@ const resourcePresence=createResourcePresence(client,{version:botVersion});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,admin,densuke,trpg,profile,blackjack,casino,rps,four,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -157,6 +160,7 @@ client.once('clientReady', async () => {
     await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
     forumTags=createForumTagsController({guild});
+    schedule=createScheduleController({guild,store:scheduleStore});
     chipAccount=createChipAccountController({guild,wallet:gameWallets});
     four=createFourController({guild});
     rps=createRpsController({guild});
@@ -165,11 +169,13 @@ client.once('clientReady', async () => {
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),diagnose:createDiagnostics({settings,guild,version:JSON.parse(await readFile('package.json','utf8')).version,pendingCount:()=>pending.size})});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = true; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
     await resourcePresence.track(()=>refreshPanel(false)).catch(()=>console.warn('入室パネルを更新できませんでした。/admin の「入室パネル」から更新してください。'));
+    const schedulePanels=await resourcePresence.track(()=>schedule.refresh());
+    if(schedulePanels.failed)console.warn(`予定表の更新に失敗: ${schedulePanels.failed}件。管理画面から投稿情報を確認してください。`);
     const panels=await resourcePresence.track(()=>trpg.refreshPanels());
     if(panels.failed)console.warn(`キャラシパネルの更新に失敗: ${panels.failed}件。設置先の権限・メッセージを確認してください。`);
   } catch (error) {console.error('初期設定:', error instanceof EntryError ? error.message : error.code ?? error.name); resourcePresence.stop();client.destroy(); process.exitCode = 1;}
@@ -178,7 +184,7 @@ client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const command = interaction.isChatInputCommand() && ['vc','admin','game','chips'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|forum|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   let finishActivity=()=>{};
   try {
@@ -195,7 +201,7 @@ client.on('interactionCreate', async interaction => {
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
-      if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
+      if(adminComponent && interaction.customId.startsWith('schedule:'))await schedule.handle(interaction);else if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
