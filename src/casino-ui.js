@@ -1,5 +1,6 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {wagerRow,wagerChoice,chipDelta} from './game-ui.js';
+import {cardName} from './blackjack.js';
 import {GameSessions} from './game-sessions.js';
 import {payload} from './ui.js';
 import {casinoKinds,casinoChoices,winningPayout,drawRank,rankName,animals,casinoNames} from './casino.js';
@@ -10,15 +11,15 @@ export {casinoNames} from './casino.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`casino:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 const home=()=>new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary);
-const labels={spin:'スピン',red:'赤',black:'黒',odd:'奇数',even:'偶数',lower:'1〜18',upper:'19〜36',low:'7未満',seven:'ちょうど7',high:'7超え',higher:'高い',same:'同じ',...Object.fromEntries(animals.map((n,i)=>[`animal${i}`,n]))};
+const labels={player:'プレイヤー',banker:'バンカー',tie:'引き分け',spin:'スピン',red:'赤',black:'黒',odd:'奇数',even:'偶数',lower:'1〜18',upper:'19〜36',low:'7未満',seven:'ちょうど7',high:'7超え',higher:'高い',same:'同じ',...Object.fromEntries(animals.map((n,i)=>[`animal${i}`,n]))};
 const label=(kind,choice)=>kind==='highlow'&&choice==='lower'?'低い':labels[choice];
 const symbols=['★','♥','♦','♣','♠','7'];
 const format=n=>n.toLocaleString('ja-JP');
 const signed=chipDelta;
-const instructions={slots:'同じ絵柄が3つで20倍、2つで1倍。それ以外は0です。\n6種類の絵柄を1つずつ独立に抽選します。',roulette:'赤・黒・奇数・偶数・1〜18・19〜36のどれかを予想。当たれば2倍。0はすべての予想で外れです。\n0〜36の37個から同じ確率で抽選します。',dice:'サイコロ2個の合計を予想。7未満・7超えは2.3倍、ちょうど7は5.8倍。\n1〜6を独立に抽選します。',highlow:'次のカードが基準より高い・同じ・低いかを予想します。\n**A=1、J=11、Q=12、K=13**。1〜13を毎回同じ確率で抽選し、同じ数字も出ます。次の基準は今回出たカードです。\n払い戻しは当たりやすさに応じて変化し、各ボタンに合計枚数を表示。端数は切り捨てます。当たる可能性がない選択はできません。',race:'4匹の中から1着になる動物を選びます。当たれば3.9倍。\n全24通りの着順を同じ確率で抽選するため、どの動物も1着の確率は25%です。1人で遊ぶレースです。'};
+const instructions={baccarat:'プレイヤー・バンカー・引き分けを予想します。各ラウンドで8組のトランプから重複なく配り、追加カードは自動で決まります。Aは1、10・J・Q・Kは0。合計の一の位が9に近い側の勝ちです。\nプレイヤー勝利は2倍、バンカー勝利は2倍（6点で勝つと1.5倍）、引き分け予想の的中は9倍。引き分け時はプレイヤー・バンカー予想の掛けチップを返します。',slots:'同じ絵柄が3つで20倍、2つで1倍。それ以外は0です。\n6種類の絵柄を1つずつ独立に抽選します。',roulette:'赤・黒・奇数・偶数・1〜18・19〜36のどれかを予想。当たれば2倍。0はすべての予想で外れです。\n0〜36の37個から同じ確率で抽選します。',dice:'サイコロ2個の合計を予想。7未満・7超えは2.3倍、ちょうど7は5.8倍。\n1〜6を独立に抽選します。',highlow:'次のカードが基準より高い・同じ・低いかを予想します。\n**A=1、J=11、Q=12、K=13**。1〜13を毎回同じ確率で抽選し、同じ数字も出ます。次の基準は今回出たカードです。\n払い戻しは当たりやすさに応じて変化し、各ボタンに合計枚数を表示。端数は切り捨てます。当たる可能性がない選択はできません。',race:'4匹の中から1着になる動物を選びます。当たれば3.9倍。\n全24通りの着順を同じ確率で抽選するため、どの動物も1着の確率は25%です。1人で遊ぶレースです。'};
 function resultText(r){
   if(!r)return '';
-  const outcome=r.kind==='slots'?r.outcome==='triple'?'3つ揃いました！':r.outcome==='pair'?'2つ揃いました':'今回は揃いませんでした':r.kind==='roulette'?`${r.values[0]} · ${r.outcome==='red'?'赤':r.outcome==='black'?'黒':'緑'}`:r.kind==='dice'?`合計 ${r.values[0]+r.values[1]}`:r.kind==='highlow'?`${rankName(r.values[0])} → ${rankName(r.values[1])} · ${label('highlow',r.outcome)}`:r.values.map((n,i)=>`${i+1}着 ${animals[n]}`).join(' · ');
+  const outcome=r.kind==='baccarat'?`プレイヤー ${r.playerTotal}点 · バンカー ${r.bankerTotal}点\n${label(r.kind,r.outcome)}${r.outcome==='tie'?'':'の勝ち'}`:r.kind==='slots'?r.outcome==='triple'?'3つ揃いました！':r.outcome==='pair'?'2つ揃いました':'今回は揃いませんでした':r.kind==='roulette'?`${r.values[0]} · ${r.outcome==='red'?'赤':r.outcome==='black'?'黒':'緑'}`:r.kind==='dice'?`合計 ${r.values[0]+r.values[1]}`:r.kind==='highlow'?`${rankName(r.values[0])} → ${rankName(r.values[1])} · ${label('highlow',r.outcome)}`:r.values.map((n,i)=>`${i+1}着 ${animals[n]}`).join(' · ');
   return `**${outcome}**\n${r.kind==='slots'?'':`予想 ${label(r.kind,r.choice)} · `}掛け ${format(r.bet)} → 払い戻し ${format(r.payout)} · **${signed(r.delta)}**`;
 }
 export function casinoScreen(s,note='',{retained}={}){
@@ -30,9 +31,9 @@ export function casinoScreen(s,note='',{retained}={}){
   }
   components.push(row(button(s,'rules','遊び方・配当'),...(s.balance<s.bet?[button(s,'refresh','残高を更新')]:[]),...(s.balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Secondary)]:[]),home()));
   const prompt=s.kind==='highlow'?`**基準カード ${rankName(s.card)}** · 次の大小を予想`:s.kind==='race'?'1着になる動物を選ぶ':s.kind==='slots'?'絵柄を揃える':'予想を選ぶ';
-  const description=`${note?`${note}\n\n`:''}**残高 ${format(s.balance)} チップ**${s.balance<10?'\n無料のお手伝いでチップを獲得できます。':s.balance<s.bet?'\n残高以内の掛けチップに変更してください。':''}\n\n${prompt}\n${format(s.bet)}チップで開始${s.kind==='slots'?' · 3つ一致20倍 / 2つ一致1倍':' · ボタンの枚数は当選時の払い戻し'}${r?`\n\n${resultText(r)}`:''}`;
+  const description=`${note?`${note}\n\n`:''}**残高 ${format(s.balance)} チップ**${s.balance<10?'\n無料のお手伝いでチップを獲得できます。':s.balance<s.bet?'\n残高以内の掛けチップに変更してください。':''}\n\n${prompt}\n${format(s.bet)}チップで開始${s.kind==='slots'?' · 3つ一致20倍 / 2つ一致1倍':' · ボタンの枚数は当選時の払い戻し'}${s.kind==='baccarat'?'\nバンカー6点勝利は1.5倍 · 同点時は両側の掛けを返却':''}${r?`\n\n${resultText(r)}`:''}`;
   const m=payload(`✦  ${casinoNames[s.kind]}`,description,{state:r?.delta>0?'success':'normal',components});
-  const alt=r?r.kind==='slots'?`スロット: ${r.values.map(n=>symbols[n]).join('・')}`:r.kind==='dice'?`ダイス: ${r.values.join('と')}。合計 ${r.values[0]+r.values[1]}`:r.kind==='highlow'?`前のカード${rankName(r.values[0])}、次の基準${rankName(s.card)}`:r.kind==='race'?r.values.map((n,i)=>`${i+1}着${animals[n]}`).join('、'):`ルーレット: ${r.values[0]}、${r.outcome==='red'?'赤':r.outcome==='black'?'黒':'緑'}`:s.kind==='highlow'?`基準カード${rankName(s.card)}。次のカードは未抽選です。`:s.kind==='race'?'ウサギ、ネコ、ニワトリ、カメがスタート前に並んでいます。':'抽選前のゲーム画面';
+  const alt=r?r.kind==='baccarat'?`プレイヤー: ${r.player.map(cardName).join("・")} (${r.playerTotal}点)。バンカー: ${r.banker.map(cardName).join("・")} (${r.bankerTotal}点)。${label(r.kind,r.outcome)}`:r.kind==='slots'?`スロット: ${r.values.map(n=>symbols[n]).join('・')}`:r.kind==='dice'?`ダイス: ${r.values.join('と')}。合計 ${r.values[0]+r.values[1]}`:r.kind==='highlow'?`前のカード${rankName(r.values[0])}、次の基準${rankName(s.card)}`:r.kind==='race'?r.values.map((n,i)=>`${i+1}着${animals[n]}`).join('、'):`ルーレット: ${r.values[0]}、${r.outcome==='red'?'赤':r.outcome==='black'?'黒':'緑'}`:s.kind==='highlow'?`基準カード${rankName(s.card)}。次のカードは未抽選です。`:s.kind==='race'?'ウサギ、ネコ、ニワトリ、カメがスタート前に並んでいます。':'抽選前のゲーム画面';
   return gameImage(m,{name:'casino.png',description:alt,render:()=>casinoImage(s.kind,r,{card:s.card}),retained});
 }
 export function casinoRules(s){return payload(`✦  ${casinoNames[s.kind]}の遊び方`,`${instructions[s.kind]}\n\n**払い戻しは掛けチップを含む合計**です。例えば10チップで2倍なら20が戻り、残高は10増えます。\n\n初期残高は3,000チップ。全ゲームで共通し、再起動後も保持されます。画面を開くだけではチップを消費しません。`,{components:[row(button(s,'resume','ゲームに戻る',ButtonStyle.Primary),home())]});}

@@ -1,9 +1,11 @@
+import {baccaratImage} from './blackjack-art.js';
 import {loadArt} from './art-assets.js';
 import {blit,encodePng} from './sprite-image.js';
 const {data,decode,png}=loadArt(new URL('../assets/casino-art.json',import.meta.url));
 const at=n=>Math.round(n*data.scale);
 const base=decode(data.base),waiting=decode(data.waiting),slots=data.slots.map(decode),dice=data.dice.map(decode),numbers=data.numbers.map(decode),highlight=decode(data.highlight),cards=data.cards.map(decode),highlowBase=decode(data.highlowBase),highlowReadyBase=decode(data.highlowReadyBase),track=decode(data.track),animals=data.animals.map(decode);
 export function casinoImage(kind,result,{card}={}){
+  if(kind==='baccarat')return baccaratImage(result);
   const frame=kind==='race'?track:kind==='highlow'?(result?highlowBase:highlowReadyBase):base,pixels=Buffer.from(frame.pixels);
   const draw=(s,x,y=48)=>blit(pixels,frame.w,s,at(x),at(y));
   if(kind==='race'){

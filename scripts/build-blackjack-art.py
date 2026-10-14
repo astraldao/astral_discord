@@ -31,5 +31,8 @@ scores=[]
 for n in range(32):
  im=Image.new('RGBA',(100,66));p=ImageDraw.Draw(im);p.rounded_rectangle((0,0,99,65),radius=16,fill='#253a50');p.text((50,30),str(n),font=f(32,True),fill='#e7edf5',anchor='mm');scores.append(pack(im))
 im=Image.new('RGBA',(100,66));p=ImageDraw.Draw(im);p.rounded_rectangle((0,0,99,65),radius=16,fill='#253a50');p.text((50,30),'?',font=f(32,True),fill='#a5b5c8',anchor='mm');scores.append(pack(im))
-art={'base':pack(base),'cards':cards,'scores':scores};art['scale']=0.6;art=compact_art(art,chunks);(ROOT/'assets/blackjack-art.json').write_text(json.dumps(art,separators=(',',':')))
+baccarat=base.copy();p=ImageDraw.Draw(baccarat)
+for y,label in [(38,'BANKER'),(246,'PLAYER')]:
+ p.rectangle((39,y,230,y+23),fill='#19263a');p.text((40,y),label,font=f(17,True),fill='#afbdd1')
+art={'base':pack(base),'baccaratBase':pack(baccarat),'cards':cards,'scores':scores};art['scale']=0.6;art=compact_art(art,chunks);(ROOT/'assets/blackjack-art.json').write_text(json.dumps(art,separators=(',',':')))
 print((ROOT/'assets/blackjack-art.json').stat().st_size)
