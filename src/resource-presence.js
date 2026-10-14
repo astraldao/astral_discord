@@ -24,8 +24,7 @@ const percent=n=>Number.isFinite(n)&&n>=0?`${n.toFixed(1)}%`:'計測中';
 export const resourceStatus=sample=>`CPU ${percent(sample.cpuPercent)} · MEM ${percent(sample.memoryPercent)}`;
 export function profileVersion(description,version){
   if(!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version))throw new Error('バージョンが不正です。');
-  const body=String(description??'').split(/\r?\n/).filter(line=>!/^ASTRAL · v\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(line)).join('\n').trimEnd();
-  const result=`${body?`${body}\n\n`:''}ASTRAL · v${version}`;
+  const result=`Made by Astral ・v${version}`;
   return result.length<=400?result:null;
 }
 export async function updateProfileVersion(application,version){const current=await application.fetch(),description=profileVersion(current.description,version);if(description===null)return false;if(description!==current.description)await application.edit({description});return true;}
