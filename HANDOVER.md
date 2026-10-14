@@ -26,7 +26,8 @@
 | ゲーム・チップ台帳 | `src/blackjack*.js`、`src/casino*.js`、`src/game-wallets.js`、`src/chip-*.js` |
 | 自動更新・プロセス監督 | `scripts/auto-update.js`、`scripts/supervisor.js`、`src/update-lifecycle.js` |
 
-コマンドは `/vc`、管理者専用の `/admin`、`/game`、`/chips`。
+現行コマンドは `/vc`（入室）、`/game`（ゲーム・チップ）、管理者専用の `/admin`。
+v3.24.1で `/chips` を `/game → 自分のチップ` に統合した。
 単一のDiscordサーバーを `GUILD_ID` で指定する。外部DBは使わずJSONへ保存する。
 
 ## 起動と保存データ
