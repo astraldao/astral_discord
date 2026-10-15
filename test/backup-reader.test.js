@@ -9,11 +9,11 @@ const wave=()=>{const b=Buffer.alloc(44+12000);b.write('RIFF');b.writeUInt32LE(b
 const tick=()=>new Promise(r=>setImmediate(r));
 function i(action,user='owner',channelId='text'){return {user:{id:user},channelId,options:{getSubcommand:()=>action},replies:[],async deferReply(){this.deferred=true;},async editReply(p){this.replies.push(p);},async reply(p){this.replies.push(p);}};}
 async function fixture(options={}){
-  let allowed=true,time=0,workerClosed=0,voiceClosed=0;const spoken=[],notice={async edit(){}};
-  const reader=createBackupReader({guild:{id:'guild'},enabled:true,now:()=>time,resolveTargets:async()=>({text:{send:async()=>notice},voice:{id:'voice'}}),authorize:async()=>{if(!allowed)throw new Error('permission');},canControl:async(i,s)=>{if(i.user.id!==s.owner)throw new Error('owner');},worker:()=>({ready:Promise.resolve(),stream:async(text,signal,onChunk)=>{spoken.push(text);onChunk(wave());},close:()=>workerClosed++}),speaker:async()=>({healthy:()=>true,play:async(_,o)=>{time+=100;o.onStart();},close:()=>voiceClosed++}),...options});
+  let allowed=true,time=0,workerClosed=0,voiceClosed=0;const spoken=[],played=[],notice={async edit(){}};
+  const reader=createBackupReader({guild:{id:'guild'},enabled:true,now:()=>time,resolveTargets:async()=>({text:{send:async()=>notice},voice:{id:'voice'}}),authorize:async()=>{if(!allowed)throw new Error('permission');},canControl:async(i,s)=>{if(i.user.id!==s.owner)throw new Error('owner');},worker:()=>({ready:Promise.resolve(),stream:async(text,signal,onChunk)=>{spoken.push(text);onChunk(wave());},close:()=>workerClosed++}),speaker:async()=>({healthy:()=>true,play:async(source,o)=>{played.push(source);time+=100;o.onStart();},close:()=>voiceClosed++}),...options});
   await reader.handle(i('start'));assert.equal(reader.state?.ready,true);
   const message=(content,extra={})=>reader.onMessage({guildId:'guild',channelId:'text',content,author:{bot:false},...extra});
-  return {reader,message,spoken,setTime:n=>time=n,deny:()=>allowed=false,workerClosed:()=>workerClosed,voiceClosed:()=>voiceClosed};
+  return {reader,message,spoken,played,setTime:n=>time=n,deny:()=>allowed=false,workerClosed:()=>workerClosed,voiceClosed:()=>voiceClosed};
 }
 test('backup text reads 50 code points plus 以下略, preserves surrogate pairs and normalizes control whitespace',()=>{
   assert.equal(backupText('あ'.repeat(50)),'あ'.repeat(50));assert.equal(backupText('あ'.repeat(51)),'あ'.repeat(50)+'以下略');assert.equal(Array.from(backupText('🪐'.repeat(51))).length,53);assert.equal(backupText(' Ａ\n\tＢ '),'A B');assert.equal(backupText('   '),'');
@@ -27,7 +27,7 @@ test('messages finish in order without interruption and latency includes waiting
   f.message('最初の文章');await tick();f.message('次の文章');for(let n=0;n<12;n++)f.message('後続'+n);assert.ok(f.reader.state.queue.length<=8);assert.ok(f.reader.state.metrics.dropped>0);assert.deepEqual(f.spoken,['最初の文章']);f.setTime(700);release();await f.reader.idle();assert.equal(f.spoken[1],'次の文章');assert.ok(f.reader.state.metrics.overBudget>0);await f.reader.close();
 });
 test('foreign stop is refused, lost permissions stop without speaking and owner voice departure stops immediately',async()=>{
-  const f=await fixture();await f.reader.handle(i('stop','other'));assert.equal(f.reader.active,true);f.deny();f.message('読まない');await f.reader.idle();assert.equal(f.reader.active,false);assert.deepEqual(f.spoken,[]);
+  const f=await fixture();await f.reader.handle(i('stop','other'));assert.equal(f.reader.active,true);f.deny();f.message('読まない');await f.reader.idle();assert.equal(f.reader.active,false);assert.deepEqual(f.played,[]);
   const g=await fixture();await g.reader.onVoiceChange({channelId:'voice'},{id:'owner',channelId:null,guild:{id:'guild'}});assert.equal(g.reader.active,false);assert.equal(g.workerClosed(),1);
 });
 test('disabled feature, active announcement and concurrent starts never acquire two voice connections',async()=>{
@@ -59,14 +59,57 @@ test('streamed segments arrive before synthesis completes and malformed order fa
 test('real channel checks refuse threads and unreadable listeners, and recheck access before speaking',async()=>{
   let guestAllowed=false,starts=0,spoken=0,sourceType=ChannelType.GuildText;
   const owner={id:'owner',user:{bot:false},voice:{channelId:'voice'},permissions:{has:()=>false}},guest={id:'guest',user:{bot:false}},bot={id:'bot',user:{bot:true},voice:{serverMute:false}};
-  const text={id:'text',get type(){return sourceType;},permissionsFor:member=>({has:()=>member.id!=='guest'||guestAllowed}),send:async()=>({edit:async()=>{}})};
+  let latestBot=bot;
+  const text={id:'text',get type(){return sourceType;},permissionsFor:member=>({has:()=>member.canRead!==false&&(member.id!=='guest'||guestAllowed)}),send:async()=>({edit:async()=>{}})};
   // Lobby moves can admit a member without the direct Connect permission.
   const voice={id:'voice',type:ChannelType.GuildVoice,members:new Map([['owner',owner],['guest',guest],['bot',bot]]),permissionsFor:member=>({has:permission=>member.id!=='owner'||permission===P.ViewChannel})};owner.voice.channel=voice;
-  const fetched=[],guild={id:'guild',channels:{fetch:async id=>id==='text'?text:voice},members:{me:bot,fetchMe:async()=>bot,fetch:async options=>{assert.equal(options.force,true);fetched.push(options.user);return {owner,guest,bot}[options.user];}}};
-  const reader=createBackupReader({guild,enabled:true,worker:()=>{starts++;return {ready:Promise.resolve(),stream:async(_,__,chunk)=>{spoken++;chunk(wave());},close(){}};},speaker:async()=>({healthy:()=>true,play:async(_,o)=>o.onStart(),close(){}})});
+  const fetched=[],guild={id:'guild',channels:{fetch:async id=>id==='text'?text:voice},members:{me:bot,fetchMe:async()=>latestBot,fetch:async options=>{assert.equal(options.force,true);fetched.push(options.user);return {owner,guest,bot}[options.user];}}};
+  const reader=createBackupReader({guild,enabled:true,worker:()=>{starts++;return {ready:Promise.resolve(),stream:async(_,__,chunk)=>chunk(wave()),close(){}};},speaker:async()=>({healthy:()=>true,play:async(_,o)=>{spoken++;o.onStart();},close(){}})});
   await reader.handle(i('start'));assert.equal(reader.active,false);assert.equal(starts,0);
   guestAllowed=true;sourceType=ChannelType.PublicThread;await reader.handle(i('start'));assert.equal(reader.active,false);assert.equal(starts,0);
   sourceType=ChannelType.GuildText;await reader.handle(i('start'));assert.equal(reader.state.ready,true);assert.equal(starts,1);assert.ok(fetched.includes('guest'));
   guestAllowed=false;reader.onMessage({guildId:'guild',channelId:'text',content:'非公開の文章',author:{bot:false}});await reader.idle();assert.equal(reader.active,false);assert.equal(spoken,0);
   guestAllowed=true;await reader.handle(i('start'));assert.equal(reader.active,true);await reader.onVoiceChange({channelId:'voice'},{id:'bot',channelId:null,guild});assert.equal(reader.active,false);
+  await reader.handle(i('start'));latestBot={...bot,canRead:false};reader.onMessage({guildId:'guild',channelId:'text',content:'権限が失効した本文',author:{bot:false}});await reader.idle();assert.equal(reader.active,false);assert.equal(spoken,0);
+});
+
+test('old stop buttons cannot end a replacement session and a fresh stop still verifies its owner',async()=>{
+  const f=await fixture(),old=f.reader.state.id;
+  await f.reader.handle(i('stop'));await f.reader.handle(i('start'));const current=f.reader.state.id;assert.notEqual(old,current);
+  const click=(id,user='owner')=>Object.assign(i('unused',user),{customId:id});
+  for(const id of ['read:stop',`read:stop:${old}`]){await f.reader.handle(click(id));assert.equal(f.reader.state.id,current);}
+  await f.reader.handle(click(`read:stop:${current}`,'other'));assert.equal(f.reader.state.id,current);
+  await f.reader.handle(click(`read:stop:${current}`));assert.equal(f.reader.active,false);
+  await f.reader.handle(click('read:start'));assert.equal(f.reader.state.ready,true);await f.reader.close();
+});
+test('preparation exposes a stop action and late warmup completion cannot revive a canceled session',async()=>{
+  let warm,closed=0,notice=0;
+  const reader=createBackupReader({guild:{id:'guild'},enabled:true,resolveTargets:async()=>({text:{send:async()=>{notice++;}},voice:{id:'voice'}}),authorize:async()=>{},canControl:async()=>{},worker:()=>({ready:new Promise(r=>warm=r),close:()=>closed++}),speaker:async()=>({close(){}})});
+  const start=i('start'),task=reader.handle(start);await tick();
+  const screen=JSON.stringify(start.replies);assert.ok(screen.includes(`read:stop:${reader.state.id}`));assert.ok(screen.includes('準備中も停止'));
+  await reader.handle(i('stop'));assert.equal(reader.active,false);assert.equal(closed,1);warm();await task;assert.equal(reader.active,false);assert.equal(notice,0);
+});
+test('latency detail is optional, buttons retain limits, and stopped/disabled screens explain the next step',async()=>{
+  const f=await fixture();f.message('本文');await f.reader.idle();
+  const status=i('status');await f.reader.handle(status);assert.ok(!JSON.stringify(status.replies).includes('内訳：'));
+  const details=Object.assign(i('unused'),{customId:`read:details:${f.reader.state.id}`});await f.reader.handle(details);assert.ok(JSON.stringify(details.replies).includes('内訳：'));
+  for(const row of details.replies.at(-1).components)assert.ok(row.toJSON().components.length<=5);
+  await f.reader.close();const stopped=i('status');await f.reader.handle(stopped);assert.ok(JSON.stringify(stopped.replies).includes('read:start'));
+  const disabled=createBackupReader({guild:{id:'guild'},enabled:false}),help=i('status');await disabled.handle(help);const out=JSON.stringify(help.replies);assert.ok(out.includes('管理者'));assert.ok(out.includes('docs/BACKUP_VOICE.md'));assert.ok(!out.includes('ASTRAL_BACKUP_TTS'));
+});
+
+test('a replacement session during a delayed control check cannot be stopped or disclosed by the old operation',async()=>{
+  for(const action of ['stop','status','start']){
+    let allow;const f=await fixture({canControl:()=>new Promise(r=>allow=r)}),old=i(action),task=f.reader.handle(old);await tick();
+    await f.reader.close();await f.reader.handle(i('start','new-owner','private-source'));const id=f.reader.state.id;
+    allow();await task;assert.equal(f.reader.state.id,id);assert.ok(!JSON.stringify(old.replies).includes('private-source'));await f.reader.close();
+  }
+});
+
+test('status refresh edits the existing private card, while public-origin controls receive a private reply',async()=>{
+  const reader=createBackupReader({guild:{id:'guild'},enabled:false});
+  for(const ephemeral of [true,false]){
+    let updated=0,replied=0;const click=Object.assign(i('unused'),{customId:'read:status',message:{flags:{has:()=>ephemeral}},async deferUpdate(){updated++;this.deferred=true;},async deferReply(options){assert.equal(options.flags,64);replied++;this.deferred=true;}});
+    await reader.handle(click);assert.equal(updated,ephemeral?1:0);assert.equal(replied,ephemeral?0:1);assert.equal(click.replies.length,1);
+  }
 });

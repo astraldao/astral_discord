@@ -18,7 +18,7 @@
 |---|---|
 | 起動・環境設定読込 | `index.js` |
 | Discord初期化・イベント・VC入室処理 | `src/index.js` |
-| バックアップ読み上げ | `src/backup-reader.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
+| バックアップ読み上げ | `src/backup-reader.js`、`src/backup-playback.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
 | コマンド登録 | `src/commands.js` |
 | 管理画面・設定・診断 | `src/admin.js`、`src/settings.js`、`src/diagnostics.js` |
 | 音声生成・再生・入室待ち | `src/speech.js`、`src/audio.js`、`src/queue.js` |
@@ -66,3 +66,9 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 
 `ASTRAL_BACKUP_TTS=1` とDeveloper PortalのMessage Content Intentが必要。変更後は再起動する。`/read start` の元チャンネルから本人の参加VCへ、本文50文字＋「以下略」をFIFO再生する。最大8件待機、実行者の移動・権限失効・音声障害で停止。本文・生成音声の永続保存はしない。入室告知と音声接続を共用するため同時実行せず、読み上げ中は手動更新も見送る。
 常駐Pythonは固定モデルのずんだもんstyle3。最初の2モーラから段階的に合成・再生する。`npm run backup-voice-benchmark` は合成のみの計測で、300ms以内の実際の読み上げ開始を保証しない。開発環境12回の中央値298ms・最大420ms。Discord実機の検証は未実施。詳細な導入方法・待ち行列・計測範囲はREADMEを参照する。
+
+## v3.29 読み上げの並行処理と操作手順
+
+`streamBackupSpeech` が権限確認とネイティブ合成を並行実行し、確認完了後だけ一本のPCMストリームをプレイヤーへ渡す。文章ごとに1リソースとして再生し、従来の分割ごとの100msの末尾無音を削減。合成の短い遅れは最大3秒まで待ち、途中でリソースが終了したら停止扱いにする。中断は保留中の権限確認も待たずに終了する。
+準備中も停止でき、停止後は開始ボタンから再開できる。停止ボタンはセッションIDに固定し、前回の画面から新しいセッションを止めない。状態更新・遅延内訳・固定の手順リンクを追加。診断は起動設定・使用中の真偽値だけを公開し、Portal設定の検査や音声試験は行わない。手動更新は読み上げ中なら取得開始前に停止を案内し、切り替え前のbusy判定も維持する。
+`npm run backup-playback-benchmark` は実モデル・Opus・200msの模擬権限確認を使い、Discordには接続しない。CPU2コア、各方式6回で開始中央値499→274ms、最大695→283ms。[操作・復旧・検証条件](docs/BACKUP_VOICE.md) と保存した計測JSONを参照。

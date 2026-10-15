@@ -50,3 +50,12 @@ test('admin version UI requires fresh permission, owner, channel, confirmation a
 test('permission loss during a version check does not display the returned version information',async()=>{
   let allowed=true;const f=fixture({latest:async()=>{allowed=false;return {sha:fresh,version:'2.0.0'};}}),controller=createVersionController({updater:f.updater,access:async()=>allowed});await controller.open(i());const s=[...controller.sessions.sessions.values()][0],check=i(`updates:${s.id}:${s.turn}:check`);await controller.handle(check);assert.ok(!JSON.stringify(check.replies).includes('2.0.0'));assert.equal((await f.updater.status()).phase,'idle');
 });
+
+test('active reader preflight prevents download/presence changes, then allows a deliberate retry after stopping',async()=>{
+  const f=fixture();let reading=true,allowed=true;
+  const controller=createVersionController({updater:f.updater,access:async()=>allowed,beforeStart:async()=>{if(reading)throw new Error('バックアップ読み上げ中です。/read stop で停止してください。');}});
+  await controller.open(i());const s=[...controller.sessions.sessions.values()][0],click=action=>i(`updates:${s.id}:${s.turn}:${action}`);
+  await controller.handle(click('check'));await controller.handle(click('confirm'));
+  const blocked=click('start');await controller.handle(blocked);assert.equal((await f.updater.status()).phase,'idle');assert.deepEqual(f.presence,[]);assert.ok(JSON.stringify(blocked.replies).includes('/read stop'));
+  reading=false;await controller.handle(click('check'));await controller.handle(click('confirm'));await controller.handle(click('start'));assert.equal((await f.updater.status()).phase,'preparing');f.updater.close();
+});

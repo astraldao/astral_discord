@@ -1,0 +1,154 @@
+{
+  "recorded_on": "2026-10-15",
+  "environment": {
+    "cpu_quota_cores": 2,
+    "native_threads": 2,
+    "discord_connected": false,
+    "queue_wait_ms": 0,
+    "baseline_version": "3.28.0",
+    "candidate_version": "3.29.0",
+    "note": "Real local model and Opus encoder; permission lookup simulated at 200ms. Six observations per mode. Not production end-to-end latency."
+  },
+  "warmupMs": 1415,
+  "simulatedAccessMs": 200,
+  "samples": [
+    {
+      "mode": "sequential",
+      "phrase": 0,
+      "firstStartMs": 695,
+      "finishMs": 3865,
+      "audioMs": 2805,
+      "extraAfterStartMs": 364,
+      "chunks": 4
+    },
+    {
+      "mode": "pipeline",
+      "phrase": 0,
+      "firstStartMs": 281,
+      "finishMs": 3248,
+      "audioMs": 2805,
+      "extraAfterStartMs": 162,
+      "chunks": 4
+    },
+    {
+      "mode": "pipeline",
+      "phrase": 1,
+      "firstStartMs": 253,
+      "finishMs": 3706,
+      "audioMs": 3264,
+      "extraAfterStartMs": 189,
+      "chunks": 8
+    },
+    {
+      "mode": "sequential",
+      "phrase": 1,
+      "firstStartMs": 447,
+      "finishMs": 4437,
+      "audioMs": 3264,
+      "extraAfterStartMs": 726,
+      "chunks": 8
+    },
+    {
+      "mode": "sequential",
+      "phrase": 2,
+      "firstStartMs": 525,
+      "finishMs": 9948,
+      "audioMs": 7968,
+      "extraAfterStartMs": 1455,
+      "chunks": 16
+    },
+    {
+      "mode": "pipeline",
+      "phrase": 2,
+      "firstStartMs": 283,
+      "finishMs": 8350,
+      "audioMs": 7968,
+      "extraAfterStartMs": 99,
+      "chunks": 16
+    },
+    {
+      "mode": "pipeline",
+      "phrase": 0,
+      "firstStartMs": 277,
+      "finishMs": 3275,
+      "audioMs": 2805,
+      "extraAfterStartMs": 192,
+      "chunks": 4
+    },
+    {
+      "mode": "sequential",
+      "phrase": 0,
+      "firstStartMs": 455,
+      "finishMs": 3613,
+      "audioMs": 2805,
+      "extraAfterStartMs": 353,
+      "chunks": 4
+    },
+    {
+      "mode": "sequential",
+      "phrase": 1,
+      "firstStartMs": 488,
+      "finishMs": 4479,
+      "audioMs": 3264,
+      "extraAfterStartMs": 727,
+      "chunks": 8
+    },
+    {
+      "mode": "pipeline",
+      "phrase": 1,
+      "firstStartMs": 243,
+      "finishMs": 3655,
+      "audioMs": 3264,
+      "extraAfterStartMs": 148,
+      "chunks": 8
+    },
+    {
+      "mode": "pipeline",
+      "phrase": 2,
+      "firstStartMs": 271,
+      "finishMs": 8322,
+      "audioMs": 7968,
+      "extraAfterStartMs": 83,
+      "chunks": 16
+    },
+    {
+      "mode": "sequential",
+      "phrase": 2,
+      "firstStartMs": 510,
+      "finishMs": 9928,
+      "audioMs": 7968,
+      "extraAfterStartMs": 1450,
+      "chunks": 16
+    }
+  ],
+  "summary": {
+    "sequential": {
+      "firstStartMs": {
+        "median": 499,
+        "max": 695
+      },
+      "finishMs": {
+        "median": 4458,
+        "max": 9948
+      },
+      "extraAfterStartMs": {
+        "median": 727,
+        "max": 1455
+      }
+    },
+    "pipeline": {
+      "firstStartMs": {
+        "median": 274,
+        "max": 283
+      },
+      "finishMs": {
+        "median": 3681,
+        "max": 8350
+      },
+      "extraAfterStartMs": {
+        "median": 155,
+        "max": 192
+      }
+    }
+  }
+}

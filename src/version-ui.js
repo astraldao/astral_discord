@@ -23,7 +23,7 @@ export function versionScreen(s){
   const m=payload(s.confirm?'更新内容を確認':'バージョン管理',body,{state:d.phase==='blocked'?'warning':d.phase==='failed'?'error':latest&&!available&&!busy?'success':'normal',components:[controls,...(latest?[row(new ButtonBuilder().setLabel('変更内容を見る').setStyle(ButtonStyle.Link).setURL(`https://github.com/astraldao/astral_discord/commit/${latest.sha}`))]:[]),navigation]});
   m.embeds[0].addFields({name:'現在のバージョン',value:`**v${text(current.version)}**${current.sha?`\n${current.sha.slice(0,7)}`:''}`,inline:true},{name:'確認した最新版',value:latest?`**v${text(latest.version)}**\n${latest.sha.slice(0,7)}`:'未確認',inline:true});return m;
 }
-export function createVersionController({updater,access,now=Date.now}){
+export function createVersionController({updater,access,beforeStart=async()=>{},now=Date.now}){
   const sessions=new AdminSessions(now);
   const check=async(i,s)=>{if(!await access(i))throw new Error('管理者権限がありません。');if(s){sessions.get(s.id,i.user.id);if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');}};
   const ack=async i=>{if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});};
@@ -39,7 +39,7 @@ export function createVersionController({updater,access,now=Date.now}){
         s.confirm=true;s.target=s.data.latest.sha;
       }else if(action==='cancel'){s.confirm=false;s.target=null;s.data=await updater.request('status');}
       else if(action==='start'){
-        if(!s.confirm||!s.target)throw new Error('更新内容を確認してください。');await check(i,s);s.data=await updater.request('start',s.target);s.confirm=false;s.target=null;
+        if(!s.confirm||!s.target)throw new Error('更新内容を確認してください。');await beforeStart(i);await check(i,s);s.data=await updater.request('start',s.target);s.confirm=false;s.target=null;
       }else throw new Error('操作を確認してください。');
       await check(i,s);s.turn++;await i.editReply(versionScreen(s));
     }catch(e){await error(i,e,s);}finally{if(locked)s.busy=false;}

@@ -48,7 +48,7 @@ const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const updateClient=createUpdateClient({version:botVersion});
-const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator)});
+const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
 let guild,backupReader,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
@@ -181,7 +181,7 @@ client.once('clientReady', async () => {
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size})});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active})})});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = process.env.ASTRAL_SUPERVISED!=='1'; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
@@ -210,7 +210,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
     finishActivity=resourcePresence.activity();
-    if((command&&interaction.commandName==='read')||(adminComponent&&interaction.customId==='read:stop')){if(stopping)throw new EntryError('Botを終了しています。');await backupReader.handle(interaction);return;}
+    if((command&&interaction.commandName==='read')||(adminComponent&&interaction.customId.startsWith('read:'))){if(stopping)throw new EntryError('Botを終了しています。');await backupReader.handle(interaction);return;}
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');

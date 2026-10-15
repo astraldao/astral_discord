@@ -32,3 +32,9 @@ test('admin controller ignores stale interaction permissions and fetches current
   const replies=[];const i={user:{id:'former-admin'},memberPermissions:new PermissionsBitField(P.Administrator),async reply(p){replies.push(p);}};
   await c.handle(i);assert.deepEqual(fetched,{user:'former-admin',force:true});assert.ok(JSON.stringify(replies).includes('管理者専用'));
 });
+
+test('backup diagnostics reports only enabled/active flags and keeps the voice announcement setting independent',async()=>{
+  const diagnose=createDiagnostics({settings:{get:()=>({lobbyId:null,targetIds:[],voice:false})},guild:{channels:{fetch:async()=>{},cache:new Map()},members:{fetchMe:async()=>({})}},version:'test',pendingCount:()=>0,components:async()=>({}),backupState:()=>({enabled:true,active:true,text:'PRIVATE_TEXT',token:'SECRET'})});
+  const data=await diagnose();assert.deepEqual(data.backup,{enabled:true,active:true});assert.equal(data.voiceEnabled,false);
+  const out=JSON.stringify(diagnosticsScreen({id:'test',page:0,diagnostics:data}));assert.ok(out.includes('起動設定 ON'));assert.ok(out.includes('使用中'));assert.ok(!out.includes('PRIVATE_TEXT'));assert.ok(!out.includes('SECRET'));
+});

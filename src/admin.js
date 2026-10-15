@@ -77,8 +77,8 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
   } else if(s.view==='audio') {
-    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n\n読み方辞書では、名前や英単語の読みを指定できます。`;
-    components=[row(button(s,'toggle-voice',c.voice?'音声告知をOFF':'音声告知をON',ButtonStyle.Primary),button(s,'form-volume','音量を変更'),button(s,'nav-words','読み方辞書')),back()];
+    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n\n読み方辞書では、入室告知の名前や英単語の読みを指定できます。\n\n**バックアップ読み上げ**\nVCに参加し、読みたいチャンネルで /read start。状態確認は /read status、停止は /read stop。\n参加告知のON/OFFとは独立し、音量は共通です。有効化の状況は「動作診断」で確認できます。`;
+    components=[row(button(s,'toggle-voice',c.voice?'音声告知をOFF':'音声告知をON',ButtonStyle.Primary),button(s,'form-volume','音量を変更'),button(s,'nav-words','読み方辞書')),row(new ButtonBuilder().setLabel('読み上げの設定手順').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md')),back()];
   } else if(s.view==='words') {
     title='✦  読み方辞書';
     const pages=Math.max(1,Math.ceil(c.words.length/10));s.page=Math.max(0,Math.min(s.page,pages-1));
