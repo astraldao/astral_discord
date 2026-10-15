@@ -1,4 +1,5 @@
 import {createBackupReader} from './backup-reader.js';
+import {createBannerController} from './banner-ui.js';
 import {createUpdateClient} from './update-client.js';
 import {createVersionController} from './version-ui.js';
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
@@ -51,7 +52,7 @@ const updateClient=createUpdateClient({version:botVersion});
 const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,backupReader,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -168,6 +169,8 @@ client.once('clientReady', async () => {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
     backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity()});
+    const bannerState=user=>({key:user.banner??null,url:user.bannerURL({extension:'png',size:1024})??null});
+    banner=createBannerController({guild,current:async()=>{try{return bannerState(await client.user.fetch(true));}catch{throw new EntryError('現在のバナーを取得できませんでした。少し待ってから「現在を確認」を押してください。');}},update:async image=>{try{return bannerState(await client.user.setBanner(image));}catch{throw new EntryError('バナーの反映を確認できませんでした。「現在を確認」で状態を確認してからお試しください。');}}});
     refreshPanel=createPanelRefresher({settings,guild});
     await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
@@ -181,7 +184,7 @@ client.once('clientReady', async () => {
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active})})});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active})})});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = process.env.ASTRAL_SUPERVISED!=='1'; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
@@ -197,7 +200,7 @@ client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const command = interaction.isChatInputCommand() && ['vc','game','read','admin'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(read|updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(banner|read|updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   let finishActivity=()=>{};
   try {
@@ -214,7 +217,7 @@ client.on('interactionCreate', async interaction => {
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
-      if(adminComponent && interaction.customId.startsWith('updates:'))await versions.handle(interaction);else if(adminComponent && interaction.customId.startsWith('schedule:'))await schedule.handle(interaction);else if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
+      if(adminComponent && interaction.customId.startsWith('banner:'))await banner.handle(interaction);else if(adminComponent && interaction.customId.startsWith('updates:'))await versions.handle(interaction);else if(adminComponent && interaction.customId.startsWith('schedule:'))await schedule.handle(interaction);else if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
@@ -271,7 +274,7 @@ client.on('voiceStateUpdate',(before,after) => {
   }
 });
 client.on('error',error => console.error('Discord接続:',error.code ?? error.name));
-const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();void backupReader?.close();};
+const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();banner?.close();void backupReader?.close();};
 const drain=async()=>{await backupReader?.close();updateClient.close();await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
 if(process.env.ASTRAL_SUPERVISED==='1' && process.connected){
   const lifecycle=createUpdateLifecycle({busy:()=>updateBusy({active:resourcePresence.activeCount+(backupReader?.active?1:0),pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});

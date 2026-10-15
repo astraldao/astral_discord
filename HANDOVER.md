@@ -19,6 +19,7 @@
 | 起動・環境設定読込 | `index.js` |
 | Discord初期化・イベント・VC入室処理 | `src/index.js` |
 | バックアップ読み上げ | `src/backup-reader.js`、`src/backup-playback.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
+| Botのプロフィールバナー | `src/banner-ui.js`、`src/banner-image.js` |
 | コマンド登録 | `src/commands.js` |
 | 管理画面・設定・診断 | `src/admin.js`、`src/settings.js`、`src/diagnostics.js` |
 | 音声生成・再生・入室待ち | `src/speech.js`、`src/audio.js`、`src/queue.js` |
@@ -74,3 +75,9 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 `npm run backup-playback-benchmark` は実モデル・Opus・200msの模擬権限確認を使い、Discordには接続しない。CPU2コア、各方式6回で開始中央値499→274ms、最大695→283ms。[操作・復旧・検証条件](docs/BACKUP_VOICE.md) と保存した計測JSONを参照。
 
 元チャンネル・接続先VCの削除で自動停止する。停止の開始者・管理者確認は継続しつつ、停止だけはソース閲覧権限を要求しない。チャンネルが消えた後も停止・更新へ復旧でき、停止結果に接続先やメトリクスを含めない。状態表示には引き続きソース閲覧権限が必要。
+
+## v3.30 アップロードしたプロフィールバナー
+
+`/admin → Botのバナー`。DiscordのFileUpload付きモーダルからPNG/JPEGを選び、非公開の比較プレビュー後に `client.user.setBanner(Buffer)` でBot全体に適用する。解除はnullを明示的に確認して送る。新しいコマンド・Intent・実行依存は追加しない。起動時のプロフィール紹介文更新はバナーに触れない。
+画像取得先はアップロードで返されたcdn.discordapp.comの添付パスとIDに限定し、リダイレクトを拒否。取得10秒・実データ4MiB、8192px・約1600万画素を上限に構造を確認し、最終デコードはDiscordに委ねる。画像のローカル永続保存・URL保存・ログ出力はしない。
+画面は所有者・元チャンネル・10分期限・最新の管理者/閲覧権限を検証。候補は最大4画面、終了・期限切れ・再起動で破棄する。別の変更をプレビュー中に検知したら再確認し、同時適用は全体1件、成功後60秒間隔。結果不明時は自動再送せず、現在を再取得する。操作手順と復旧は [docs/BANNER.md](docs/BANNER.md)。

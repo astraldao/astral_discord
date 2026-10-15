@@ -29,6 +29,14 @@ test('all admin pages, largest lists and modals serialize within Discord limits'
   }
   for(const kind of ['seconds','volume','word'])adminModal(s,kind,c).toJSON();
 });
+
+test('banner entry remains admin-only and returning home clears private preview attachments',async()=>{
+  const f=fixture();let allowed=true,opened=0;
+  const c=createAdminController({settings:f.settings,guild:f.guild,access:async()=>allowed,openBanner:async()=>opened++});
+  const s=c.sessions.create('owner'),i=f.interaction(`admin:${s.id}:open-banner`);await c.handle(i);assert.equal(opened,1);
+  allowed=false;await c.handle(f.interaction(`admin:${s.id}:open-banner`));assert.equal(opened,1);
+  allowed=true;const home=f.interaction('admin:open');await c.handle(home);assert.deepEqual(home.result.attachments,[]);assert.equal(home.result.files,undefined);
+});
 test('sessions bind the owner, expire and invalidate older screens',()=>{
   let now=0;const sessions=new AdminSessions(()=>now),s=sessions.create('owner');
   assert.throws(()=>sessions.get(s.id,'stranger'));

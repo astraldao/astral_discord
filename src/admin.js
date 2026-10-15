@@ -67,11 +67,12 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
-    description+='\n\n**卓・予定** · 予定表、キャラシ、日程調整\n**入室・サーバー** · VC、音声、パネル、投稿タグ\n**運用** · チップ、診断、設定確認、バージョン管理';
+    description+='\n\n**卓・予定** · 予定表、キャラシ、日程調整\n**入室** · VC、音声、パネル\n**サーバー設定** · 投稿タグ、Botのバナー、設定確認\n**運用** · チップ、診断、バージョン管理';
     components=[
       row(button(s,'open-schedule','予定表',missing.length?ButtonStyle.Secondary:ButtonStyle.Primary),button(s,'open-trpg','卓・キャラシ'),button(s,'open-densuke','日程調整')),
-      row(button(s,'nav-vc','VC設定',missing.length?ButtonStyle.Primary:ButtonStyle.Secondary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル'),button(s,'open-forum','投稿タグ')),
-      row(button(s,'open-chips','チップ管理'),button(s,'diagnose','動作診断'),button(s,'nav-overview','設定を確認'),button(s,'open-updates','バージョン管理')),
+      row(button(s,'nav-vc','VC設定',missing.length?ButtonStyle.Primary:ButtonStyle.Secondary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),
+      row(button(s,'open-forum','投稿タグ'),button(s,'open-banner','Botのバナー'),button(s,'nav-overview','設定を確認')),
+      row(button(s,'open-chips','チップ管理'),button(s,'diagnose','動作診断'),button(s,'open-updates','バージョン管理')),
     ];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
@@ -120,9 +121,9 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
   const sessions=new AdminSessions();
-  const screen=(s,note='')=>s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note);
+  const screen=(s,note='')=>({...(s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
     if(!['lobby','add'].includes(action))return;
     const channel=await guild.channels.fetch(value);
@@ -155,6 +156,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       const [,id,action,token]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
+      if(action==='open-banner'){if(!openBanner)throw new Error('バナー設定を利用できません。');await openBanner(interaction);return;}
       if(action==='open-updates'){if(!openUpdates)throw new Error('バージョン管理を利用できません。');await openUpdates(interaction);return;}
       if(action==='open-schedule'){if(!openSchedule)throw new Error('予定表を利用できません。');await openSchedule(interaction);return;}
       if(action==='open-chips'){if(!openChips)throw new Error('チップ管理を利用できません。');await openChips(interaction);return;}
@@ -196,8 +198,8 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     } catch(error) {
       const note=`操作できませんでした：${text(error.message)}`;
       const recovery=s?[row(button(s,'home','管理メニューへ'),...(s.formDraft?[button(s,`form-${s.formDraft.kind}`,'入力を修正')]:s.view==='diagnostics'?[button(s,'diagnose','診断をやり直す')]:[]))]:[];
-      if(interaction.deferred || interaction.replied)await interaction.editReply(payload('✧  管理画面',note,{state:'error',components:recovery}));
-      else await interaction.reply({...payload('✧  管理画面',note),flags:MessageFlags.Ephemeral});
+      if(interaction.deferred || interaction.replied)await interaction.editReply({...payload('✧  管理画面',note,{state:'error',components:recovery}),attachments:[]});
+      else await interaction.reply({...payload('✧  管理画面',note),flags:MessageFlags.Ephemeral,attachments:[]});
     } finally {if(locked)s.busy=false;}
   }};
 }
