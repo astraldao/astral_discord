@@ -35,9 +35,12 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
     const members=await Promise.all(listeners.map(m=>m.id===member.id?member:guild.members.fetch({user:m.id,force:true})));
     if(!members.length||members.some(m=>!text.permissionsFor(m)?.has(P.ViewChannel)))throw new Error('VCの参加者全員がこのテキストチャンネルを閲覧できる必要があります。');
   });
-  const control=canControl??(async(i,s)=>{
-    const member=await guild.members.fetch({user:i.user.id,force:true}),text=await guild.channels.fetch(s.textId,{force:true});
-    if(!text?.permissionsFor(member)?.has(P.ViewChannel)||i.user.id!==s.owner&&!member.permissions.has(P.Administrator))throw new Error('開始した本人か管理者が操作してください。');
+  const control=canControl??(async(i,s,{stop=false}={})=>{
+    const member=await guild.members.fetch({user:i.user.id,force:true});
+    if(i.user.id!==s.owner&&!member.permissions.has(P.Administrator))throw new Error('開始した本人か管理者が操作してください。');
+    if(stop)return; // Cleanup must remain possible after the source channel disappears.
+    const text=await guild.channels.fetch(s.textId,{force:true});
+    if(!text?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('元のテキストチャンネルを閲覧できません。停止は /read stop を使ってください。');
   });
   async function stop(reason='読み上げを停止しました。'){
     const s=session;if(!s)return;session=null;s.abort.abort();s.queue.length=0;s.voice?.close();s.synth?.close();
@@ -68,7 +71,7 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
       }
       if(i.customId&&(!click||['stop','details'].includes(click[1])&&(!click[2]||click[2]!==session?.id)))throw new Error('この画面は終了しています。「状態を更新」から開き直してください。');
       const action=click?click[1]:i.options.getSubcommand();
-      if(action==='stop'){if(session){const current=session;await control(i,current);sameSession(current);await stop();}await i.editReply(backupReaderScreen(null,enabled));return;}
+      if(action==='stop'){if(session){const current=session;await control(i,current,{stop:true});sameSession(current);await stop();}await i.editReply(backupReaderScreen(null,enabled));return;}
       if(action==='status'||action==='details'){const current=session;if(current){await control(i,current);sameSession(current);}await i.editReply(backupReaderScreen(current,enabled,{details:action==='details'}));return;}
       if(action!=='start')throw new Error('読み上げ操作を確認してください。');
       if(!enabled){await i.editReply(backupReaderScreen(null,false));return;}
@@ -96,6 +99,8 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
       if(after.id===s.owner&&after.channelId!==s.voiceId){await stop('開始した人がVCを移動・退出したため停止しました。');return;}
       if(after.id===guild.members?.me?.id&&(after.channelId!==s.voiceId||after.serverMute)){await stop('BotのVC接続または発言権限が変わったため停止しました。');return;}
       if(before.channelId===s.voiceId||after.channelId===s.voiceId){try{await access(s);}catch{if(session===s)await stop('VCの参加者または権限が変わったため停止しました。');}}
+    },async onChannelDelete(channel){
+      const s=session;if(s&&(channel.guildId??channel.guild?.id)===guild.id&&[s.textId,s.voiceId].includes(channel.id))await stop('読み上げ元または接続先のチャンネルが削除されたため停止しました。');
     },async revalidate(){const s=session;if(s?.ready)try{await access(s);}catch{if(session===s)await stop('閲覧・音声権限が変わったため停止しました。');}},
   };
 }

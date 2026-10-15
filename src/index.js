@@ -251,8 +251,10 @@ client.on('interactionCreate', async interaction => {
 });
 client.on('messageCreate',message=>{if(ready&&!stopping)backupReader?.onMessage(message);});
 client.on('channelUpdate',()=>{void backupReader?.revalidate();});
+client.on('channelDelete',channel=>{void backupReader?.onChannelDelete(channel);});
 client.on('guildMemberUpdate',()=>{void backupReader?.revalidate();});
 client.on('roleUpdate',()=>{void backupReader?.revalidate();});
+client.on('roleDelete',()=>{void backupReader?.revalidate();});
 client.on('voiceStateUpdate',(before,after) => {
   void backupReader?.onVoiceChange(before,after);
   if (!ready || stopping || after.guild.id !== guild.id || after.member?.user.bot || before.channelId === after.channelId) return;

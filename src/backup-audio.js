@@ -18,7 +18,7 @@ export async function connectBackupAudio(channel,signal){
   const connection=joinVoiceChannel({channelId:channel.id,guildId:channel.guild.id,adapterCreator:channel.guild.voiceAdapterCreator,selfDeaf:true,selfMute:false});
   const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop,maxMissedFrames:150}});let fault,closed=false;
   player.on('error',e=>{fault=e;});connection.on('error',e=>{fault=e;});
-  const close=()=>{if(closed)return;closed=true;player.stop();connection.destroy();};signal.addEventListener('abort',close,{once:true});
+  const close=()=>{if(closed)return;closed=true;player.stop(true);if(connection.state.status!==VoiceConnectionStatus.Destroyed)connection.destroy();};signal.addEventListener('abort',close,{once:true});
   try{await entersState(connection,VoiceConnectionStatus.Ready,AbortSignal.any([signal,AbortSignal.timeout(15000)]));connection.subscribe(player);}
   catch(error){signal.removeEventListener('abort',close);close();throw error;}
   return {healthy:()=>!closed&&!fault&&connection.state.status===VoiceConnectionStatus.Ready&&!channel.guild.members.me.voice.serverMute,

@@ -113,3 +113,18 @@ test('status refresh edits the existing private card, while public-origin contro
     await reader.handle(click);assert.equal(updated,ephemeral?1:0);assert.equal(replied,ephemeral?0:1);assert.equal(click.replies.length,1);
   }
 });
+
+test('owner/admin can stop after source access disappears, without disclosing state or allowing another user to stop',async()=>{
+  const guild={id:'guild',members:{fetch:async({user})=>({permissions:{has:()=>user==='admin'}})},channels:{fetch:async()=>{throw new Error('channel deleted');}}};
+  const f=await fixture({canControl:undefined,guild});
+  const status=i('status');await f.reader.handle(status);assert.equal(f.reader.active,true);assert.ok(!JSON.stringify(status.replies).includes('<#voice>'));
+  await f.reader.handle(i('stop','other'));assert.equal(f.reader.active,true);
+  const stop=i('stop','admin');await f.reader.handle(stop);assert.equal(f.reader.active,false);assert.ok(!JSON.stringify(stop.replies).includes('<#voice>'));
+  await f.reader.handle(i('start'));await f.reader.handle(i('stop'));assert.equal(f.reader.active,false);
+});
+test('deleting either bound channel stops the session; unrelated channels and guilds do not',async()=>{
+  for(const id of ['text','voice']){
+    const f=await fixture();await f.reader.onChannelDelete({id,guildId:'other'});await f.reader.onChannelDelete({id:'other',guildId:'guild'});assert.equal(f.reader.active,true);
+    await f.reader.onChannelDelete({id,guildId:'guild'});assert.equal(f.reader.active,false);assert.equal(f.workerClosed(),1);assert.equal(f.voiceClosed(),1);
+  }
+});
