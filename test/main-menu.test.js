@@ -22,9 +22,9 @@ test('opening hub has no side effects, public entries reply privately, private b
   }
 });
 test('shortcuts acknowledge once and delegate without changing the requested operation',async()=>{
-  const calls=[],c=createMainMenu({access:async()=>({admin:false}),openVc:async i=>calls.push(['vc',i.deferred]),openGame:async i=>calls.push(['game',i.deferred]),openRead:async(i,action)=>calls.push([action,i.deferred])});
-  for(const action of ['vc','read','game','stop']){for(const input of [action,`menu:${action}`]){const i=interaction(input,true);await c.handle(i);assert.equal(i.acks.length,1);}}
-  assert.deepEqual(calls.map(c=>c[0]),['vc','vc','status','status','game','game','stop','stop']);assert.ok(calls.every(c=>c[1]));
+  const calls=[],c=createMainMenu({access:async()=>({admin:false}),openVc:async i=>calls.push(['vc',i.deferred]),openGame:async i=>calls.push(['game',i.deferred]),openProfile:async i=>calls.push(['profile',i.deferred]),openWallet:async i=>calls.push(['wallet',i.deferred]),openRead:async(i,action)=>calls.push([action,i.deferred])});
+  for(const action of ['vc','read','game','stop','profile','wallet']){for(const input of [action,`menu:${action}`]){const i=interaction(input,true);await c.handle(i);assert.equal(i.acks.length,1);}}
+  assert.deepEqual(calls.map(c=>c[0]),['vc','vc','status','status','game','game','stop','stop','profile','profile','wallet','wallet']);assert.ok(calls.every(c=>c[1]));
 });
 test('fresh member and channel permissions control access and admin visibility on each interaction',async()=>{
   let admin=true,view=true;const fetches=[],c=createMainMenu({guild:{members:{fetch:async o=>{fetches.push(o);return {permissions:{has:p=>p===P.Administrator&&admin}};}},channels:{fetch:async(id,o)=>{assert.equal(id,'text');assert.equal(o.force,true);return {permissionsFor:()=>({has:p=>p===P.ViewChannel&&view})};}}},openVc:()=>assert.fail()});

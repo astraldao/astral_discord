@@ -1,4 +1,9 @@
-import {EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, escapeMarkdown} from 'discord.js';
+import {EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, escapeMarkdown} from 'discord.js';
+export async function acknowledgePrivate(i){
+  if(i.deferred||i.replied)return;
+  if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();
+  else await i.deferReply({flags:MessageFlags.Ephemeral});
+}
 export const mentions={parse:[]};
 export const text=value=>escapeMarkdown(String(value)).replace(/@/g,'＠').slice(0,100);
 let botIcon=()=>undefined;

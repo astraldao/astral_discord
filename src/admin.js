@@ -1,7 +1,9 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text} from './ui.js';
+import {payload,text,menuHomeButton} from './ui.js';
+import {adminCategories,adminDestinations} from './admin-navigation.js';
+export {adminCategories} from './admin-navigation.js';
 import {diagnosticsScreen} from './diagnostics.js';
 import {validateSettings} from './settings.js';
 
@@ -56,15 +58,12 @@ export class AdminSessions {
 const row=(...components)=>new ActionRowBuilder().addComponents(...components);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${action}`).setLabel(label).setStyle(style);
 const summary=c=>`**ロビーVC** ${c.lobbyId?`<#${c.lobbyId}>`:'未設定'}\n**入室先** ${c.targetIds.length}件 · **待機** ${c.seconds}秒\n**音声告知** ${c.voice?'ON':'OFF'} · ${c.volume}%\n**直接入室** ${c.enforce?'ロビーへ戻す':'許可'}`;
-export const adminCategories=[
-  {id:'schedule',label:'予定・卓',description:'予定表、卓とキャラシ、日程調整',actions:[['open-schedule','予定表','共有カレンダーの作成・予定の編集'],['open-trpg','卓・キャラシ','卓の登録・PCの確認'],['open-densuke','日程調整','伝助の作成・回答URLの共有']]},
-  {id:'voice',label:'入室・音声',description:'ロビー、入室先、ずんだもん、入室パネル',actions:[['nav-vc','VC設定','ロビー・行き先・待機時間'],['nav-audio','音声設定','参加告知・音量・読み方辞書'],['nav-panel','入室パネル','ロビーに入室用のパネルを設置']]},
-  {id:'appearance',label:'外観・投稿',description:'Botのバナー、フォーラムの投稿タグ',actions:[['open-banner','Botのバナー','画像のアップロード・適用・解除'],['open-forum','投稿タグ','フォーラムのタグを整理']]},
-  {id:'operations',label:'運用・管理',description:'手動更新、動作診断、チップ、設定確認',actions:[['open-updates','バージョン管理','現在版・最新版の確認と手動更新'],['diagnose','動作診断','音声ファイルと必要な権限を確認'],['open-chips','チップ管理','残高の確認・調整・履歴'],['nav-overview','設定を確認','設定値と入室先の一覧']]},
-];
 export function adminScreen(s,c,channelName=id=>id,note='') {
   let title='✦  管理メニュー',description='',components=[];
-  const back=()=>row(button(s,'home','管理メニューへ'));
+  const back=()=>{
+    const parent=s.view.startsWith('pick-')?['nav-vc','VC設定へ']:['vc','audio','panel'].includes(s.view)?['nav-category-voice','入室・音声へ']:['overview','diagnostics'].includes(s.view)?['nav-category-operations','運用・管理へ']:null;
+    return row(...(parent?[button(s,...parent)]:[]),button(s,'home','管理メニューへ'),menuHomeButton());
+  };
   const pagination=(prefix,page,pages)=>pages>1?[button(s,`${prefix}-prev`,'前のページ').setDisabled(page===0),button(s,`${prefix}-next`,'次のページ').setDisabled(page>=pages-1)]:[];
   if(s.stage) {
     const destructive=['remove','word-remove'].includes(s.stage.action);
@@ -73,14 +72,15 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表とBotの更新は、下のボタンから直接開けます。';
-    description+='\n\n**ほかの設定はカテゴリから**\n予定・卓 ／ 入室・音声 ／ 外観・投稿 ／ 運用・管理\n普段の入室・読み上げ・ゲームは /menu にまとめました。';
+    description+='\n\n**カテゴリを選ぶ**\n目的に近いボタンを選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
     components=[
       row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理')),
-      row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:category`).setPlaceholder('カテゴリから探す').setMinValues(1).setMaxValues(1).addOptions(...adminCategories.map(({id,label,description})=>({value:id,label,description})))),
+      ...Array.from({length:2},(_,index)=>row(...adminCategories.slice(index*2,index*2+2).map(category=>button(s,`nav-category-${category.id}`,category.label)))),
+      row(menuHomeButton()),
     ];
   } else if(s.view.startsWith('category-')) {
     const category=adminCategories.find(value=>s.view===`category-${value.id}`);if(!category)throw new Error('カテゴリを選び直してください。');
-    title=category.label;description=category.actions.map(([,label,help])=>`**${label}** · ${help}`).join('\n');
+    title=`管理 / ${category.label}`;description=category.actions.map(([,label,help])=>`**${label}** · ${help}`).join('\n');
     for(let start=0;start<category.actions.length;start+=2)components.push(row(...category.actions.slice(start,start+2).map(([action,label],index)=>button(s,action,label,start===0&&index===0?ButtonStyle.Primary:ButtonStyle.Secondary))));
     components.push(back());
   } else if(s.view==='vc') {
@@ -159,10 +159,17 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     let s,locked=false;
     try {
       if(!await access(interaction))throw new Error('管理画面は管理者専用です。');
+      let action,token;
       if(interaction.isChatInputCommand() || interaction.customId==='admin:open') {
-        if(!interaction.deferred&&!interaction.replied){if(interaction.message?.flags?.has(MessageFlags.Ephemeral))await interaction.deferUpdate();else await interaction.deferReply({flags:MessageFlags.Ephemeral});}s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;await interaction.editReply(screen(s));return;
+        if(!interaction.deferred&&!interaction.replied){if(interaction.message?.flags?.has(MessageFlags.Ephemeral))await interaction.deferUpdate();else await interaction.deferReply({flags:MessageFlags.Ephemeral});}
+        if([...sessions.sessions.values()].some(value=>value.userId===interaction.user.id&&value.busy))throw new Error('前の操作を処理中です。完了してから開き直してください。');
+        s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;
+        action=interaction.isChatInputCommand()?interaction.options?.getString('操作'):null;
+        if(!action){await interaction.editReply(screen(s));return;}
+        if(!adminDestinations.some(destination=>destination.action===action))throw new Error('操作を選び直してください。');
+      }else{
+        const parts=interaction.customId.split(':');action=parts[2];token=parts[3];s=sessions.get(parts[1],interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       }
-      const [,id,action,token]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='open-banner'){if(!openBanner)throw new Error('バナー設定を利用できません。');await openBanner(interaction);return;}
@@ -178,7 +185,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }
       if(action==='form-new-word'){delete s.formDraft;delete s.wordEditSurface;await interaction.showModal(adminModal(s,'word',settings.get()));return;}
       if(action.startsWith('form-')) {await interaction.showModal(adminModal(s,action.slice(5),settings.get()));return;}
-      if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();
+      if(!interaction.deferred&&!interaction.replied){if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();}
       if(!await access(interaction))throw new Error('管理者権限がありません。');
       let note='';
       if(action==='category'){

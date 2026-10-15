@@ -1,6 +1,7 @@
 import {createBackupReader} from './backup-reader.js';
 import {createBannerController} from './banner-ui.js';
 import {createMainMenu} from './main-menu.js';
+import {lobbyEntryGuide} from './vc-entry-ui.js';
 import {createUpdateClient} from './update-client.js';
 import {createVersionController} from './version-ui.js';
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
@@ -143,9 +144,9 @@ async function choose(interaction,page=0) {
   }
   const c=configured();
   if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから入室してください。');
-  const member = await guild.members.fetch(interaction.user.id);
+  const member = await guild.members.fetch({user:interaction.user.id,force:true});
   if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから入室してください。');
-  if (member.voice.channelId !== c.lobbyId) throw new EntryError('先にロビーVCに参加してください。');
+  if(member.voice.channelId!==c.lobbyId){await interaction.editReply(await lobbyEntryGuide({guild,member,lobbyId:c.lobbyId}));return;}
   await guild.channels.fetch();
   const choices = [...guild.channels.cache.values()].filter(channel => canEnter(channel, member, guild.members.me, c.lobbyId, c.targetIds)
     && (!c.voice || channel.permissionsFor(guild.members.me).has(P.Speak))).sort((a,b) => a.rawPosition - b.rawPosition);
@@ -184,7 +185,7 @@ client.once('clientReady', async () => {
     casino=createCasinoController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i)});
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
-    mainMenu=createMainMenu({guild,openVc:i=>choose(i),openRead:(i,action)=>backupReader.handle(i,action),openGame:i=>blackjack.lobby(i)});
+    mainMenu=createMainMenu({guild,openVc:i=>choose(i),openRead:(i,action)=>backupReader.handle(i,action),openGame:i=>blackjack.lobby(i),openProfile:i=>profile.open(i),openWallet:i=>chipAccount.openSelf(i)});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active})})});
     resourcePresence.start();

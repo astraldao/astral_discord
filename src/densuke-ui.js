@@ -1,7 +1,7 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,escapeMarkdown} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,adminHomeButton} from './ui.js';
+import {payload,adminHomeButton,acknowledgePrivate} from './ui.js';
 import {randomUUID} from 'node:crypto';
 import {PermissionFlagsBits as P} from 'discord.js';
 import {answerUrl} from './trpg-store.js';
@@ -29,7 +29,7 @@ export function densukeScreen(s,note='') {
     components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice`).setPlaceholder('回答の選択肢を選ぶ').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'イベント内容を入力',s.phase==='review'?ButtonStyle.Secondary:ButtonStyle.Primary),...(s.phase==='review'?[button(s,'create','この内容で作成',ButtonStyle.Primary)]:[]),button(s,'cancel','作成をキャンセル')),row(button(s,'form-email','控えメールの宛先'),button(s,'form-recover','作成済みURLを登録'))];
   }
   if(s.phase!=='creating'&&components.length<5)components.push(row(adminHomeButton()));
-  return payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?'success':s.phase==='uncertain'?'error':'normal',components});
+  return {...payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?'success':s.phase==='uncertain'?'error':'normal',components}),attachments:[]};
 }
 export function densukeModal(s) {
   const modal=new ModalBuilder().setCustomId(`densuke:${s.id}:submit`).setTitle('伝助のイベント内容');
@@ -51,7 +51,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
   const currentEmail=()=>settings?.get().densukeEmail??email;
   async function authorize(i){const member=guild?await guild.members.fetch({user:i.user.id,force:true}):null;if(!canConfigure(member?.permissions??i.memberPermissions))throw new Error('日程調整の操作は管理者専用です。');if(guild){const channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルの閲覧権限がありません。');}}
   return {sessions,async open(i){
-    await authorize(i);await i.deferReply({flags:MessageFlags.Ephemeral});
+    await authorize(i);await acknowledgePrivate(i);
     const s=sessions.create(i.user.id);s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};s.channelId=i.channelId;s.reviewEmail=currentEmail();
     await i.editReply(densukeScreen(s,currentEmail()?'':'「控えメールの宛先」で宛先を設定してください。'));
   },async handle(i){

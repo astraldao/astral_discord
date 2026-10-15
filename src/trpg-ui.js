@@ -2,7 +2,7 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Chann
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,text,adminHomeButton} from './ui.js';
+import {payload,text,adminHomeButton,acknowledgePrivate} from './ui.js';
 import {visibleCharacters,searchScenarios,iacharaUrl,characterRevision} from './trpg-store.js';
 import {createTrpgRepair} from './trpg-repair.js';
 import {tableScreen} from './tables-ui.js';
@@ -135,7 +135,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       catch{failed++;}
     }
     return {updated,failed};
-  },async open(i){await i.deferReply({flags:MessageFlags.Ephemeral});if(!await isAdmin(i))throw new Error('管理者専用です。');const s=sessions.create(i.user.id);s.entry='admin';s.isAdmin=true;s.originChannelId=i.channelId;s.view='home';await i.editReply(screen(s));},async handle(i){let s,locked=false;
+  },async open(i){await acknowledgePrivate(i);if(!await isAdmin(i))throw new Error('管理者専用です。');const s=sessions.create(i.user.id);s.entry='admin';s.isAdmin=true;s.originChannelId=i.channelId;s.view='home';await i.editReply(screen(s));},async handle(i){let s,locked=false;
     try {
       const parts=i.customId.split(':');
       if(parts[1]==='p'){

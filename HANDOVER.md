@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-15 更新。現行のコマンド構成はv3.31.0。過去の調査・検証記録は各版の節を参照。
+2026-10-15 更新。現行のコマンド構成はv3.32.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -20,8 +20,8 @@
 | Discord初期化・イベント・VC入室処理 | `src/index.js` |
 | バックアップ読み上げ | `src/backup-reader.js`、`src/backup-playback.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
 | Botのプロフィールバナー | `src/banner-ui.js`、`src/banner-image.js` |
-| コマンド登録・一般メニュー | `src/commands.js`、`src/main-menu.js` |
-| 管理画面・設定・診断 | `src/admin.js`、`src/settings.js`、`src/diagnostics.js` |
+| コマンド登録・一般メニュー | `src/commands.js`、`src/main-menu.js`、`src/vc-entry-ui.js` |
+| 管理画面・設定・診断 | `src/admin.js`、`src/admin-navigation.js`、`src/settings.js`、`src/diagnostics.js` |
 | 音声生成・再生・入室待ち | `src/speech.js`、`src/audio.js`、`src/queue.js` |
 | TRPG・キャラシ・卓セット | `src/trpg-store.js`、`src/trpg-ui.js`、`src/iachara.js` |
 | 伝助・予定表 | `src/densuke*.js`、`src/schedule-*.js`、`src/calendar-image.js` |
@@ -89,3 +89,12 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 管理ホームには2つの直接ボタンと4カテゴリを表示。カテゴリの内容は `adminCategories` で定義。カテゴリ移動は未保存の草案を破棄し、保存・入室予約の取消は行わない。各カテゴリの操作は従来の権限確認と保存処理を使用する。
 
 この変更は構文・実行ポリシー検査と420件の自動テストで検証。Discord実機のコマンド反映とモバイル表示は未確認。
+
+## v3.32 直接操作と画面の継続
+
+`admin-navigation.js` を管理カテゴリと直接操作12個の共通定義にし、`/admin` の任意項目「操作」と管理ボタンの対応を揃えた。直接操作は共通定義の行き先のみ受理し、設定保存・パネル設置・更新実行などはコマンドから直接実行しない。元チャンネル・本人・最新の管理者権限確認と各機能の確認画面を維持する。旧カテゴリ選択のcustomIdも受け付ける。
+`acknowledgePrivate` を卓・伝助・投稿タグの起動経路で共用し、直接コマンドでの二重応答を避ける。公開元は非公開返信、非公開元は同じ画面を更新する。伝助も古い添付を消去する。実際の各コントローラを呼ぶ統合テストを追加。
+`/menu` にはprofile/walletの直接指定を追加。profile.openは通知済みinteractionにも対応し、公開元は非公開返信、非公開元はdeferUpdate。全プロフィール表示で古い添付を消す。プロフィールと管理画面では、同じ所有者の処理中セッションを新規画面で置き換えない。
+入室先の選択で最新のメンバーを取得し、ロビー未参加なら `lobbyEntryGuide` を表示。ロビーはforce付きで再取得し、通常VCかつ本人のViewChannel権限を確認できた場合だけリンクを出す。Connectがなければ権限確認を案内。参加や移動は既存フローで行う。
+
+この版は構文・実行ポリシー検査と431件の自動テストに成功。Discord実機での表示・操作確認は未実施です。

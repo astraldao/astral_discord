@@ -11,7 +11,7 @@ test('diagnostics lists missing voice files and VC permissions without copying s
   let checks=0;const guild={channels:{cache:new Map([['111111111111111111',{type:2,permissionsFor:()=>({has:()=>true})}],['222222222222222222',{type:2,permissionsFor:()=>({has:bit=>bit!==P.Speak})}]]),async fetch(){checks++;}},members:{async fetchMe(){checks++;return {};}}};
   const diagnose=createDiagnostics({settings,guild,version:'3.6.0',pendingCount:()=>2,components:async()=>({python:false,runtime:true,model:true,dictionary:false})});
   const data=await diagnose();assert.equal(checks,2);assert.equal(data.channels[0].status,'必要な権限あり');assert.ok(data.channels[1].status.includes('発言'));assert.ok(data.channels[2].status.includes('見つかりません'));
-  const out=JSON.stringify(diagnosticsScreen({id:'session',page:0,diagnostics:data}));assert.ok(!out.includes('private@example.com'));assert.ok(!out.includes('SECRET_TOKEN'));assert.ok(out.includes('3.6.0'));
+  const out=JSON.stringify(diagnosticsScreen({id:'session',page:0,diagnostics:data}));assert.ok(!out.includes('private@example.com'));assert.ok(!out.includes('SECRET_TOKEN'));assert.ok(out.includes('3.6.0'));assert.ok(out.includes('nav-category-operations'));assert.ok(out.includes('menu:open'));
   data.channels=Array.from({length:126},()=>({...data.channels[1],status:'不足：閲覧・接続・メンバー移動・送信・埋め込み・発言'}));
   const screen=diagnosticsScreen({id:'session',page:0,diagnostics:data});assert.ok(screen.embeds[0].toJSON().description.length<4096);screen.components.forEach(r=>r.toJSON());
 });

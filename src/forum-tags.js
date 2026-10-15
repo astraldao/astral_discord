@@ -1,7 +1,7 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
-import {payload,text} from './ui.js';
+import {payload,text,acknowledgePrivate} from './ui.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`forum:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function parseForumPost(value,guildId){let url;try{url=new URL(String(value).trim());}catch{}if(!url || url.protocol!=='https:' || url.hostname!=='discord.com' || url.port || url.username || url.password || url.search || url.hash)throw new Error('Discordの投稿リンクを入力してください。');const m=url.pathname.match(/^\/channels\/(\d{17,20})\/(\d{17,20})(?:\/\d{17,20})?\/?$/);if(!m || m[1]!==guildId)throw new Error('このサーバーの投稿リンクを入力してください。');return m[2];}
@@ -16,7 +16,7 @@ export function forumTagsScreen(s,note=''){
 export function createForumTagsController({guild,now=()=>Date.now(),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!member.permissions.has(P.Administrator)||!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('投稿タグの設定は管理者専用です。');return member;}}){
   const sessions=new AdminSessions(now),busyPosts=new Set();
   const get=(id,i)=>{let s;try{s=sessions.get(id,i.user.id);}catch{throw new Error('この画面は終了しています。/admin から開き直してください。');}if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');return s;};
-  async function ack(i){if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
+  const ack=acknowledgePrivate;
   async function post(id,member){const thread=await guild.channels.fetch(id,{force:true});if(thread?.guildId!==guild.id || thread.type!==ChannelType.PublicThread)throw new Error('フォーラムの投稿を指定してください。');const parent=await guild.channels.fetch(thread.parentId,{force:true});if(parent?.type!==ChannelType.GuildForum || parent.guildId!==guild.id)throw new Error('フォーラムの投稿を指定してください。');if(!thread.permissionsFor(member)?.has(P.ViewChannel)||!parent.permissionsFor(member)?.has(P.ViewChannel))throw new Error('投稿を閲覧できません。');const me=await guild.members.fetchMe({force:true});if(!thread.permissionsFor(me)?.has([P.ViewChannel,P.ManageThreads]))throw new Error('Botに投稿の閲覧とスレッド管理の権限が必要です。');if(thread.archived || thread.locked)throw new Error('アーカイブ・ロックされていない投稿を指定してください。');return {thread,tags:parent.availableTags.map(t=>({id:t.id,name:t.name,moderated:t.moderated})),parentId:parent.id};}
   const revision=x=>JSON.stringify({tags:x.thread.appliedTags,available:x.tags,parentId:x.parentId});
   async function open(i){await ack(i);await access(i);const s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,turn:0,tags:[],draft:[]});await i.editReply(forumTagsScreen(s));}

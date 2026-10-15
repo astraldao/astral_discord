@@ -6,7 +6,8 @@ import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setB
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
   const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['menu','admin']);
-  assert.equal(json.find(c=>c.name==='admin').options?.length??0,0);
+  assert.equal(json.find(c=>c.name==='admin').options[0].choices.length,12);
+  assert.equal(json.find(c=>c.name==='admin').options[0].required,false);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);
     for(const row of message.components)row.toJSON();
@@ -66,7 +67,7 @@ test('command consolidation registers all entries before retiring chips and lega
   ]);
   const json=commands().map(c=>c.toJSON());
   assert.ok(json.every(c=>/^[a-z]+$/.test(c.name)));
-  assert.deepEqual(json.find(c=>c.name==='menu').options[0].choices.map(c=>c.value),['vc','read','game','stop']);
+  assert.deepEqual(json.find(c=>c.name==='menu').options[0].choices.map(c=>c.value),['vc','read','game','stop','profile','wallet']);
   assert.equal(json.find(c=>c.name==='menu').options[0].required,false);
   // A partial registration must not remove the user's existing entry points.
   for(const failed of ['menu','admin']){
