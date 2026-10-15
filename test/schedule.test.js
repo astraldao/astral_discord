@@ -76,11 +76,48 @@ test('serialized public refreshes end at the latest calendar revision even when 
 });
 
 test('calendar attachments appear on public posts, private views and previews; list toggle clears them',async()=>{
-  const f=await fixture();await add(f);await f.c.handle(click(f.s,'list'));const screen=scheduleScreen(f.s,f.store);assert.equal(screen.embeds[0].toJSON().image.url,'attachment://calendar.png');assert.equal(screen.files.length,1);assert.ok(screen.files[0].attachment.length<30000);await f.c.handle(click(f.s,'display'));assert.equal(f.s.display,'list');assert.equal(scheduleScreen(f.s,f.store).files,undefined);assert.deepEqual(scheduleScreen(f.s,f.store).attachments,[]);await f.c.handle(click(f.s,'display'));assert.equal(f.s.display,'calendar');await publish(f);assert.equal(f.posted().payload.files.length,1);assert.equal(f.posted().payload.embeds[0].toJSON().image.url,'attachment://calendar.png');
+  const f=await fixture();await add(f);await f.c.handle(click(f.s,'list'));const screen=scheduleScreen(f.s,f.store);assert.equal(screen.embeds[0].toJSON().image.url,'attachment://calendar.png');assert.equal(screen.files.length,1);assert.ok(screen.files[0].attachment.length<150000);await f.c.handle(click(f.s,'display'));assert.equal(f.s.display,'list');assert.equal(scheduleScreen(f.s,f.store).files,undefined);assert.deepEqual(scheduleScreen(f.s,f.store).attachments,[]);await f.c.handle(click(f.s,'display'));assert.equal(f.s.display,'calendar');await publish(f);assert.equal(f.posted().payload.files.length,1);assert.equal(f.posted().payload.embeds[0].toJSON().image.url,'attachment://calendar.png');
 });
 test('viewer may jump directly to a month and toggle views, but navigation forms cannot write or expose admin buttons',async()=>{
   const f=await fixture();await publish(f);const p=f.store.calendar(f.id).publications[0];await f.c.handle(i(`schedule:panel:${p.id}`,'viewer'));const s=[...f.c.sessions.sessions.values()].find(x=>x.userId==='viewer');const a=action=>i(`schedule:${s.id}:${s.turn}:${action}`,'viewer');const jump=a('month-jump');await f.c.handle(jump);assert.ok(jump.modal);const submit=Object.assign(form(jump,{value:'2027/02'}),{user:{id:'viewer'}});await f.c.handle(submit);assert.equal(s.month,'2027-02');assert.equal(f.store.calendar(f.id).events.length,0);assert.ok(!JSON.stringify(submit.replies).includes('予定を追加'));await f.c.handle(a('display'));assert.equal(s.display,'list');const denied=a('new-event');await f.c.handle(denied);assert.equal(denied.modal,undefined);assert.equal(s.scope,'viewer');
 });
 test('invalid event input keeps the draft and useful buttons without leaking details after permission loss',async()=>{
   const f=await fixture(),x=click(f.s,'new-event');await f.c.handle(x);const bad=form(x,event({title:'入力した予定',date:'2026/02/30'}));await f.c.handle(bad);assert.equal(f.store.calendar(f.id).events.length,0);assert.ok(bad.replies.at(-1).components.length>0);const retry=click(f.s,'new-event');await f.c.handle(retry);assert.equal(retry.modal.toJSON().components[0].components[0].value,'入力した予定');assert.equal(retry.modal.toJSON().components[1].components[0].value,'2026/02/30');f.admin(false);const denied=form(retry,event());await f.c.handle(denied);assert.equal(denied.replies.at(-1).components.length,0);assert.ok(!JSON.stringify(denied.replies).includes('入力した予定'));
+});
+
+test('day navigation filters details, prefills new events and resets when changing months',async()=>{
+  const f=await fixture();await add(f);await f.c.handle(click(f.s,'list'));await add(f,event({title:'別の日',date:'2026/10/18'}));await f.c.handle(click(f.s,'list'));
+  const day=click(f.s,'day-jump');await f.c.handle(day);await f.c.handle(form(day,{value:'2026/10/17'}));
+  assert.equal(f.s.date,'2026-10-17');assert.equal(f.s.month,'2026-10');
+  const screen=scheduleScreen(f.s,f.store),menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3);
+  assert.equal(menu.options.length,1);assert.equal(menu.options[0].label,'セッション');
+  const addHere=click(f.s,'new-event');await f.c.handle(addHere);assert.equal(addHere.modal.toJSON().components[1].components[0].value,'2026-10-17');
+  await f.c.handle(click(f.s,'day-clear'));assert.equal(f.s.date,undefined);
+  const empty=click(f.s,'day-jump');await f.c.handle(empty);await f.c.handle(form(empty,{value:'2026/10/19'}));
+  assert.ok(JSON.stringify(scheduleScreen(f.s,f.store)).includes('この日の予定はまだありません'));
+  await f.c.handle(click(f.s,'month-next'));assert.equal(f.s.month,'2026-11');assert.equal(f.s.date,undefined);
+});
+
+test('viewers may select empty days without writes; invalid or stale forms preserve the current view',async()=>{
+  const f=await fixture();await add(f);await publish(f);const publication=f.store.calendar(f.id).publications[0];
+  await f.c.handle(i(`schedule:panel:${publication.id}`,'viewer'));
+  const s=[...f.c.sessions.sessions.values()].find(s=>s.userId==='viewer'),a=action=>i(`schedule:${s.id}:${s.turn}:${action}`,'viewer');
+  const jump=a('day-jump');await f.c.handle(jump);const submit=value=>Object.assign(form(jump,{value}),{user:{id:'viewer'}});
+  await f.c.handle(submit('2026/02/30'));assert.equal(s.date,undefined);assert.equal(s.month,'2026-10');
+  const bad=submit('2026/10/17');bad.customId=bad.customId.replace(s.form.token,'wrong');await f.c.handle(bad);assert.equal(s.date,undefined);
+  await f.c.handle(submit('2026/10/19'));assert.equal(s.date,'2026-10-19');assert.equal(f.store.calendar(f.id).events.length,1);
+  assert.ok(!JSON.stringify(scheduleScreen(s,f.store)).includes('この日に予定を追加'));
+  const denied=a('new-event');await f.c.handle(denied);assert.equal(denied.modal,undefined);
+  const next=a('month-jump');await f.c.handle(next);await f.c.handle(Object.assign(form(next,{value:'2027/01'}),{user:{id:'viewer'}}));assert.equal(s.date,undefined);
+});
+
+test('filtered dense month screens stay within five action rows and returning from details keeps the page',async()=>{
+  const f=await fixture();for(let n=0;n<18;n++){await f.c.handle(click(f.s,'list'));await add(f,event({title:`予定${String(n).padStart(2,'0')}`}));}
+  await f.c.handle(click(f.s,'list'));const jump=click(f.s,'day-jump');await f.c.handle(jump);await f.c.handle(form(jump,{value:'2026/10/17'}));
+  await f.c.handle(click(f.s,'next'));assert.equal(f.s.page,1);
+  const screen=scheduleScreen(f.s,f.store);assert.equal(screen.components.length,5);
+  const menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3);
+  await f.c.handle(Object.assign(click(f.s,'event'),{values:[menu.options[0].value]}));
+  await f.c.handle(click(f.s,'list'));assert.equal(f.s.page,1);assert.equal(f.s.date,'2026-10-17');
+  for(const row of scheduleScreen(f.s,f.store).components)assert.ok(row.toJSON().components.length<=5);
 });
