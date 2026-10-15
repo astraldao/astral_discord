@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import subprocess
 
-def main():
+def create_synthesizer(cpu_num_threads=1):
     from voicevox_core.blocking import Onnxruntime, OpenJtalk, Synthesizer, VoiceModelFile
     root=Path(os.environ.get('VOICEVOX_ROOT','voicevox')).resolve()
     runtime=root/'onnxruntime'/'lib'/Onnxruntime.LIB_RECOMMENDED_VERSIONED_FILENAME
@@ -19,14 +19,18 @@ def main():
     model=root/'models'/'vvms'/'0.vvm'
     for path in [runtime,dictionary,model]:
         if not path.exists(): raise RuntimeError(f'VOICEVOX component missing: {path}')
-    request=json.loads(sys.stdin.read(4096))
-    text=request['text']
-    if not isinstance(text,str) or len(text)>100:raise ValueError('Invalid announcement length')
-    synth=Synthesizer(Onnxruntime.load_once(filename=str(runtime)),OpenJtalk(str(dictionary)),acceleration_mode='CPU',cpu_num_threads=1)
+    synth=Synthesizer(Onnxruntime.load_once(filename=str(runtime)),OpenJtalk(str(dictionary)),acceleration_mode='CPU',cpu_num_threads=cpu_num_threads)
     with VoiceModelFile.open(str(model)) as voice:
         if not any(meta.name=='ずんだもん' and any(style.id==3 for style in meta.styles) for meta in voice.metas):
             raise RuntimeError('Model does not contain VOICEVOX:ずんだもん style 3')
         synth.load_voice_model(voice)
+    return synth
+
+def main():
+    request=json.loads(sys.stdin.read(4096))
+    text=request['text']
+    if not isinstance(text,str) or len(text)>100:raise ValueError('Invalid announcement length')
+    synth=create_synthesizer()
     query=synth.create_audio_query(text,3)
     query.speed_scale=0.95
     query.intonation_scale=0.85

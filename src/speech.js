@@ -11,7 +11,7 @@ export function announcementText(name,words=[],personalReading=null) {
   const reading=personalReading===null?readingFor(clean,words):validatePersonalReading(personalReading);
   return `${reading ? reading+'さん' : '新しい方'}が、まもなく参加するのだ。`;
 }
-export function gentlePcm(wav,volume=30) {
+export function gentlePcm(wav,volume=30,{fadeMs=20}={}) {
   if(!Buffer.isBuffer(wav) || wav.length<44 || wav.toString('ascii',0,4)!=='RIFF' || wav.toString('ascii',8,12)!=='WAVE')throw new Error('音声データがWAVではありません。');
   let fmt,data;
   for(let offset=12;offset+8<=wav.length;) {
@@ -23,7 +23,8 @@ export function gentlePcm(wav,volume=30) {
   }
   if(!fmt || fmt.length<16 || fmt.readUInt16LE(0)!==1 || fmt.readUInt16LE(2)!==2 || fmt.readUInt32LE(4)!==48000 || fmt.readUInt16LE(14)!==16 || !data || data.length%4 || !data.length || data.length>48000*4*20)throw new Error('48kHz・ステレオPCM16bit・20秒以内の音声が必要です。');
   if(!Number.isInteger(volume) || volume<10 || volume>60)throw new Error('音量は10〜60です。');
-  const out=Buffer.alloc(data.length),frames=data.length/4,fade=960,gain=volume/100;
+  if(!Number.isInteger(fadeMs)||fadeMs<1||fadeMs>20)throw new Error('フェード時間が不正です。');
+  const out=Buffer.alloc(data.length),frames=data.length/4,fade=48*fadeMs,gain=volume/100;
   for(let frame=0;frame<frames;frame++) {
     const envelope=Math.min(1,frame/fade,(frames-1-frame)/fade);
     for(let channel=0;channel<2;channel++) {

@@ -5,7 +5,7 @@ import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setBotIconProvider} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
-  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','game','admin']);
+  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','game','read','admin']);
   assert.equal(json.find(c=>c.name==='admin').options?.length??0,0);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);
@@ -61,14 +61,14 @@ test('command consolidation registers all entries before retiring chips and lega
   }};
   await registerCommands(guild);
   assert.deepEqual(events,[
-    'create:vc','create:game','create:admin',
+    'create:vc','create:game','create:read','create:admin',
     'delete:管理','delete:ゲーム','delete:vc-panel','delete:vc設定','delete:chips',
   ]);
   const json=commands().map(c=>c.toJSON());
   assert.ok(json.every(c=>/^[a-z]+$/.test(c.name)));
   assert.equal(json.find(c=>c.name==='game').options?.length??0,0);
   // A partial registration must not remove the user's existing entry points.
-  for(const failed of ['vc','game','admin']){
+  for(const failed of ['vc','game','read','admin']){
     events.length=0;
     guild.commands.create=async c=>{
       events.push(`create:${c.name}`);

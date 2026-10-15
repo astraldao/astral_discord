@@ -1,6 +1,6 @@
 {
   "name": "astral-voice-lobby",
-  "version": "3.27.0",
+  "version": "3.28.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,7 +10,8 @@
     "start": "node index.js",
     "test": "node --test test/*.test.js",
     "check": "node scripts/check.js",
-    "voice-test": "node scripts/voice-test.js"
+    "voice-test": "node scripts/voice-test.js",
+    "backup-voice-benchmark": "node scripts/backup-voice-benchmark.js"
   },
   "dependencies": {
     "@discordjs/voice": "0.19.2",

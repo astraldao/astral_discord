@@ -18,6 +18,7 @@
 |---|---|
 | 起動・環境設定読込 | `index.js` |
 | Discord初期化・イベント・VC入室処理 | `src/index.js` |
+| バックアップ読み上げ | `src/backup-reader.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
 | コマンド登録 | `src/commands.js` |
 | 管理画面・設定・診断 | `src/admin.js`、`src/settings.js`、`src/diagnostics.js` |
 | 音声生成・再生・入室待ち | `src/speech.js`、`src/audio.js`、`src/queue.js` |
@@ -26,7 +27,7 @@
 | ゲーム・チップ台帳 | `src/blackjack*.js`、`src/casino*.js`、`src/game-wallets.js`、`src/chip-*.js` |
 | 自動更新・プロセス監督 | `scripts/auto-update.js`、`scripts/supervisor.js`、`src/update-lifecycle.js` |
 
-現行コマンドは `/vc`（入室）、`/game`（ゲーム・チップ）、管理者専用の `/admin`。
+現行コマンドは `/vc`（入室）、`/game`（ゲーム・チップ）、`/read`（バックアップ読み上げ）、管理者専用の `/admin`。
 v3.24.1で `/chips` を `/game → 自分のチップ` に統合した。
 単一のDiscordサーバーを `GUILD_ID` で指定する。外部DBは使わずJSONへ保存する。
 
@@ -60,3 +61,8 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 - 通常のgit cloneは作業環境のプロキシ接続エラーで失敗したため、調査にはGitHub連携を利用した。手元の取得ファイルは完全なcloneではない。
 
 詳細な利用方法は [README.md](README.md)、既存の仕様と経緯は [ROADMAP.md](ROADMAP.md)、権限・公開範囲・外部取得の制約は [SECURITY.md](SECURITY.md) を参照する。
+
+## v3.28 バックアップ読み上げ
+
+`ASTRAL_BACKUP_TTS=1` とDeveloper PortalのMessage Content Intentが必要。変更後は再起動する。`/read start` の元チャンネルから本人の参加VCへ、本文50文字＋「以下略」をFIFO再生する。最大8件待機、実行者の移動・権限失効・音声障害で停止。本文・生成音声の永続保存はしない。入室告知と音声接続を共用するため同時実行せず、読み上げ中は手動更新も見送る。
+常駐Pythonは固定モデルのずんだもんstyle3。最初の2モーラから段階的に合成・再生する。`npm run backup-voice-benchmark` は合成のみの計測で、300ms以内の実際の読み上げ開始を保証しない。開発環境12回の中央値298ms・最大420ms。Discord実機の検証は未実施。詳細な導入方法・待ち行列・計測範囲はREADMEを参照する。

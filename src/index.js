@@ -1,3 +1,4 @@
+import {createBackupReader} from './backup-reader.js';
 import {createUpdateClient} from './update-client.js';
 import {createVersionController} from './version-ui.js';
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
@@ -41,7 +42,8 @@ const personalReadings=await new PersonalReadingsStore('data/personal-readings.j
 const trpgStore=await new TrpgStore('data/trpg.json').load();
 const scheduleStore=await new ScheduleStore('data/schedules.json').load();
 const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates],presence:{status:env.ASTRAL_UPDATING==='1'?'dnd':'idle'}});
+const backupEnabled=env.ASTRAL_BACKUP_TTS==='1';
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates,...(backupEnabled?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])],presence:{status:env.ASTRAL_UPDATING==='1'?'dnd':'idle'}});
 const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
@@ -49,7 +51,7 @@ const updateClient=createUpdateClient({version:botVersion});
 const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator)});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,backupReader,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -64,10 +66,12 @@ async function validate(job) {
   job.abort.signal.throwIfAborted();
   if(job.revision !== revision) throw new EntryError('設定が変更されたため中止しました。');
   const c=configured();
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
   const member = await guild.members.fetch({user: job.userId, force: true});
   const channel = await guild.channels.fetch(job.channelId);
   job.abort.signal.throwIfAborted();
   if(job.revision !== revision) throw new EntryError('設定が変更されたため中止しました。');
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
   if (member.voice.channelId !== c.lobbyId) throw new EntryError('ロビー退出により中止しました。');
   if (!canEnter(channel, member, guild.members.me, c.lobbyId, c.targetIds)) throw new EntryError('行き先の登録・閲覧権限・Bot権限・空き状況を確認してください。');
   if (c.voice && !channel.permissionsFor(guild.members.me).has(P.Speak)) throw new EntryError('Botの発言権限がありません。');
@@ -136,7 +140,9 @@ async function choose(interaction,page=0) {
     await interaction.editReply(payload('✧  入室予約があります','予約の進行状況は、最初の予約メッセージで確認できます。変更したい場合は先にキャンセルしてください。',{components:[cancelButton(existing)]}));return;
   }
   const c=configured();
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
   const member = await guild.members.fetch(interaction.user.id);
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
   if (member.voice.channelId !== c.lobbyId) throw new EntryError('先にロビーVCに参加してください。');
   await guild.channels.fetch();
   const choices = [...guild.channels.cache.values()].filter(channel => canEnter(channel, member, guild.members.me, c.lobbyId, c.targetIds)
@@ -161,6 +167,7 @@ client.once('clientReady', async () => {
   try {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
+    backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity()});
     refreshPanel=createPanelRefresher({settings,guild});
     await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
@@ -188,9 +195,9 @@ client.once('clientReady', async () => {
 });
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
-  const command = interaction.isChatInputCommand() && ['vc','game','admin'].includes(interaction.commandName);
+  const command = interaction.isChatInputCommand() && ['vc','game','read','admin'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(read|updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   let finishActivity=()=>{};
   try {
@@ -203,6 +210,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
     finishActivity=resourcePresence.activity();
+    if((command&&interaction.commandName==='read')||(adminComponent&&interaction.customId==='read:stop')){if(stopping)throw new EntryError('Botを終了しています。');await backupReader.handle(interaction);return;}
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
@@ -235,13 +243,18 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    const components=adminComponent || (command && ['admin','game'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton()];
+    const components=adminComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton()];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);
   }finally{finishActivity();}
 });
+client.on('messageCreate',message=>{if(ready&&!stopping)backupReader?.onMessage(message);});
+client.on('channelUpdate',()=>{void backupReader?.revalidate();});
+client.on('guildMemberUpdate',()=>{void backupReader?.revalidate();});
+client.on('roleUpdate',()=>{void backupReader?.revalidate();});
 client.on('voiceStateUpdate',(before,after) => {
+  void backupReader?.onVoiceChange(before,after);
   if (!ready || stopping || after.guild.id !== guild.id || after.member?.user.bot || before.channelId === after.channelId) return;
   const c=settings.get();
   const grant = grants.get(after.id);
@@ -256,10 +269,10 @@ client.on('voiceStateUpdate',(before,after) => {
   }
 });
 client.on('error',error => console.error('Discord接続:',error.code ?? error.name));
-const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();};
-const drain=async()=>{updateClient.close();await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
+const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();void backupReader?.close();};
+const drain=async()=>{await backupReader?.close();updateClient.close();await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
 if(process.env.ASTRAL_SUPERVISED==='1' && process.connected){
-  const lifecycle=createUpdateLifecycle({busy:()=>updateBusy({active:resourcePresence.activeCount,pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});
+  const lifecycle=createUpdateLifecycle({busy:()=>updateBusy({active:resourcePresence.activeCount+(backupReader?.active?1:0),pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});
   process.on('message',message=>{if(message?.type==='update-presence'){resourcePresence.setUpdating(message.updating);return;}if(message?.type==='activate'&&!stopping)ready=true;else void lifecycle(message);});
 }
 for (const signal of ['SIGTERM','SIGINT']) process.once(signal,() => {
