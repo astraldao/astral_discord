@@ -1,30 +1,33 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags} from 'discord.js';
 import {AdminSessions} from './admin.js';
-import {payload,text} from './ui.js';
+import {payload,text,adminHomeButton} from './ui.js';
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`updates:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 const labels={idle:'待機中',preparing:'新版を取得・検証中',switching:'切り替え中',complete:'更新が完了しました',blocked:'進行中の操作があるため更新を見送りました',failed:'前回の更新を完了できませんでした'};
 export function versionScreen(s){
   const d=s.data,current=d.current,latest=d.latest,busy=['preparing','switching'].includes(d.phase),available=latest&&latest.sha!==current.sha;
-  let body=`**現在** v${text(current.version)}${current.sha?` · ${current.sha.slice(0,7)}`:''}\n**更新方式** 管理者による手動更新`;
-  if(!d.supported)return payload('✦  バージョン管理',body+'\n\nこの起動環境は手動更新に未対応です。QuaxlyのStartup Commandから起動用コードを一度再導入してください。手順はリポジトリのREADMEにあります。');
-  body+=`\n**確認済みの最新** ${latest?`v${text(latest.version)} · ${latest.sha.slice(0,7)}`:'未確認'}\n**状態** ${labels[d.phase]??'待機中'}`;
-  if(d.checkedAt!==null)body+=`\n最終確認 <t:${Math.floor(d.checkedAt/1000)}:R>`;
-  if(latest)body+=`\n[更新対象のコミットを見る](https://github.com/astraldao/astral_discord/commit/${latest.sha})`;
-  if(d.error)body+=`\n\n${text(d.error)}`;
-  if(s.confirm){
-    body+='\n\n**この版に更新しますか？**\n新版を取得・検証してからBotを再接続します。進行中の操作やゲームがある場合は切り替えを見送り、現在の版を維持します。';
-    return payload('✦  更新内容を確認',body,{components:[row(button(s,'start','この版に更新する',ButtonStyle.Primary),button(s,'cancel','変更せず戻る'))]});
+  const navigation=row(adminHomeButton());
+  if(!d.supported){
+    const m=payload('バージョン管理','**初回の切り替えが必要です**\nQuaxlyのStartup Commandから一度再導入すると、この画面で更新できるようになります。',{state:'warning',components:[row(new ButtonBuilder().setLabel('導入手順を見る').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord#quaxlyでgithubから導入更新')),navigation]});
+    m.embeds[0].addFields({name:'現在のバージョン',value:`v${text(current.version)}`});return m;
   }
-  if(busy)body+='\n\n更新中はステータスをdndにします。切り替え時に接続が短く中断します。完了後は /admin を開き直して稼働版を確認してください。';
-  else if(latest&&!available)body+='\n\n確認した最新版で稼働しています。';
-  return payload('✦  バージョン管理',body,{components:[row(button(s,'check','更新を確認',ButtonStyle.Primary).setDisabled(busy),button(s,'status','状態を再表示'),...(available&&!busy?[button(s,'confirm','更新内容を確認')]:[]))]});
+  const heading=busy?labels[d.phase]:d.phase==='blocked'?'操作の終了後に再試行できます':d.phase==='failed'?'更新結果を確認してください':available?'新しい更新があります':latest?'確認した最新版で稼働中':'まず更新を確認してください';
+  let body=`**${heading}**`;
+  if(d.error)body+=`\n${text(d.error)}`;
+  if(s.confirm)body+='\n\n取得・検証後にBotを再接続します。進行中の操作やゲームがあれば更新を見送ります。';
+  else if(busy)body+='\n\n更新中はdnd（取り込み中）になります。切り替え後に /admin を開き直すと、稼働版を確認できます。';
+  else if(available)body+='\n内容を確認してから更新できます。';
+  else if(!latest)body+='\n管理者が操作したときだけ確認・更新します。';
+  if(d.checkedAt!==null)body+=`\n\n最終確認 <t:${Math.floor(d.checkedAt/1000)}:R>`;
+  const controls=s.confirm?row(button(s,'start','この版に更新する',ButtonStyle.Primary),button(s,'cancel','変更せず戻る')):busy?row(button(s,'status','進行状況を確認',ButtonStyle.Primary)):row(...(available?[button(s,'confirm','更新内容を確認',ButtonStyle.Primary)]:[]),button(s,'check',latest?'更新を再確認':'更新を確認',available?ButtonStyle.Secondary:ButtonStyle.Primary));
+  const m=payload(s.confirm?'更新内容を確認':'バージョン管理',body,{state:d.phase==='blocked'?'warning':d.phase==='failed'?'error':latest&&!available&&!busy?'success':'normal',components:[controls,...(latest?[row(new ButtonBuilder().setLabel('変更内容を見る').setStyle(ButtonStyle.Link).setURL(`https://github.com/astraldao/astral_discord/commit/${latest.sha}`))]:[]),navigation]});
+  m.embeds[0].addFields({name:'現在のバージョン',value:`**v${text(current.version)}**${current.sha?`\n${current.sha.slice(0,7)}`:''}`,inline:true},{name:'確認した最新版',value:latest?`**v${text(latest.version)}**\n${latest.sha.slice(0,7)}`:'未確認',inline:true});return m;
 }
 export function createVersionController({updater,access,now=Date.now}){
   const sessions=new AdminSessions(now);
   const check=async(i,s)=>{if(!await access(i))throw new Error('管理者権限がありません。');if(s){sessions.get(s.id,i.user.id);if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');}};
   const ack=async i=>{if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});};
-  async function error(i,e){const m=payload('✦  バージョン管理',text(e.message),{state:'error'});if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
+  async function error(i,e,s){let recover=false;try{await check(i,s);recover=true;}catch{}const m=payload('バージョン管理',text(e.message),{state:'error',components:recover?[row(...(s?[button(s,'check','更新を確認し直す')]:[]),adminHomeButton())]:[]});if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
   return {sessions,async open(i){try{await check(i);await ack(i);const s=sessions.create(i.user.id);s.channelId=i.channelId;s.turn=0;s.data=await updater.request('status');await check(i,s);await i.editReply(versionScreen(s));}catch(e){await error(i,e);}},async handle(i){
     let s,locked=false;
     try{
@@ -39,6 +42,6 @@ export function createVersionController({updater,access,now=Date.now}){
         if(!s.confirm||!s.target)throw new Error('更新内容を確認してください。');await check(i,s);s.data=await updater.request('start',s.target);s.confirm=false;s.target=null;
       }else throw new Error('操作を確認してください。');
       await check(i,s);s.turn++;await i.editReply(versionScreen(s));
-    }catch(e){await error(i,e);}finally{if(locked)s.busy=false;}
+    }catch(e){await error(i,e,s);}finally{if(locked)s.busy=false;}
   }};
 }

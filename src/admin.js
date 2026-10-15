@@ -67,8 +67,12 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
-    description+='\n\n**入室の設定** · VC・音声・入室パネル\n**卓の準備** · 日程調整・ベース卓・キャラシ\n**ゲーム** · チップの確認・調整';
-    components=[row(button(s,'nav-vc','VC設定',ButtonStyle.Primary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),row(button(s,'open-densuke','日程調整'),button(s,'open-trpg','卓・キャラシ'),button(s,'open-forum','投稿タグ'),button(s,'open-schedule','予定表')),row(button(s,'nav-overview','設定を確認'),button(s,'diagnose','動作診断'),button(s,'open-chips','チップ管理'),button(s,'open-updates','バージョン管理'))];
+    description+='\n\n**卓・予定** · 予定表、キャラシ、日程調整\n**入室・サーバー** · VC、音声、パネル、投稿タグ\n**運用** · チップ、診断、設定確認、バージョン管理';
+    components=[
+      row(button(s,'open-schedule','予定表',missing.length?ButtonStyle.Secondary:ButtonStyle.Primary),button(s,'open-trpg','卓・キャラシ'),button(s,'open-densuke','日程調整')),
+      row(button(s,'nav-vc','VC設定',missing.length?ButtonStyle.Primary:ButtonStyle.Secondary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル'),button(s,'open-forum','投稿タグ')),
+      row(button(s,'open-chips','チップ管理'),button(s,'diagnose','動作診断'),button(s,'nav-overview','設定を確認'),button(s,'open-updates','バージョン管理')),
+    ];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
@@ -145,8 +149,8 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     let s,locked=false;
     try {
       if(!await access(interaction))throw new Error('管理画面は管理者専用です。');
-      if(interaction.isChatInputCommand()) {
-        await interaction.deferReply({flags:MessageFlags.Ephemeral});s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;await interaction.editReply(screen(s));return;
+      if(interaction.isChatInputCommand() || interaction.customId==='admin:open') {
+        if(!interaction.deferred&&!interaction.replied){if(interaction.message?.flags?.has(MessageFlags.Ephemeral))await interaction.deferUpdate();else await interaction.deferReply({flags:MessageFlags.Ephemeral});}s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;await interaction.editReply(screen(s));return;
       }
       const [,id,action,token]=interaction.customId.split(':');s=sessions.get(id,interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');

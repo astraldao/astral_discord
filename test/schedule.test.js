@@ -121,3 +121,8 @@ test('filtered dense month screens stay within five action rows and returning fr
   await f.c.handle(click(f.s,'list'));assert.equal(f.s.page,1);assert.equal(f.s.date,'2026-10-17');
   for(const row of scheduleScreen(f.s,f.store).components)assert.ok(row.toJSON().components.length<=5);
 });
+
+test('today shortcut works from another month for both admin and read-only viewer without changing events',async()=>{
+  const f=await fixture();await add(f);await f.c.handle(click(f.s,'list'));await f.c.handle(click(f.s,'month-next'));await f.c.handle(click(f.s,'day-today'));assert.equal(f.s.date,'2026-10-14');assert.equal(f.s.month,'2026-10');assert.equal(f.store.calendar(f.id).events.length,1);
+  await publish(f);const p=f.store.calendar(f.id).publications[0];await f.c.handle(i(`schedule:panel:${p.id}`,'viewer'));const s=[...f.c.sessions.sessions.values()].find(s=>s.userId==='viewer');await f.c.handle(i(`schedule:${s.id}:${s.turn}:day-today`,'viewer'));assert.equal(s.date,'2026-10-14');const controls=scheduleScreen(s,f.store).components.flatMap(r=>r.toJSON().components);assert.ok(!controls.some(b=>b.custom_id==='admin:open'));assert.ok(!controls.some(b=>b.custom_id.endsWith(':new-event')));
+});
