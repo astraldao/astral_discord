@@ -1,3 +1,5 @@
+import {createUpdateClient} from './update-client.js';
+import {createVersionController} from './version-ui.js';
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
   StringSelectMenuBuilder, MessageFlags} from 'discord.js';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -39,10 +41,12 @@ const personalReadings=await new PersonalReadingsStore('data/personal-readings.j
 const trpgStore=await new TrpgStore('data/trpg.json').load();
 const scheduleStore=await new ScheduleStore('data/schedules.json').load();
 const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates],presence:{status:'idle'}});
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates],presence:{status:env.ASTRAL_UPDATING==='1'?'dnd':'idle'}});
 const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
-const resourcePresence=createResourcePresence(client,{version:botVersion});
+const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
+const updateClient=createUpdateClient({version:botVersion});
+const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator)});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
 let guild,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
@@ -170,7 +174,7 @@ client.once('clientReady', async () => {
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     trpg=createTrpgController({store:trpgStore,guild});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size})});
+    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size})});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = process.env.ASTRAL_SUPERVISED!=='1'; console.log(`準備完了: ${client.user.tag} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
@@ -186,7 +190,7 @@ client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const command = interaction.isChatInputCommand() && ['vc','game','admin'].includes(interaction.commandName);
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
+  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent) return;
   let finishActivity=()=>{};
   try {
@@ -202,7 +206,7 @@ client.on('interactionCreate', async interaction => {
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
       if(stopping)throw new EntryError('Botを終了しています。');
-      if(adminComponent && interaction.customId.startsWith('schedule:'))await schedule.handle(interaction);else if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
+      if(adminComponent && interaction.customId.startsWith('updates:'))await versions.handle(interaction);else if(adminComponent && interaction.customId.startsWith('schedule:'))await schedule.handle(interaction);else if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
@@ -253,10 +257,10 @@ client.on('voiceStateUpdate',(before,after) => {
 });
 client.on('error',error => console.error('Discord接続:',error.code ?? error.name));
 const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();};
-const drain=async()=>{await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
+const drain=async()=>{updateClient.close();await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
 if(process.env.ASTRAL_SUPERVISED==='1' && process.connected){
   const lifecycle=createUpdateLifecycle({busy:()=>updateBusy({active:resourcePresence.activeCount,pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});
-  process.on('message',message=>{if(message?.type==='activate'&&!stopping)ready=true;else void lifecycle(message);});
+  process.on('message',message=>{if(message?.type==='update-presence'){resourcePresence.setUpdating(message.updating);return;}if(message?.type==='activate'&&!stopping)ready=true;else void lifecycle(message);});
 }
 for (const signal of ['SIGTERM','SIGINT']) process.once(signal,() => {
   freeze();for(const job of pending.values())job.abort.abort();

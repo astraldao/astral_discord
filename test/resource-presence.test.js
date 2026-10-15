@@ -27,3 +27,12 @@ test('tracked failures release processing state and profile updates use the requ
   const {profileVersion,updateProfileVersion}=await import('../src/resource-presence.js');assert.equal(profileVersion('既存の紹介\n\nASTRAL · v3.18.0','3.19.0'),'Made by Astral ・v3.19.0');assert.equal(profileVersion('x'.repeat(400),'3.19.0'),'Made by Astral ・v3.19.0');let edits=0;const app={description:'紹介',async fetch(){return this;},async edit(p){edits++;this.description=p.description;}};await updateProfileVersion(app,'3.19.0');await updateProfileVersion(app,'3.19.0');assert.equal(edits,1);assert.equal(app.description,'Made by Astral ・v3.19.0');assert.throws(()=>profileVersion('説明','bad\nversion'));
   let time=0;const statuses=[],client={presence:{status:'idle'},isReady:()=>true,user:{setPresence:p=>{statuses.push(p.status);client.presence.status=p.status;}}};const p=createResourcePresence(client,{sample:async()=>({cpuPercent:0,memoryPercent:5}),now:()=>time,schedule:()=>({unref(){}}),cancel:()=>{},after:()=>0,cancelAfter:()=>{}});p.start();await new Promise(r=>setImmediate(r));time=6000;await assert.rejects(p.track(async()=>{throw new Error('operation failed');}));assert.equal(statuses.at(-1),'online');time=12000;await p.refresh();assert.equal(statuses.at(-1),'idle');p.stop();
 });
+
+test('manual updating overrides activity and metrics with dnd until completion or failure',async()=>{
+  let time=0;const calls=[],jobs=new Map();let nextId=0;
+  const client={presence:{status:'idle'},isReady:()=>true,user:{setPresence:p=>{calls.push(p);client.presence.status=p.status;}}};
+  const p=createResourcePresence(client,{version:'3.26.0',sample:async()=>({cpuPercent:1,memoryPercent:2}),now:()=>time,schedule:()=>({unref(){}}),cancel:()=>{},after:fn=>{jobs.set(++nextId,fn);return nextId;},cancelAfter:id=>jobs.delete(id)});
+  p.start();await new Promise(r=>setImmediate(r));p.setUpdating(true);assert.equal(calls.at(-1).status,'dnd');assert.match(calls.at(-1).activities[0].state,/更新中/);
+  const finish=p.activity();time=6000;await p.refresh();assert.equal(calls.at(-1).status,'dnd');finish();time=12000;p.setUpdating(false);assert.equal(calls.at(-1).status,'idle');p.stop();
+  const startup=createResourcePresence(client,{updating:true,sample:async()=>({}),schedule:()=>({unref(){}}),cancel:()=>{}});startup.start();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).status,'dnd');startup.stop();
+});

@@ -1,9 +1,11 @@
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
-import {githubHead,prepareRelease,readState,writeState,releasePath,snapshotData,restoreData,cleanup,intervalMs,runFile} from './auto-update.js';
-export function launchWorker(root,source,{timeout=90000}={}){
-  const child=spawn(process.execPath,[join(source,'index.js'),'--worker'],{cwd:root,shell:false,env:{...process.env,ASTRAL_DATA_ROOT:root,ASTRAL_SUPERVISED:'1'},stdio:['inherit','inherit','inherit','ipc']});
+import {readFile} from 'node:fs/promises';
+import {createManualUpdater,UPDATER_PROTOCOL} from './manual-update.js';
+import {prepareRelease,readState,writeState,releasePath,snapshotData,restoreData,cleanup,runFile} from './auto-update.js';
+export function launchWorker(root,source,{timeout=90000,updating=false}={}){
+  const child=spawn(process.execPath,[join(source,'index.js'),'--worker'],{cwd:root,shell:false,env:{...process.env,ASTRAL_DATA_ROOT:root,ASTRAL_SUPERVISED:'1',ASTRAL_UPDATER_PROTOCOL:UPDATER_PROTOCOL,ASTRAL_UPDATING:updating?'1':'0'},stdio:['inherit','inherit','inherit','ipc']});
   const exited=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
   const ready=new Promise((accept,reject)=>{
     const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('新版の起動が時間内に完了しませんでした。'));},timeout);
@@ -37,7 +39,7 @@ export async function switchRelease(root,state,release,{launch=launchWorker,save
   }catch{
     if(candidate){candidate.child.kill('SIGKILL');await candidate.exited;}
     if(candidate)await restoreData(root);const old={...state,failed:sha};delete old.transition;await save(root,old);
-    console.warn(`自動更新: ${sha.slice(0,7)} の起動に失敗。保存データと前の版を戻しました。`);
+    console.warn(`更新: ${sha.slice(0,7)} の起動に失敗。保存データと前の版を戻しました。`);
     const worker=launch(root,releasePath(root,old));await worker.ready;worker.child.send({type:'activate'});
     return {state:old,worker};
   }
@@ -47,34 +49,47 @@ export async function recoverTransition(root,state){
   await restoreData(root);const old={...state,failed:state.transition};delete old.transition;await writeState(root,old);return old;
 }
 export async function supervise(){
-  const root=process.cwd();let state=await readState(root),worker,prepared=null,timer,checking=false,managed=false,stopping=false,exitStatus=0;
+  const root=process.cwd();let state=await readState(root),worker,managed=false,stopping=false,updateRunning=false;
   const abort=new AbortController(),children=new Set();
-  function launch(data,source){if(stopping)throw new Error('Botを停止しています。');const current=launchWorker(data,source);children.add(current);void current.exited.then(()=>children.delete(current));return current;}
-  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
-    stopping=true;clearInterval(timer);abort.abort();for(const current of children)current.child.kill(signal);
-    const force=setTimeout(()=>{for(const current of children)current.child.kill('SIGKILL');process.exit(0);},15000);force.unref();
-    void Promise.all([...children].map(current=>current.exited)).then(()=>{clearTimeout(force);if(!checking)process.exit(0);});
-  });
-  if(state.transition){state=await recoverTransition(root,state);console.warn('自動更新: 中断された更新の保存データを復元しました。');}
-  await writeState(root,state);
-  function watch(current){current.child.once('exit',code=>{if(current===worker&&!managed&&!stopping){console.error('Botが終了しました。ホスティング側から再起動してください。');exitStatus=code||1;stopping=true;clearInterval(timer);abort.abort();if(!checking)process.exit(exitStatus);}});}
-  worker=launch(root,releasePath(root,state));await worker.ready;watch(worker);worker.child.send({type:'activate'});
-  await cleanup(root,state);
-  const enabled=process.env.ASTRAL_AUTO_UPDATE!=='0';
-  console.log(`自動更新: ${enabled?'ON · mainを定期確認':'OFF'}${state.sha?` · ${state.sha.slice(0,7)}`:''}`);
-  async function check(){
-    if(checking||stopping)return;checking=true;
-    try{
-      if(!prepared){const sha=await githubHead();if(sha===state.sha||sha===state.failed)return;console.log(`自動更新: ${sha.slice(0,7)} を準備中。`);const release=await prepareRelease(root,sha,{run:(command,args,options)=>runFile(command,args,{...options,signal:abort.signal})});prepared={sha,release};}
-      if(stopping)return;
+  const send=(current,message)=>{if(current?.child.connected)current.child.send(message,()=>{});};
+  const updater=createManualUpdater({
+    current:async()=>({sha:state.sha,version:JSON.parse(await readFile(join(releasePath(root,state),'package.json'),'utf8')).version,failed:state.failed}),
+    presence:updating=>{updateRunning=updating;send(worker,{type:'update-presence',updating});},
+    prepare:async sha=>{await cleanup(root,state);return prepareRelease(root,sha,{run:(command,args,options)=>runFile(command,args,{...options,signal:abort.signal})});},
+    apply:async release=>{
+      if(stopping)throw new Error('Botを停止しています。');
       managed=true;
-      const stopped=await requestStop(worker);
-      if(!stopped){console.log('自動更新: 処理・ゲームの終了を待っています。');return;}
-      await worker.exited;if(stopping)return;
-      const result=await switchRelease(root,state,prepared.release,{launch});worker=result.worker;state=result.state;watch(worker);prepared=null;
-      await cleanup(root,state);console.log(`自動更新: ${state.sha?.slice(0,7)??'前の版'} で稼働中。`);
-    }catch(error){console.warn('自動更新:',error.message);if(worker.child.exitCode!==null||worker.child.signalCode!==null){clearInterval(timer);process.exitCode=1;}}
-    finally{managed=false;checking=false;if(stopping)process.exit(exitStatus);else if(worker.child.exitCode!==null||worker.child.signalCode!==null){clearInterval(timer);process.exit(1);}}
+      try{
+        if(!await requestStop(worker))throw Object.assign(new Error('進行中の操作があります。'),{code:'UPDATE_BUSY'});
+        await worker.exited;if(stopping)throw new Error('Botを停止しています。');
+        const result=await switchRelease(root,state,release,{launch});worker=result.worker;state=result.state;watch(worker);
+        await cleanup(root,state);return {rolledBack:state.sha!==release.split('/').at(-1)};
+      }finally{
+        managed=false;
+        if(!stopping&&(worker.child.exitCode!==null||worker.child.signalCode!==null)){stopping=true;abort.abort();updater.close();process.exitCode=1;}
+      }
+    },
+  });
+  function launch(data,source){
+    if(stopping)throw new Error('Botを停止しています。');
+    const current=launchWorker(data,source,{updating:updateRunning});children.add(current);void current.exited.then(()=>children.delete(current));return current;
   }
-  if(enabled){timer=setInterval(()=>void check(),intervalMs(process.env.ASTRAL_UPDATE_INTERVAL));void check();}
+  function watch(current){
+    current.child.on('message',m=>{
+      if(current!==worker||stopping||m?.type!=='update-rpc'||typeof m.id!=='string'||m.id.length>64)return;
+      void updater.request(m.action,m.sha).then(data=>send(current,{type:'update-rpc-result',id:m.id,data})).catch(()=>send(current,{type:'update-rpc-result',id:m.id,error:'更新操作に失敗しました。画面を開き直して確認してください。'}));
+    });
+    current.child.once('exit',code=>{
+      if(current!==worker||managed||stopping)return;
+      console.error('Botが終了しました。ホスティング側から再起動してください。');stopping=true;abort.abort();updater.close();process.exitCode=code||1;
+    });
+  }
+  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
+    stopping=true;abort.abort();updater.close();for(const current of children)current.child.kill(signal);
+    const force=setTimeout(()=>{for(const current of children)current.child.kill('SIGKILL');process.exit(0);},15000);force.unref();
+    void Promise.all([...children].map(current=>current.exited)).then(()=>{clearTimeout(force);process.exit(0);});
+  });
+  if(state.transition){state=await recoverTransition(root,state);console.warn('更新: 中断された初期化の保存データを復元しました。');}
+  await writeState(root,state);worker=launch(root,releasePath(root,state));await worker.ready;watch(worker);send(worker,{type:'activate'});await cleanup(root,state);
+  console.log(`更新: 管理者の /admin → バージョン管理 から実行${state.sha?` · ${state.sha.slice(0,7)}`:''}`);
 }

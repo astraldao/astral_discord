@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 cd /home/container
-# Keep the stable launcher and shared dependencies once automatic updates are installed.
-if [ -f .astral-updates/state.json ] && [ -f scripts/supervisor.js ]; then
+# Keep the manual-update launcher after its one-time migration.
+if [ -f .astral-updates/state.json ] && [ -f scripts/manual-update.js ] && [ -f .astral-updates/manual-launcher-v2 ]; then
   exec node index.js
 fi
 stage=$(mktemp -d /home/container/.astral-update.XXXXXX)
@@ -29,5 +29,15 @@ done
 npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 sh setup-voicevox.sh
 printf '%s\n' "$commit" > .astral-commit
+# An explicit first install/migration selects the downloaded source, preserving saved data.
+# Recover an interrupted migration before resetting its source pointer.
+node --input-type=module - "$commit" <<'JS'
+import {readState,writeState} from './scripts/auto-update.js';
+import {recoverTransition} from './scripts/supervisor.js';
+import {writeFile} from 'node:fs/promises';
+const root=process.cwd(),old=await recoverTransition(root,await readState(root));
+await writeState(root,{sha:process.argv[2],release:null,previous:old.release,failed:null});
+await writeFile('.astral-updates/manual-launcher-v2','2\n',{mode:0o600});
+JS
 echo 'Botを起動します。'
 node index.js
