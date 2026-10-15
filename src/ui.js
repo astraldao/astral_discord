@@ -17,6 +17,7 @@ export function payload(title,description,{state='normal',components=[]}={}) {
   return {content:null,embeds:[card(title,description,state)],components,allowedMentions:mentions};
 }
 export const adminHomeButton=()=>new ButtonBuilder().setCustomId('admin:open').setLabel('管理メニューへ').setStyle(ButtonStyle.Secondary);
+export const menuHomeButton=()=>new ButtonBuilder().setCustomId('menu:open').setLabel('メニューへ').setStyle(ButtonStyle.Secondary);
 export const personalReadingButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('profile:open').setLabel('自分の読み方').setStyle(ButtonStyle.Secondary));
 export const openButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder()
   .setCustomId('vc:open').setLabel('入室するVCを選ぶ').setStyle(ButtonStyle.Primary));
@@ -33,7 +34,7 @@ export function waitingCard(name,ahead,seconds) {
   return payload('✦  入室待ち',`**${text(name)}**\n\n${ahead?`順番待ち · あなたの前に **${ahead}人**`:'まもなく参加予告を始めます。'}\n告知の終了から **${seconds}秒後** に入室します。`);
 }
 export function panel(c) {
-  return payload('✦  VCに参加',`**ロビーに参加 → 入室先を選ぶ → 予告後に移動**\n\n${c.voice?'音声告知の終了から':'参加予告から'} **${c.seconds}秒後** に、選んだVCへ移動します。\n先にロビーVCへ参加してから、下のボタンを押してください。`,{components:[openButton(),personalReadingButton()]});
+  return payload('✦  VCに参加',`**ロビーに参加 → 入室先を選ぶ → 予告後に移動**\n\n${c.voice?'音声告知の終了から':'参加予告から'} **${c.seconds}秒後** に、選んだVCへ移動します。\n先にロビーVCへ参加してから、下のボタンを押してください。`,{components:[openButton(),personalReadingButton().addComponents(menuHomeButton())]});
 }
 export function countdownCard(name,remaining,total) {
   const bar='▰'.repeat(total-remaining)+'▱'.repeat(remaining);

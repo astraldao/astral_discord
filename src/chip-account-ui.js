@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,UserSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
-import {payload,text,adminHomeButton} from './ui.js';
+import {payload,text,adminHomeButton,menuHomeButton} from './ui.js';
 import {MAX_CHIPS} from './game-wallets.js';
 import {casinoNames} from './casino.js';
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
@@ -39,6 +39,7 @@ export function chipAccountScreen(s,wallet,note=''){
       m=payload(admin?'✦  メンバーのチップ':'✦  自分のチップ',`${intro}${admin?`<@${target}>\n\n`:''}**残高 ${number(a.balance)} チップ**${a.pending&&a.pending.expires>wallet.now()?`\nブラックジャックに ${number(a.pending.bet)}枚を使用中`:''}\n\n**増減の内訳**\nゲーム収支 ${signed(t.paid-t.wagered)}\nお手伝い +${number(t.work)}\n受取 +${number(t.received)} · 譲渡 −${number(t.sent)}\n管理者追加 +${number(t.added)} · 減額 −${number(t.removed)}${t.other?`\nその他 ${signed(t.other)}`:''}\n\n開始時点 ${number(l.opening)}枚 · ${when(l.started)}以降の記録`,{components:[row(button(s,'history','チップの履歴',ButtonStyle.Primary),button(s,'stats','ゲームの記録'),button(s,'refresh','最新の残高に更新')),...(admin?[row(new StringSelectMenuBuilder().setCustomId(`wallet:${s.id}:${s.turn}:mode`).setPlaceholder('残高を調整する').addOptions(...Object.entries(modes).map(([value,label])=>({label,value}))).setDisabled(!!a.pending&&a.pending.expires>wallet.now())),row(button(s,'list','チップ管理へ'))]:[row(new ButtonBuilder().setCustomId('chips:open').setLabel('チップを渡す').setStyle(ButtonStyle.Secondary),home(admin))])]});
     }
   }
+  if(!admin)m.components.at(-1).addComponents(menuHomeButton());
   return {...m,attachments:[]};
 }
 export function createChipAccountController({guild,wallet,now=()=>Date.now(),member=async user=>{const m=await guild.members.fetch({user,force:true});if(m.user.bot)throw new Error('Botのチップは調整できません。');return m;},access=async(i,admin)=>{const m=await guild.members.fetch({user:i.user.id,force:true}),c=await guild.channels.fetch(i.channelId,{force:true});if(!c?.permissionsFor(m)?.has(P.ViewChannel)||admin&&!m.permissions.has(P.Administrator))throw new Error(admin?'管理者権限がありません。':'このチャンネルでは操作できません。');}}){

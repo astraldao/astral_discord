@@ -5,7 +5,7 @@ import {PermissionsBitField,PermissionFlagsBits as P} from 'discord.js';
 import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setBotIconProvider} from '../src/ui.js';
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
-  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['vc','game','read','admin']);
+  const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['menu','admin']);
   assert.equal(json.find(c=>c.name==='admin').options?.length??0,0);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);
@@ -16,7 +16,7 @@ test('all commands and embed/component payloads serialize under Discord builder 
 test('settings commands default to administrators and enforce the same permission at execution',()=>{
   const json=commands().map(command=>command.toJSON());
   assert.equal(json.find(command=>command.name==='admin').default_member_permissions,String(P.Administrator));
-  assert.ok(!json.find(command=>command.name==='vc').default_member_permissions);
+  assert.ok(!json.find(command=>command.name==='menu').default_member_permissions);
   assert.equal(canConfigure(new PermissionsBitField(P.Administrator)),true);
   assert.equal(canConfigure(new PermissionsBitField(P.ManageGuild)),false);
   assert.equal(canConfigure(new PermissionsBitField()),false);
@@ -54,21 +54,22 @@ test('footer uses Japan date and the current bot icon on every render',t=>{
 test('command consolidation registers all entries before retiring chips and legacy names',async()=>{
   const {registerCommands}=await import('../src/commands.js');
   const events=[];
-  const old=['管理','ゲーム','vc-panel','vc設定','chips','vc','admin','game','unrelated'].map(name=>({name,delete:async()=>events.push(`delete:${name}`)}));
+  const old=['管理','ゲーム','vc-panel','vc設定','chips','vc','admin','game','read','unrelated'].map(name=>({name,delete:async()=>events.push(`delete:${name}`)}));
   const guild={commands:{
     create:async c=>events.push(`create:${c.name}`),
     fetch:async()=>new Map(old.map(c=>[c.name,c])),
   }};
   await registerCommands(guild);
   assert.deepEqual(events,[
-    'create:vc','create:game','create:read','create:admin',
-    'delete:管理','delete:ゲーム','delete:vc-panel','delete:vc設定','delete:chips',
+    'create:menu','create:admin',
+    'delete:管理','delete:ゲーム','delete:vc-panel','delete:vc設定','delete:chips','delete:vc','delete:game','delete:read',
   ]);
   const json=commands().map(c=>c.toJSON());
   assert.ok(json.every(c=>/^[a-z]+$/.test(c.name)));
-  assert.equal(json.find(c=>c.name==='game').options?.length??0,0);
+  assert.deepEqual(json.find(c=>c.name==='menu').options[0].choices.map(c=>c.value),['vc','read','game','stop']);
+  assert.equal(json.find(c=>c.name==='menu').options[0].required,false);
   // A partial registration must not remove the user's existing entry points.
-  for(const failed of ['vc','game','read','admin']){
+  for(const failed of ['menu','admin']){
     events.length=0;
     guild.commands.create=async c=>{
       events.push(`create:${c.name}`);

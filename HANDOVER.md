@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-14 時点。調査基準は `main` の `35520e121d7c156f880fa8bb2adcbbee105c7551`（v3.24.0）。
+2026-10-15 更新。現行のコマンド構成はv3.31.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -20,7 +20,7 @@
 | Discord初期化・イベント・VC入室処理 | `src/index.js` |
 | バックアップ読み上げ | `src/backup-reader.js`、`src/backup-playback.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
 | Botのプロフィールバナー | `src/banner-ui.js`、`src/banner-image.js` |
-| コマンド登録 | `src/commands.js` |
+| コマンド登録・一般メニュー | `src/commands.js`、`src/main-menu.js` |
 | 管理画面・設定・診断 | `src/admin.js`、`src/settings.js`、`src/diagnostics.js` |
 | 音声生成・再生・入室待ち | `src/speech.js`、`src/audio.js`、`src/queue.js` |
 | TRPG・キャラシ・卓セット | `src/trpg-store.js`、`src/trpg-ui.js`、`src/iachara.js` |
@@ -28,7 +28,7 @@
 | ゲーム・チップ台帳 | `src/blackjack*.js`、`src/casino*.js`、`src/game-wallets.js`、`src/chip-*.js` |
 | 自動更新・プロセス監督 | `scripts/auto-update.js`、`scripts/supervisor.js`、`src/update-lifecycle.js` |
 
-現行コマンドは `/vc`（入室）、`/game`（ゲーム・チップ）、`/read`（バックアップ読み上げ）、管理者専用の `/admin`。
+現行コマンドは `/menu`（入室・読み上げ・ゲーム・本人設定）、管理者専用の `/admin`。操作早見表は [docs/COMMANDS.md](docs/COMMANDS.md)。
 v3.24.1で `/chips` を `/game → 自分のチップ` に統合した。
 単一のDiscordサーバーを `GUILD_ID` で指定する。外部DBは使わずJSONへ保存する。
 
@@ -52,7 +52,7 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 
 旧版の常駐プロセスはワーカー更新の対象外なので、v3.25以前からの移行にはREADMEのStartup CommandでQuaxlyを一度再起動・再導入する必要がある。移行済みの起動スクリプトはホスティング再起動時に保存済みの版を起動し、自動更新しない。
 旧ASTRAL_AUTO_UPDATE・ASTRAL_UPDATE_INTERVALは使用しない。VOICEVOXと常駐プロセス自身の刷新は再導入で扱う。
-更新後は稼働版、`/admin → 動作診断`、変更した機能を確認する。診断は音声生成・再生の試験ではない。
+更新後は稼働版、`/admin → 運用・管理 → 動作診断`、変更した機能を確認する。診断は音声生成・再生の試験ではない。
 
 ## 引き継ぎ時点の確認状況
 
@@ -65,7 +65,7 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 
 ## v3.28 バックアップ読み上げ
 
-`ASTRAL_BACKUP_TTS=1` とDeveloper PortalのMessage Content Intentが必要。変更後は再起動する。`/read start` の元チャンネルから本人の参加VCへ、本文50文字＋「以下略」をFIFO再生する。最大8件待機、実行者の移動・権限失効・音声障害で停止。本文・生成音声の永続保存はしない。入室告知と音声接続を共用するため同時実行せず、読み上げ中は手動更新も見送る。
+`ASTRAL_BACKUP_TTS=1` とDeveloper PortalのMessage Content Intentが必要。変更後は再起動する。`/menu → 読み上げ → このチャンネルで開始` の元チャンネルから本人の参加VCへ、本文50文字＋「以下略」をFIFO再生する。最大8件待機、実行者の移動・権限失効・音声障害で停止。本文・生成音声の永続保存はしない。入室告知と音声接続を共用するため同時実行せず、読み上げ中は手動更新も見送る。
 常駐Pythonは固定モデルのずんだもんstyle3。最初の2モーラから段階的に合成・再生する。`npm run backup-voice-benchmark` は合成のみの計測で、300ms以内の実際の読み上げ開始を保証しない。開発環境12回の中央値298ms・最大420ms。Discord実機の検証は未実施。詳細な導入方法・待ち行列・計測範囲はREADMEを参照する。
 
 ## v3.29 読み上げの並行処理と操作手順
@@ -78,6 +78,14 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 
 ## v3.30 アップロードしたプロフィールバナー
 
-`/admin → Botのバナー`。DiscordのFileUpload付きモーダルからPNG/JPEGを選び、非公開の比較プレビュー後に `client.user.setBanner(Buffer)` でBot全体に適用する。解除はnullを明示的に確認して送る。新しいコマンド・Intent・実行依存は追加しない。起動時のプロフィール紹介文更新はバナーに触れない。
+`/admin → 外観・投稿 → Botのバナー`。DiscordのFileUpload付きモーダルからPNG/JPEGを選び、非公開の比較プレビュー後に `client.user.setBanner(Buffer)` でBot全体に適用する。解除はnullを明示的に確認して送る。新しいコマンド・Intent・実行依存は追加しない。起動時のプロフィール紹介文更新はバナーに触れない。
 画像取得先はアップロードで返されたcdn.discordapp.comの添付パスとIDに限定し、リダイレクトを拒否。取得10秒・実データ4MiB、8192px・約1600万画素を上限に構造を確認し、最終デコードはDiscordに委ねる。画像のローカル永続保存・URL保存・ログ出力はしない。
 画面は所有者・元チャンネル・10分期限・最新の管理者/閲覧権限を検証。候補は最大4画面、終了・期限切れ・再起動で破棄する。別の変更をプレビュー中に検知したら再確認し、同時適用は全体1件、成功後60秒間隔。結果不明時は自動再送せず、現在を再取得する。操作手順と復旧は [docs/BANNER.md](docs/BANNER.md)。
+
+## v3.31 コマンド統合
+
+新規登録は `/menu` と `/admin` のみ。新2コマンドを両方作成してから旧vc/game/read/chipsなどを削除し、無関係なコマンドは削除しない。途中で登録が失敗したら既存入口を削除しない。キャッシュに残った旧コマンドと既存customIdはランタイムで受け付ける。
+`createMainMenu` は最新のメンバーと元チャンネルの閲覧権限を確認。公開パネルからは非公開返信、非公開メニューでは同じ画面を更新する。読み上げを開く操作はstatusのみで、開始は別ボタン。直接停止も既存readerの開始者・管理者確認とセッション競合検出を通す。ゲームを開いても進行中の手札を保持する。
+管理ホームには2つの直接ボタンと4カテゴリを表示。カテゴリの内容は `adminCategories` で定義。カテゴリ移動は未保存の草案を破棄し、保存・入室予約の取消は行わない。各カテゴリの操作は従来の権限確認と保存処理を使用する。
+
+この変更は構文・実行ポリシー検査と420件の自動テストで検証。Discord実機のコマンド反映とモバイル表示は未確認。

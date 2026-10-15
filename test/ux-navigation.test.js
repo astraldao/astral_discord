@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAdminController,adminScreen} from '../src/admin.js';
+import {createAdminController,adminScreen,adminCategories} from '../src/admin.js';
 import {createVersionController,versionScreen} from '../src/version-ui.js';
 import {gameLobby} from '../src/blackjack-ui.js';
 import {chipAccountScreen} from '../src/chip-account-ui.js';
@@ -19,7 +19,9 @@ test('admin home highlights setup first, then the common calendar action, while 
   for(const missing of [true,false]){
     const m=adminScreen({id:'id',view:'home'},missing?{...config,lobbyId:null}:config),b=buttons(m);
     assert.equal(b.find(b=>b.style===1).custom_id,`admin:id:${missing?'nav-vc':'open-schedule'}`);
-    for(const action of ['open-trpg','open-densuke','nav-vc','nav-audio','nav-panel','open-forum','open-chips','diagnose','nav-overview','open-updates'])assert.ok(b.some(b=>b.custom_id.endsWith(':'+action)));
+    const destinations=adminCategories.flatMap(category=>buttons(adminScreen({id:'id',view:`category-${category.id}`},config)));
+    assert.equal(b.filter(b=>b.type===2).length,2);assert.equal(b.find(b=>b.type===3).options.length,4);
+    for(const action of ['open-banner','open-trpg','open-densuke','nav-vc','nav-audio','nav-panel','open-forum','open-chips','diagnose','nav-overview','open-updates'])assert.ok(destinations.some(b=>b.custom_id.endsWith(':'+action)));
   }
 });
 test('failed version checks retain a usable retry and management home, but not after permission loss',async()=>{

@@ -30,6 +30,15 @@ test('foreign stop is refused, lost permissions stop without speaking and owner 
   const f=await fixture();await f.reader.handle(i('stop','other'));assert.equal(f.reader.active,true);f.deny();f.message('読まない');await f.reader.idle();assert.equal(f.reader.active,false);assert.deepEqual(f.played,[]);
   const g=await fixture();await g.reader.onVoiceChange({channelId:'voice'},{id:'owner',channelId:null,guild:{id:'guild'}});assert.equal(g.reader.active,false);assert.equal(g.workerClosed(),1);
 });
+test('menu status never starts or replaces reading and direct stop still checks the current owner',async()=>{
+  const f=await fixture(),id=f.reader.state.id;
+  const menu=(action,user='owner')=>({...i('unused',user),customId:`menu:${action}`,deferred:true,deferReply:()=>assert.fail('already acknowledged')});
+  await f.reader.handle(menu('read'),'status');assert.equal(f.reader.state.id,id);
+  await f.reader.handle(menu('stop','other'),'stop');assert.equal(f.reader.state.id,id);
+  await f.reader.handle(menu('stop'),'stop');assert.equal(f.reader.active,false);
+  const stopped=menu('read');await f.reader.handle(stopped,'status');assert.equal(f.reader.active,false);assert.ok(JSON.stringify(stopped.replies).includes('read:start'));
+  await f.reader.handle(menu('read'),'start');assert.equal(f.reader.active,false);
+});
 test('disabled feature, active announcement and concurrent starts never acquire two voice connections',async()=>{
   let starts=0;const disabled=createBackupReader({guild:{id:'guild'},enabled:false,worker:()=>{starts++;}});await disabled.handle(i('start'));assert.equal(starts,0);
   const busy=createBackupReader({guild:{id:'guild'},enabled:true,voiceBusy:()=>true,worker:()=>{starts++;}});await busy.handle(i('start'));assert.equal(starts,0);assert.equal(busy.active,false);

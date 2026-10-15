@@ -56,6 +56,12 @@ export class AdminSessions {
 const row=(...components)=>new ActionRowBuilder().addComponents(...components);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${action}`).setLabel(label).setStyle(style);
 const summary=c=>`**ロビーVC** ${c.lobbyId?`<#${c.lobbyId}>`:'未設定'}\n**入室先** ${c.targetIds.length}件 · **待機** ${c.seconds}秒\n**音声告知** ${c.voice?'ON':'OFF'} · ${c.volume}%\n**直接入室** ${c.enforce?'ロビーへ戻す':'許可'}`;
+export const adminCategories=[
+  {id:'schedule',label:'予定・卓',description:'予定表、卓とキャラシ、日程調整',actions:[['open-schedule','予定表','共有カレンダーの作成・予定の編集'],['open-trpg','卓・キャラシ','卓の登録・PCの確認'],['open-densuke','日程調整','伝助の作成・回答URLの共有']]},
+  {id:'voice',label:'入室・音声',description:'ロビー、入室先、ずんだもん、入室パネル',actions:[['nav-vc','VC設定','ロビー・行き先・待機時間'],['nav-audio','音声設定','参加告知・音量・読み方辞書'],['nav-panel','入室パネル','ロビーに入室用のパネルを設置']]},
+  {id:'appearance',label:'外観・投稿',description:'Botのバナー、フォーラムの投稿タグ',actions:[['open-banner','Botのバナー','画像のアップロード・適用・解除'],['open-forum','投稿タグ','フォーラムのタグを整理']]},
+  {id:'operations',label:'運用・管理',description:'手動更新、動作診断、チップ、設定確認',actions:[['open-updates','バージョン管理','現在版・最新版の確認と手動更新'],['diagnose','動作診断','音声ファイルと必要な権限を確認'],['open-chips','チップ管理','残高の確認・調整・履歴'],['nav-overview','設定を確認','設定値と入室先の一覧']]},
+];
 export function adminScreen(s,c,channelName=id=>id,note='') {
   let title='✦  管理メニュー',description='',components=[];
   const back=()=>row(button(s,'home','管理メニューへ'));
@@ -66,19 +72,22 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     components=[row(button(s,'save',destructive?'削除を確定':'変更を保存',destructive?ButtonStyle.Danger:ButtonStyle.Primary),button(s,`nav-${s.view}`,'変更せず戻る'))];
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
-    description=missing.length?`**はじめに**\n${missing.join('・')}が未設定です。「VC設定」から登録してください。`:'使いたい機能を選んでください。';
-    description+='\n\n**卓・予定** · 予定表、キャラシ、日程調整\n**入室** · VC、音声、パネル\n**サーバー設定** · 投稿タグ、Botのバナー、設定確認\n**運用** · チップ、診断、バージョン管理';
+    description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表とBotの更新は、下のボタンから直接開けます。';
+    description+='\n\n**ほかの設定はカテゴリから**\n予定・卓 ／ 入室・音声 ／ 外観・投稿 ／ 運用・管理\n普段の入室・読み上げ・ゲームは /menu にまとめました。';
     components=[
-      row(button(s,'open-schedule','予定表',missing.length?ButtonStyle.Secondary:ButtonStyle.Primary),button(s,'open-trpg','卓・キャラシ'),button(s,'open-densuke','日程調整')),
-      row(button(s,'nav-vc','VC設定',missing.length?ButtonStyle.Primary:ButtonStyle.Secondary),button(s,'nav-audio','音声設定'),button(s,'nav-panel','入室パネル')),
-      row(button(s,'open-forum','投稿タグ'),button(s,'open-banner','Botのバナー'),button(s,'nav-overview','設定を確認')),
-      row(button(s,'open-chips','チップ管理'),button(s,'diagnose','動作診断'),button(s,'open-updates','バージョン管理')),
+      row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理')),
+      row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:category`).setPlaceholder('カテゴリから探す').setMinValues(1).setMaxValues(1).addOptions(...adminCategories.map(({id,label,description})=>({value:id,label,description})))),
     ];
+  } else if(s.view.startsWith('category-')) {
+    const category=adminCategories.find(value=>s.view===`category-${value.id}`);if(!category)throw new Error('カテゴリを選び直してください。');
+    title=category.label;description=category.actions.map(([,label,help])=>`**${label}** · ${help}`).join('\n');
+    for(let start=0;start<category.actions.length;start+=2)components.push(row(...category.actions.slice(start,start+2).map(([action,label],index)=>button(s,action,label,start===0&&index===0?ButtonStyle.Primary:ButtonStyle.Secondary))));
+    components.push(back());
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
   } else if(s.view==='audio') {
-    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n\n読み方辞書では、入室告知の名前や英単語の読みを指定できます。\n\n**バックアップ読み上げ**\nVCに参加し、読みたいチャンネルで /read start。状態確認は /read status、停止は /read stop。\n参加告知のON/OFFとは独立し、音量は共通です。有効化の状況は「動作診断」で確認できます。`;
+    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n\n読み方辞書では、入室告知の名前や英単語の読みを指定できます。\n\n**バックアップ読み上げ**\nVCに参加し、読みたいチャンネルで /menu → 読み上げ → 開始。状態確認は /menu → 読み上げ、停止は /menu の「操作」で「読み上げを停止」。\n参加告知のON/OFFとは独立し、音量は共通です。有効化の状況は「動作診断」で確認できます。`;
     components=[row(button(s,'toggle-voice',c.voice?'音声告知をOFF':'音声告知をON',ButtonStyle.Primary),button(s,'form-volume','音量を変更'),button(s,'nav-words','読み方辞書')),row(new ButtonBuilder().setLabel('読み上げの設定手順').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md')),back()];
   } else if(s.view==='words') {
     title='✦  読み方辞書';
@@ -172,7 +181,10 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();
       if(!await access(interaction))throw new Error('管理者権限がありません。');
       let note='';
-      if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
+      if(action==='category'){
+        if(interaction.values?.length!==1||!adminCategories.some(c=>c.id===interaction.values[0]))throw new Error('カテゴリを選び直してください。');
+        s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=`category-${interaction.values[0]}`;s.page=0;
+      }else if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}

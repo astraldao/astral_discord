@@ -20,7 +20,7 @@ test('all admin pages, largest lists and modals serialize within Discord limits'
   const s=new AdminSessions().create('owner'),c=defaults();
   c.targetIds=Array.from({length:125},(_,i)=>String(222222222222222222n+BigInt(i)));
   c.words=Array.from({length:100},(_,i)=>({surface:`name${i}`,reading:'ナマエ'}));
-  for(const view of ['home','vc','audio','words','panel','overview','pick-lobby','pick-add','pick-remove']){
+  for(const view of ['home','category-schedule','category-voice','category-appearance','category-operations','vc','audio','words','panel','overview','pick-lobby','pick-add','pick-remove']){
     s.view=view;s.page=99;
     const message=adminScreen(s,c);
     assert.ok(message.embeds[0].toJSON().description.length<4096);
@@ -42,6 +42,18 @@ test('sessions bind the owner, expire and invalidate older screens',()=>{
   assert.throws(()=>sessions.get(s.id,'stranger'));
   now=600000;assert.throws(()=>sessions.get(s.id,'owner'));
   const fresh=sessions.create('owner');sessions.create('owner');assert.throws(()=>sessions.get(fresh.id,'owner'));
+});
+test('category navigation clears drafts without writing settings or cancelling reservations',async()=>{
+  const f=fixture(),s=f.controller.sessions.create('owner'),before=f.settings.get();f.setReservations(2);
+  for(const category of ['schedule','voice','appearance','operations']){
+    s.stage={action:'voice',value:false};s.formDraft={kind:'volume',value:'20'};s.wordEditSurface='old';
+    const i=f.interaction(`admin:${s.id}:category`,{values:[category]});await f.controller.handle(i);
+    assert.equal(s.view,`category-${category}`);assert.equal(s.stage,null);assert.equal(s.formDraft,undefined);assert.equal(s.wordEditSurface,undefined);
+    assert.ok(i.result.components.flatMap(r=>r.toJSON().components).some(c=>c.custom_id===`admin:${s.id}:home`));
+  }
+  assert.deepEqual(f.settings.get(),before);assert.equal(f.changes(),0);
+  for(const values of [[],['unknown'],['voice','operations']]){await f.controller.handle(f.interaction(`admin:${s.id}:category`,{values}));assert.equal(s.view,'category-operations');}
+  await f.controller.handle(f.interaction(`admin:${s.id}:category`,{values:['voice'],memberPermissions:new PermissionsBitField()}));assert.equal(s.view,'category-operations');
 });
 test('settings retain existing data and reject invalid changes',()=>{
   const c=defaults();changeSettings(c,'word-add',{surface:'Astral',reading:'あすとらる'});
@@ -93,7 +105,7 @@ test('forms are opened without deferring the interaction and denied channel perm
 });
 test('setup guidance and unavailable install/delete actions reflect actual configuration',()=>{
   const s=new AdminSessions().create('owner'),c=defaults();c.lobbyId=null;c.targetIds=[];
-  assert.ok(adminScreen(s,c).embeds[0].toJSON().description.includes('未設定'));
+  assert.ok(adminScreen(s,c).embeds[0].toJSON().description.includes('初期設定'));
   s.view='panel';assert.equal(adminScreen(s,c).components[0].toJSON().components[0].disabled,true);
   s.view='vc';assert.equal(adminScreen(s,c).components[0].toJSON().components[2].disabled,true);
   s.stage={action:'remove',description:'入室先から削除'};

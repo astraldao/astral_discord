@@ -31,7 +31,7 @@ export function diagnosticsScreen(s){
   const d=s.diagnostics;if(!d)throw new Error('診断を開き直してください。');
   const pages=Math.max(1,Math.ceil(d.channels.length/15));s.page=Math.max(0,Math.min(s.page,pages-1));
   const badge=x=>x?'確認できました':'未確認・不足';
-  const backup=d.backup?`\n\n**バックアップ読み上げ**\n起動設定 ${d.backup.enabled?'ON':'OFF'} · ${d.backup.active?'使用中':'停止中'}\n${d.backup.enabled?'使うときはVCに参加し、読みたいチャンネルで /read start。':'有効化の手順は「音声設定」から確認できます。'}`:'';
+  const backup=d.backup?`\n\n**バックアップ読み上げ**\n起動設定 ${d.backup.enabled?'ON':'OFF'} · ${d.backup.active?'使用中':'停止中'}\n${d.backup.enabled?'使うときはVCに参加し、読みたいチャンネルで /menu → 読み上げ → 開始。':'有効化の手順は「音声設定」から確認できます。'}`:'';
   const body=`**Bot** v${d.version} · Node ${d.node}\n**稼働時間** ${d.uptime}分 · **入室予約** ${d.pending}件\n\n**音声告知** ${d.voiceEnabled?'ON':'OFF'}\nPython実行ファイル · ${badge(d.voice.python)}\n音声ランタイム · ${badge(d.voice.runtime)}\nずんだもんモデル · ${badge(d.voice.model)}\n日本語辞書 · ${badge(d.voice.dictionary)}${backup}\n\n**設定済みVC** ${d.channels.length}件 · ${s.page+1}/${pages}ページ\n${d.channels.slice(s.page*15,s.page*15+15).map(c=>`${c.lobby?'ロビー':'入室先'} <#${c.id}> · ${c.status}`).join('\n')||'未設定'}\n\nファイルの存在と権限の確認結果です。音声の生成・再生や接続試験は行いません。PythonをPATHから使う構成は未確認と表示されます。`;
   const button=(a,label)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${a}`).setLabel(label).setStyle(ButtonStyle.Secondary);
   return payload('✦  動作診断',body,{components:[new ActionRowBuilder().addComponents(button('diagnose','診断を更新'),...(pages>1?[button('diagnostics-prev','前のページ').setDisabled(s.page===0),button('diagnostics-next','次のページ').setDisabled(s.page===pages-1)]:[])),new ActionRowBuilder().addComponents(button('home','管理メニューへ'))]});

@@ -27,7 +27,7 @@ export function workScreen(s,balance,note=''){
 }
 export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomInt,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルでは操作できません。');},recipient=async(id,user)=>{if(!/^\d{17,20}$/.test(id)||id===user)throw new Error('自分以外のメンバーを選んでください。');const member=await guild.members.fetch({user:id,force:true});if(!member || member.user.bot)throw new Error('Bot以外のサーバーメンバーを選んでください。');return member;}}){
   const transfers=new GameSessions(now),work=new GameSessions(now,s=>['watch','playing','claim'].includes(s.view));
-  const get=(prefix,id,i)=>{let s;try{s=(prefix==='chips'?transfers:work).get(id,i.user.id);}catch{throw new Error('この画面は終了しています。/game から開き直してください。');}if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');return s;};
+  const get=(prefix,id,i)=>{let s;try{s=(prefix==='chips'?transfers:work).get(id,i.user.id);}catch{throw new Error('この画面は終了しています。/menu → ゲーム から開き直してください。');}if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');return s;};
   const screen=(prefix,s,note)=>(prefix==='chips'?transferScreen:workScreen)(s,wallet.balance(s.userId),note);
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
   const chooseTarget=()=>{const n=random(5);if(!Number.isInteger(n)||n<0||n>4)throw new Error('ニワトリを見失いました。画面を開き直してください。');return n;};

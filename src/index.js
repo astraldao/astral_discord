@@ -1,5 +1,6 @@
 import {createBackupReader} from './backup-reader.js';
 import {createBannerController} from './banner-ui.js';
+import {createMainMenu} from './main-menu.js';
 import {createUpdateClient} from './update-client.js';
 import {createVersionController} from './version-ui.js';
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
@@ -33,7 +34,7 @@ import {createBlackjackController} from './blackjack-ui.js';
 import {createProfileController} from './profile-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
-import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider,personalReadingButton} from './ui.js';
+import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider,personalReadingButton,menuHomeButton} from './ui.js';
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -49,10 +50,10 @@ const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const updateClient=createUpdateClient({version:botVersion});
-const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから更新してください。');}});
+const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -67,12 +68,12 @@ async function validate(job) {
   job.abort.signal.throwIfAborted();
   if(job.revision !== revision) throw new EntryError('設定が変更されたため中止しました。');
   const c=configured();
-  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから入室してください。');
   const member = await guild.members.fetch({user: job.userId, force: true});
   const channel = await guild.channels.fetch(job.channelId);
   job.abort.signal.throwIfAborted();
   if(job.revision !== revision) throw new EntryError('設定が変更されたため中止しました。');
-  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから入室してください。');
   if (member.voice.channelId !== c.lobbyId) throw new EntryError('ロビー退出により中止しました。');
   if (!canEnter(channel, member, guild.members.me, c.lobbyId, c.targetIds)) throw new EntryError('行き先の登録・閲覧権限・Bot権限・空き状況を確認してください。');
   if (c.voice && !channel.permissionsFor(guild.members.me).has(P.Speak)) throw new EntryError('Botの発言権限がありません。');
@@ -138,12 +139,12 @@ async function run(job) {
 async function choose(interaction,page=0) {
   const existing=pending.get(interaction.user.id);
   if(existing && !existing.abort.signal.aborted){
-    await interaction.editReply(payload('✧  入室予約があります','予約の進行状況は、最初の予約メッセージで確認できます。変更したい場合は先にキャンセルしてください。',{components:[cancelButton(existing)]}));return;
+    await interaction.editReply(payload('✧  入室予約があります','予約の進行状況は、最初の予約メッセージで確認できます。変更したい場合は先にキャンセルしてください。',{components:[cancelButton(existing),new ActionRowBuilder().addComponents(menuHomeButton())]}));return;
   }
   const c=configured();
-  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから入室してください。');
   const member = await guild.members.fetch(interaction.user.id);
-  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/read stop で停止してから入室してください。');
+  if(c.voice&&backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから入室してください。');
   if (member.voice.channelId !== c.lobbyId) throw new EntryError('先にロビーVCに参加してください。');
   await guild.channels.fetch();
   const choices = [...guild.channels.cache.values()].filter(channel => canEnter(channel, member, guild.members.me, c.lobbyId, c.targetIds)
@@ -155,7 +156,7 @@ async function choose(interaction,page=0) {
   const menu=new StringSelectMenuBuilder().setCustomId(`vc:select:${page}`).setPlaceholder('入室するVCを選ぶ')
     .addOptions(choices.slice(page*25,page*25+25).map(channel=>({label:channel.name.slice(0,100),value:channel.id,
       description:`${channel.members.filter(m=>!m.user.bot).size}${channel.userLimit?` / ${channel.userLimit}`:''}人 · ${channel.parent?.name??'カテゴリなし'}`.slice(0,100)})));
-  await interaction.editReply(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages),personalReadingButton()]}));
+  await interaction.editReply(payload('✦  入室先を選択',`入室できるVC **${choices.length}件**${pages>1?` · ${page+1}/${pages}ページ`:''}\n\n選ぶと参加予告が始まります。告知の終了から **${c.seconds}秒後** に入室します。`,{components:[new ActionRowBuilder().addComponents(menu),choiceNavigation(page,pages),personalReadingButton().addComponents(menuHomeButton())]}));
 }
 function settingsChanged() {
   revision++;
@@ -183,6 +184,7 @@ client.once('clientReady', async () => {
     casino=createCasinoController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i)});
     blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
+    mainMenu=createMainMenu({guild,openVc:i=>choose(i),openRead:(i,action)=>backupReader.handle(i,action),openGame:i=>blackjack.lobby(i)});
     trpg=createTrpgController({store:trpgStore,guild});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active})})});
     resourcePresence.start();
@@ -198,10 +200,11 @@ client.once('clientReady', async () => {
 });
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
-  const command = interaction.isChatInputCommand() && ['vc','game','read','admin'].includes(interaction.commandName);
+  const command = interaction.isChatInputCommand() && ['menu','vc','game','read','admin'].includes(interaction.commandName);
+  const menuComponent=interaction.isButton()&&interaction.customId.startsWith('menu:');
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
   const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(banner|read|updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
-  if (!command && !component && !adminComponent) return;
+  if (!command && !component && !adminComponent && !menuComponent) return;
   let finishActivity=()=>{};
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
@@ -213,6 +216,7 @@ client.on('interactionCreate', async interaction => {
       }
     }
     finishActivity=resourcePresence.activity();
+    if((command&&interaction.commandName==='menu')||menuComponent){if(stopping)throw new EntryError('Botを終了しています。');await mainMenu.handle(interaction);return;}
     if((command&&interaction.commandName==='read')||(adminComponent&&interaction.customId.startsWith('read:'))){if(stopping)throw new EntryError('Botを終了しています。');await backupReader.handle(interaction);return;}
     if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
     if(adminComponent || (command && interaction.commandName==='admin')) {
@@ -246,7 +250,7 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    const components=adminComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton()];
+    const components=menuComponent||(command&&interaction.commandName==='menu')?[new ActionRowBuilder().addComponents(menuHomeButton())]:adminComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton().addComponents(menuHomeButton())];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
     console.error('操作:',error.code ?? error.name);
