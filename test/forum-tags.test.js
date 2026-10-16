@@ -15,3 +15,14 @@ test('concurrent external changes are not overwritten and archived or non-forum 
 test('an unknown write outcome is never automatically resubmitted',async()=>{const f=await fixture();f.writeFail(true);await f.c.handle(click(f.s,'apply'));assert.equal(f.writes.length,1);assert.equal(f.s.result.actual,null);await f.c.handle(click(f.s,'apply'));assert.equal(f.writes.length,1);});
 test('tag screen previews fit Discord limits and suppress mentions',()=>{const tags=Array.from({length:20},(_,n)=>({id:String(n),name:'タグ'+n}));for(const s of [{id:'id',turn:0,tags,draft:[]},{id:'id',turn:0,postId:T,postName:'投稿',tags,draft:tags.slice(0,5).map(t=>t.id)}]){const m=forumTagsScreen(s);assert.deepEqual(m.allowedMentions.parse,[]);m.components.forEach(x=>x.toJSON());assert.ok(m.components.length<=5);assert.ok(m.embeds[0].toJSON().description.length<4096);}});
 test('missing bot thread-management permission prevents updates',async()=>{const f=await fixture();f.thread.permissionsFor=m=>({has:()=>m.id!=='bot'});await f.c.handle(click(f.s,'apply'));assert.equal(f.writes.length,0);});
+test('reopening preserves tag order and unknown results without sending another update or extending the session',async()=>{
+  const f=await fixture(),expires=f.s.expires;await f.c.handle(click(f.s,'reset'));await f.c.handle(Object.assign(click(f.s,'add'),{values:[B]}));
+  f.time(1000);const reopened=interaction();await f.c.open(reopened);assert.equal(f.c.sessions.sessions.get(f.s.id),f.s);assert.deepEqual(f.s.draft,[B]);assert.equal(f.s.expires,expires);assert.equal(f.writes.length,0);
+  f.writeFail(true);await f.c.handle(click(f.s,'apply'));await f.c.open(interaction());assert.equal(f.s.result.actual,null);assert.equal(f.writes.length,1);await f.c.handle(click(f.s,'apply'));assert.equal(f.writes.length,1);
+  f.time(600001);await f.c.open(interaction());assert.equal(f.c.sessions.sessions.has(f.s.id),false);
+});
+test('reopening checks target permissions before showing saved metadata and offers a different post when unavailable',async()=>{
+  const f=await fixture();f.thread.permissionsFor=()=>({has:()=>false});const denied=interaction();await f.c.open(denied);assert.ok(!JSON.stringify(denied.replies).includes('卓の紹介'));
+  const recovery=denied.replies.at(-1).components.flatMap(r=>r.toJSON().components).find(b=>b.label==='別の投稿を選ぶ');assert.ok(recovery);const choose=interaction(recovery.custom_id);await f.c.handle(choose);assert.ok(choose.modal);
+  f.allow(false);const revoked=interaction();await f.c.open(revoked);assert.ok(!JSON.stringify(revoked.replies).includes('卓の紹介'));assert.ok(!JSON.stringify(revoked.replies).includes(f.s.id));
+});

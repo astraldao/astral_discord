@@ -1,4 +1,5 @@
 import {EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, escapeMarkdown} from 'discord.js';
+import {adminCategories,adminDestinations} from './admin-navigation.js';
 export async function acknowledgePrivate(i){
   if(i.deferred||i.replied)return;
   if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();
@@ -22,6 +23,14 @@ export function payload(title,description,{state='normal',components=[]}={}) {
   return {content:null,embeds:[card(title,description,state)],components,allowedMentions:mentions};
 }
 export const adminHomeButton=()=>new ButtonBuilder().setCustomId('admin:open').setLabel('管理メニューへ').setStyle(ButtonStyle.Secondary);
+export const adminSectionButton=id=>{
+  const category=adminCategories.find(c=>c.id===id);if(!category)throw new Error('不明な管理カテゴリです。');
+  return new ButtonBuilder().setCustomId(`admin:open-section:${id}`).setLabel(`${category.label}へ`).setStyle(ButtonStyle.Secondary);
+};
+export const adminFeatureButton=action=>{
+  const destination=adminDestinations.find(d=>d.action===action);if(!destination)throw new Error('不明な管理操作です。');
+  return new ButtonBuilder().setCustomId(`admin:open-feature:${action}`).setLabel(`${destination.label}を開く`).setStyle(ButtonStyle.Primary);
+};
 export const menuHomeButton=()=>new ButtonBuilder().setCustomId('menu:open').setLabel('メニューへ').setStyle(ButtonStyle.Secondary);
 export const personalReadingButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('profile:open').setLabel('自分の読み方').setStyle(ButtonStyle.Secondary));
 export const openButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder()

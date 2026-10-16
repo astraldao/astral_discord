@@ -1,7 +1,7 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
-import {payload,text,acknowledgePrivate} from './ui.js';
+import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,acknowledgePrivate} from './ui.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`forum:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function parseForumPost(value,guildId){let url;try{url=new URL(String(value).trim());}catch{}if(!url || url.protocol!=='https:' || url.hostname!=='discord.com' || url.port || url.username || url.password || url.search || url.hash)throw new Error('Discordの投稿リンクを入力してください。');const m=url.pathname.match(/^\/channels\/(\d{17,20})\/(\d{17,20})(?:\/\d{17,20})?\/?$/);if(!m || m[1]!==guildId)throw new Error('このサーバーの投稿リンクを入力してください。');return m[2];}
@@ -11,6 +11,7 @@ export function forumTagsScreen(s,note=''){
   if(!s.postId){body='投稿リンクを入力し、タグを表示したい順に1つずつ選びます。';components=[row(button(s,'link','投稿リンクを入力',ButtonStyle.Primary))];}
   else if(s.result){body=`**${text(s.postName)}**\n\n**送信した順番**\n${names(s.result.requested)}\n\n**APIで確認した順番**\n${s.result.actual?names(s.result.actual):'確認できませんでした。投稿を確認してください。'}\n\n${s.result.actual?(JSON.stringify(s.result.actual)===JSON.stringify(s.result.requested)?'APIでは指定順を保持しています。Discordの画面でも確認してください。':'Discord側で順番が変わりました。画面の表示順は強制できません。'):'自動で再送はしません。'}`;components=[row(button(s,'link','別の投稿を指定'))];}
   else{body=`**${text(s.postName)}**\n\n**送信する順番**\n${names(s.draft)}\n\nタグを1つずつ選ぶと末尾に追加します。Discordの表示順は保証されません。`;components=[];const options=s.tags.filter(t=>!s.draft.includes(t.id));if(options.length && s.draft.length<5)components.push(row(new StringSelectMenuBuilder().setCustomId(`forum:${s.id}:${s.turn}:add`).setPlaceholder(`${s.draft.length+1}番目のタグを選ぶ`).addOptions(options.map(t=>({label:t.name.slice(0,100),value:t.id})))));components.push(row(button(s,'undo','最後の選択を戻す').setDisabled(!s.draft.length),button(s,'reset','最初から選ぶ').setDisabled(!s.draft.length)),row(button(s,'apply','この順番で設定',ButtonStyle.Primary).setDisabled(!s.draft.length),button(s,'link','投稿を選び直す')));}
+  components.push(row(adminSectionButton('appearance'),adminHomeButton()));
   return {...payload('✦  投稿タグ',(note?`${note}\n\n`:'')+body,{state:s.result?(s.result.actual?'success':'error'):'normal',components}),attachments:[]};
 }
 export function createForumTagsController({guild,now=()=>Date.now(),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!member.permissions.has(P.Administrator)||!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('投稿タグの設定は管理者専用です。');return member;}}){
@@ -19,7 +20,11 @@ export function createForumTagsController({guild,now=()=>Date.now(),access=async
   const ack=acknowledgePrivate;
   async function post(id,member){const thread=await guild.channels.fetch(id,{force:true});if(thread?.guildId!==guild.id || thread.type!==ChannelType.PublicThread)throw new Error('フォーラムの投稿を指定してください。');const parent=await guild.channels.fetch(thread.parentId,{force:true});if(parent?.type!==ChannelType.GuildForum || parent.guildId!==guild.id)throw new Error('フォーラムの投稿を指定してください。');if(!thread.permissionsFor(member)?.has(P.ViewChannel)||!parent.permissionsFor(member)?.has(P.ViewChannel))throw new Error('投稿を閲覧できません。');const me=await guild.members.fetchMe({force:true});if(!thread.permissionsFor(me)?.has([P.ViewChannel,P.ManageThreads]))throw new Error('Botに投稿の閲覧とスレッド管理の権限が必要です。');if(thread.archived || thread.locked)throw new Error('アーカイブ・ロックされていない投稿を指定してください。');return {thread,tags:parent.availableTags.map(t=>({id:t.id,name:t.name,moderated:t.moderated})),parentId:parent.id};}
   const revision=x=>JSON.stringify({tags:x.thread.appliedTags,available:x.tags,parentId:x.parentId});
-  async function open(i){await ack(i);await access(i);const s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,turn:0,tags:[],draft:[]});await i.editReply(forumTagsScreen(s));}
+  async function open(i){let s;try{
+    await ack(i);const member=await access(i);s=sessions.resume(i.user.id,i.channelId);
+    if(s){if(s.postId){try{await post(s.postId,member);}catch{throw new Error('編集中の投稿を確認できません。権限やアーカイブ状態を確認するか、別の投稿を選んでください。');}await access(i);get(s.id,i);}await i.editReply(forumTagsScreen(s,'前の操作を再開しました。'));return;}
+    s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,turn:0,tags:[],draft:[]});await i.editReply(forumTagsScreen(s));
+  }catch(e){let safe=false;if(s)try{await access(i);get(s.id,i);safe=!s.busy;}catch{}const m={...payload('投稿タグ',text(e.message),{state:'error',components:[row(...(safe?[button(s,'link','別の投稿を選ぶ')]:[adminFeatureButton('open-forum')]),adminSectionButton('appearance'),adminHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}}
   async function handle(i){let s,locked=false,authorized=false,lockedPost;try{
     const [,id,turn,action,token]=i.customId.split(':');s=get(id,i);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
     if(action!=='link')await ack(i);await access(i);get(id,i);authorized=true;if(String(s.turn)!==turn)throw new Error('画面を最新に戻しました。もう一度選んでください。');
@@ -36,6 +41,6 @@ export function createForumTagsController({guild,now=()=>Date.now(),access=async
       try{authorized=false;const member=await access(i);const saved=await guild.channels.fetch(s.postId,{force:true});await access(i);get(id,i);if(!saved?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('投稿を閲覧できません。');authorized=true;s.result.actual=[...saved.appliedTags];}catch{if(!authorized)throw new Error('権限または結果を確認できませんでした。投稿を確認してください。');}
     }else throw new Error('操作を確認してください。');
     s.turn++;await i.editReply(forumTagsScreen(s));
-  }catch(e){let safe=false;if(authorized){try{get(s.id,i);safe=true;}catch{}}const m=safe?forumTagsScreen(s,text(e.message)):{...payload('✦  投稿タグ',text(e.message),{state:'error'}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}finally{if(locked)s.busy=false;if(lockedPost)busyPosts.delete(lockedPost);}}
+  }catch(e){let safe=false;if(authorized){try{get(s.id,i);safe=true;}catch{}}const m=safe?forumTagsScreen(s,text(e.message)):{...payload('✦  投稿タグ',text(e.message),{state:'error',components:[row(adminFeatureButton('open-forum'),adminSectionButton('appearance'),adminHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}finally{if(locked)s.busy=false;if(lockedPost)busyPosts.delete(lockedPost);}}
   return {sessions,open,handle};
 }

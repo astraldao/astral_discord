@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,FileUploadBuilder,LabelBuilder,MessageFlags,ModalBuilder,PermissionFlagsBits as P} from 'discord.js';
-import {adminHomeButton,card,payload} from './ui.js';
+import {adminHomeButton,adminSectionButton,adminFeatureButton,card,payload} from './ui.js';
 import {readBannerAttachment} from './banner-image.js';
 const ttl=10*60*1000,maximum=4;
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
@@ -17,7 +17,7 @@ export function bannerScreen(s,note=''){
   if(!preview&&!remove)body+='\n\n画像を選ぶ → プレビュー → 適用\nPNG・JPEG、4MiB以内。横長600×240px以上を推奨。';
   if(note)body=`${note}\n\n${body}`;
   const controls=preview?row(button(s,'apply','この画像を適用',ButtonStyle.Primary).setDisabled(!!s.uncertain),button(s,'upload','画像を選び直す'),button(s,'cancel',s.uncertain?'候補を閉じる':'変更せず戻る')):remove?row(button(s,'apply','バナーを解除',ButtonStyle.Danger).setDisabled(!!s.uncertain),button(s,'cancel',s.uncertain?'確認して戻る':'変更せず戻る')):row(button(s,'upload',s.current.key?'別の画像を選ぶ':'画像を選ぶ',ButtonStyle.Primary),button(s,'remove','バナーを解除').setDisabled(!s.current.key));
-  const m={...payload('Botのバナー',body,{state:s.uncertain||remove?'warning':'normal',components:[controls,row(button(s,'refresh','現在を確認'),adminHomeButton(),button(s,'close','操作を終了'))]}),attachments:[]};
+  const m={...payload('Botのバナー',body,{state:s.uncertain||remove?'warning':'normal',components:[controls,row(button(s,'refresh','現在を確認'),adminSectionButton('appearance'),adminHomeButton(),button(s,'close','操作を終了'))]}),attachments:[]};
   if(s.current.url)m.embeds[0].setImage(s.current.url);
   if(preview&&s.draft){
     m.embeds.push(card(s.uncertain?'適用候補の画像 · 結果を確認中':'変更後のプレビュー · 未適用',`${s.draft.width} × ${s.draft.height}px · ${(s.draft.buffer.length/1024/1024).toFixed(2)}MiB\nプロフィールでは横長に表示されます。実際の切り抜きはDiscordの表示に従います。`).setImage(`attachment://banner-preview.${s.draft.extension}`));
@@ -43,21 +43,26 @@ export function createBannerController({guild,current,update,read=readBannerAtta
   async function failure(i,s,error){
     let safe=false;if(s)try{await check(i,s);safe=true;}catch{}
     let note=error.message??'操作を完了できませんでした。';if(safe&&s.draft)note+='\n表示中の候補は保持しています。適用前に画像を確認してください。';
-    const m=safe?bannerScreen(s,note):{...payload('Botのバナー',note,{state:'error',components:[row(adminHomeButton())]}),attachments:[]};
+    const m=safe?bannerScreen(s,note):{...payload('Botのバナー',note,{state:'error',components:[row(adminFeatureButton('open-banner'),adminSectionButton('appearance'),adminHomeButton())]}),attachments:[]};
     if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});
   }
   return {sessions,close(){closed=true;for(const s of sessions.values())drop(s);},
-    async open(i){let s;try{
+    async open(i){let s,locked=false;try{
       await check(i);await ack(i);
       if(closed)throw new Error('Botを終了しています。');
       for(const old of sessions.values())if(old.expires<=now())drop(old);
       const previous=[...sessions.values()].find(value=>value.owner===i.user.id);if(previous?.busy)throw new Error('前の操作を処理中です。完了してから開き直してください。');
+      if(previous?.channelId===i.channelId){
+        s=previous;s.busy=true;locked=true;const latest=await current();await check(i,s);
+        s.current=latest;s.base=latest.key;s.uncertain=false;s.token=null;s.turn++;if(s.view==='remove')s.view='home';
+        await i.editReply(bannerScreen(s,s.draft?'候補の画像を再表示しました。現在のバナーと見比べてから適用してください。':'前の操作を再開しました。'));return;
+      }
       if(previous)drop(previous);if(sessions.size>=maximum)throw new Error('バナーの操作画面が使用中です。少し待ってから開いてください。');
       s={id:randomUUID().replaceAll('-','').slice(0,12),owner:i.user.id,channelId:i.channelId,turn:0,view:'home',expires:now()+ttl,abort:new AbortController()};
-      sessions.set(s.id,s);s.timer=schedule(()=>drop(s),ttl);s.timer?.unref?.();
+      s.busy=true;locked=true;sessions.set(s.id,s);s.timer=schedule(()=>drop(s),ttl);s.timer?.unref?.();
       await i.editReply({...payload('Botのバナー','現在のバナーを確認しています。'),attachments:[]});
       s.current=await current();await check(i,s);await i.editReply(bannerScreen(s));
-    }catch(error){if(s&&!s.current){drop(s);s=null;}await failure(i,s,error);}},
+    }catch(error){if(s&&!s.current){drop(s);s=null;}await failure(i,s,error);}finally{if(locked&&s)s.busy=false;}},
     async handle(i){let s,locked=false;try{
       const [,id,turn,action,token]=i.customId.split(':');s=get(id,i);await check(i,s);
       if(s.busy)throw new Error('前の操作を処理中です。完了してからお試しください。');
@@ -65,7 +70,7 @@ export function createBannerController({guild,current,update,read=readBannerAtta
       s.busy=true;locked=true;
       if(action==='upload'){s.token=randomUUID().replaceAll('-','').slice(0,12);await i.showModal(bannerModal(s));return;}
       await ack(i);await check(i,s);let note='';
-      if(action==='close'){drop(s);await i.editReply({...payload('Botのバナー','操作画面を閉じました。現在のバナーはそのままです。',{components:[row(adminHomeButton())]}),attachments:[]});return;}
+      if(action==='close'){drop(s);await i.editReply({...payload('Botのバナー','操作画面を閉じました。現在のバナーはそのままです。',{components:[row(adminFeatureButton('open-banner'),adminSectionButton('appearance'),adminHomeButton())]}),attachments:[]});return;}
       if(action==='submit'){
         if(!s.token||s.token!==token)throw new Error('最新の画像選択フォームからアップロードしてください。');
         const files=i.fields.getUploadedFiles('image',true);if(files.size!==1)throw new Error('画像を1枚選んでください。');

@@ -2,7 +2,7 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Chann
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,text,adminHomeButton,acknowledgePrivate} from './ui.js';
+import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {visibleCharacters,searchScenarios,iacharaUrl,characterRevision} from './trpg-store.js';
 import {createTrpgRepair} from './trpg-repair.js';
 import {tableScreen} from './tables-ui.js';
@@ -55,7 +55,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
     const pagination=(page,pages)=>pages>1?[button(s,'prev','前のページ').setDisabled(page===0),button(s,'next','次のページ').setDisabled(page>=pages-1)]:[];
     if(s.view==='home'){
       body='**卓セット**\nシナリオ・伝助・参加PCを卓ごとにまとめます。\n\n**ベース卓**\nシナリオ名から、ココフォリアの卓を探せます。URLは管理者だけに表示します。\n\n**キャラシ**\nメンバー用の登録パネルを設置し、PCの控えを確認できます。';
-      components=[row(button(s,'tables','卓セット',ButtonStyle.Primary)),row(button(s,'scenarios','ベース卓を探す'),button(s,'form-scenario','ベース卓を登録')),row(button(s,'archives','PCの控えを確認'),button(s,'install','キャラシパネルを設置'),button(s,'repairs','キャラシパネルを復旧')),row(adminHomeButton())];
+      components=[row(button(s,'tables','卓セット',ButtonStyle.Primary)),row(button(s,'scenarios','ベース卓を探す'),button(s,'form-scenario','ベース卓を登録')),row(button(s,'archives','PCの控えを確認'),button(s,'install','キャラシパネルを設置'),button(s,'repairs','キャラシパネルを復旧')),row(adminSectionButton('schedule'),adminHomeButton())];
     } else if(s.view==='install'){
       title='✦  キャラシパネルを設置';
       body=`**公開範囲** ${s.mode==='shared'?'共有':'秘匿'}\n**設置先** ${s.channelId?`<#${s.channelId}>`:'チャンネルを選んでください'}\n\n**秘匿** · PC名・URLは本人と管理者だけ\n**共有** · PC名・URLをメンバーに表示\nTXTはどちらも本人と管理者だけに表示します。\n既存パネルの公開範囲は変更しません。`;
@@ -135,7 +135,12 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       catch{failed++;}
     }
     return {updated,failed};
-  },async open(i){await acknowledgePrivate(i);if(!await isAdmin(i))throw new Error('管理者専用です。');const s=sessions.create(i.user.id);s.entry='admin';s.isAdmin=true;s.originChannelId=i.channelId;s.view='home';await i.editReply(screen(s));},async handle(i){let s,locked=false;
+  },async open(i){await acknowledgePrivate(i);if(!await isAdmin(i))throw new Error('管理者専用です。');const previous=sessions.resume(i.user.id,i.channelId,s=>managementSession(s));if(previous){
+    const data=store.metadata();
+    if(['table','table-scenario','table-pcs','table-remove-pcs','delete-table'].includes(previous.view)&&!data.tables.some(t=>t.id===previous.tableId)){previous.view='tables';delete previous.tableId;}
+    if(previous.panelId&&!data.panels.some(p=>p.id===previous.panelId)){previous.view='archives';delete previous.panelId;}
+    await i.editReply(screen(previous,'前の操作を再開しました。'));return;
+  }const s=sessions.create(i.user.id);s.entry='admin';s.isAdmin=true;s.originChannelId=i.channelId;s.view='home';await i.editReply(screen(s));},async handle(i){let s,locked=false;
     try {
       const parts=i.customId.split(':');
       if(parts[1]==='p'){
@@ -247,6 +252,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         else if(s.panelId)components.push(row(button(s,s.tableReturn?'table-return':'characters',s.tableReturn?'参加PC一覧へ':'PC一覧へ'),button(s,'form-register','共有URLを入力し直す')));
         else if(s.entry==='admin')components.push(row(button(s,'home','卓・キャラシのメニューへ')));
       }
+      components.push(row(adminFeatureButton('open-trpg'),adminSectionButton('schedule'),menuHomeButton()));
       const error=payload('✧  卓・キャラシ',`操作できませんでした：${text(e.message)}\n既存の控えは保持しています。`,{state:'error',components});error.attachments=[];if(i.deferred || i.replied)await i.editReply(error);else await i.reply({...error,flags:MessageFlags.Ephemeral});}finally{if(locked)s.busy=false;}
   }};
 }

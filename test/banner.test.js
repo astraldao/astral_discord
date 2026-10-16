@@ -88,6 +88,16 @@ test('default authorization fetches current membership and ignores a stale inter
   let calls=0;const options=[],c=createBannerController({guild:{members:{fetch:async value=>{options.push(value);return {permissions:{has:()=>false}};}},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>true})})}},current:async()=>{calls++;return {key:null,url:null};},update:async()=>assert.fail('unauthorized write')});t.after(()=>c.close());
   const i=interaction();i.memberPermissions={has:()=>true};await c.open(i);assert.equal(calls,0);assert.equal(c.sessions.size,0);assert.deepEqual(options,[{user:'owner',force:true}]);assert.ok(JSON.stringify(i.replies).includes('管理者専用'));
 });
+test('reopening retains the candidate, fetches the current banner, rejects old buttons and keeps the original expiry',async t=>{
+  const f=await fixture(t);await f.upload();const old=f.click('apply'),draft=f.s.draft,expires=f.s.expires;
+  f.remote({key:'changed',url:null});f.advance(120000);const {s,i}=await f.open();
+  assert.equal(s,f.s);assert.equal(s.draft,draft);assert.equal(s.current.key,'changed');assert.equal(s.base,'changed');assert.equal(s.expires,expires);assert.equal(s.view,'preview');assert.equal(f.writes.length,0);assert.equal(i.replies.at(-1).files.length,1);
+  await f.c.handle(old);assert.equal(f.writes.length,0);f.advance(480001);const fresh=await f.open();assert.notEqual(fresh.s.id,s.id);assert.equal(s.draft,null);assert.equal(fresh.s.view,'home');
+});
+test('reopening a banner candidate after permission loss exposes no image and cannot replace a busy upload',async t=>{
+  const f=await fixture(t);await f.upload();f.allow(false);const denied=await f.open();assert.equal(denied.i.replies.at(-1).files,undefined);assert.equal(f.c.sessions.get(f.s.id),f.s);
+  f.allow(true);const pending=deferred();f.read(()=>pending.promise);const task=f.upload();await tick();assert.equal(f.s.busy,true);const again=await f.open();assert.ok(JSON.stringify(again.i.replies).includes('処理中'));assert.equal(f.c.sessions.get(f.s.id),f.s);pending.resolve(image);await task;
+});
 test('an unknown update outcome keeps the draft and rechecks remote state before any retry',async t=>{
   let calls=0;const remote={key:'old',url:null},f=await fixture(t,{current:async()=>({...remote}),update:async()=>{calls++;remote.key='actually-applied';throw new Error('通信が切れました。現在を確認してください。');}});await f.upload();
   const apply=f.click('apply');await f.c.handle(apply);assert.equal(calls,1);assert.ok(f.s.draft);assert.equal(f.s.uncertain,true);

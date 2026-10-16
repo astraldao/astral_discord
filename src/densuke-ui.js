@@ -1,7 +1,7 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,escapeMarkdown} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,adminHomeButton,acknowledgePrivate} from './ui.js';
+import {payload,adminHomeButton,adminSectionButton,adminFeatureButton,acknowledgePrivate} from './ui.js';
 import {randomUUID} from 'node:crypto';
 import {PermissionFlagsBits as P} from 'discord.js';
 import {answerUrl} from './trpg-store.js';
@@ -28,7 +28,7 @@ export function densukeScreen(s,note='') {
     if(escapeMarkdown(e.schedule).length>1200 || escapeMarkdown(e.description).length>800)description+='\n\n表示は一部省略しています。「内容を修正」で全文を確認できます。伝助には全文を送ります。';
     components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice`).setPlaceholder('回答の選択肢を選ぶ').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'イベント内容を入力',s.phase==='review'?ButtonStyle.Secondary:ButtonStyle.Primary),...(s.phase==='review'?[button(s,'create','この内容で作成',ButtonStyle.Primary)]:[]),button(s,'cancel','作成をキャンセル')),row(button(s,'form-email','控えメールの宛先'),button(s,'form-recover','作成済みURLを登録'))];
   }
-  if(s.phase!=='creating'&&components.length<5)components.push(row(adminHomeButton()));
+  if(s.phase!=='creating'&&components.length<5)components.push(row(adminSectionButton('schedule'),adminHomeButton()));
   return {...payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?'success':s.phase==='uncertain'?'error':'normal',components}),attachments:[]};
 }
 export function densukeModal(s) {
@@ -51,7 +51,8 @@ export function createDensukeController({email,settings,client=createDensukeClie
   const currentEmail=()=>settings?.get().densukeEmail??email;
   async function authorize(i){const member=guild?await guild.members.fetch({user:i.user.id,force:true}):null;if(!canConfigure(member?.permissions??i.memberPermissions))throw new Error('日程調整の操作は管理者専用です。');if(guild){const channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルの閲覧権限がありません。');}}
   return {sessions,async open(i){
-    await authorize(i);await acknowledgePrivate(i);
+    await acknowledgePrivate(i);await authorize(i);
+    const previous=sessions.resume(i.user.id,i.channelId);if(previous){await i.editReply(densukeScreen(previous,'前の操作を再開しました。'));return;}
     const s=sessions.create(i.user.id);s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};s.channelId=i.channelId;s.reviewEmail=currentEmail();
     await i.editReply(densukeScreen(s,currentEmail()?'':'「控えメールの宛先」で宛先を設定してください。'));
   },async handle(i){
@@ -113,7 +114,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
       } else throw new Error('不明な操作です。');
       authorized=false;await authorize(i);sessions.get(s.id,s.userId);authorized=true;await i.editReply(densukeScreen(s,note));
     } catch(error) {
-      const message=s && authorized?densukeScreen(s,error instanceof UncertainCreation?'':`操作できませんでした：${safe(error.message,250)}`):payload('✧  日程調整',safe(error.message,250));
+      const message=s && authorized?densukeScreen(s,error instanceof UncertainCreation?'':`操作できませんでした：${safe(error.message,250)}`):{...payload('✧  日程調整',safe(error.message,250),{components:[row(adminFeatureButton('open-densuke'),adminSectionButton('schedule'),adminHomeButton())]}),attachments:[]};
       if(i.deferred || i.replied)await i.editReply(message);else await i.reply({...message,flags:MessageFlags.Ephemeral});
     } finally {if(locked)s.busy=false;}
   }};

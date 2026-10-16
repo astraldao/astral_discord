@@ -96,6 +96,19 @@ test('reopening cannot reset creation limits, and cancellation never creates an 
   const next=await f.open();next.event=event();next.phase='review';await f.controller.handle(f.interaction(`densuke:${next.id}:create`));assert.equal(f.calls(),1);
   await f.controller.handle(f.interaction(`densuke:${next.id}:cancel`));assert.equal(next.phase,'closed');
 });
+test('reopening preserves drafts and uncertain or completed results without creating or sharing anything',async()=>{
+  for(const phase of ['draft','review','uncertain','done']){
+    const f=fixture(),s=await f.open(),expires=s.expires;s.event=event();s.phase=phase;s.inputDraft={...event(),name:'入力中'};
+    if(phase==='done')s.result={answer:result.answer,edit:result.edit};
+    f.setTime(120000);const again=await f.open();assert.equal(again,s);assert.equal(again.phase,phase);assert.equal(again.inputDraft.name,'入力中');assert.equal(again.expires,expires);assert.equal(f.calls(),0);assert.equal(f.posts.length,0);
+    f.setTime(600000);assert.notEqual((await f.open()).id,s.id);
+  }
+});
+test('reopening during a create cannot evict the session or invite another request',async()=>{
+  let finish,calls=0;const f=fixture();const c=createDensukeController({email,client:{create:async()=>{calls++;await new Promise(r=>finish=r);return result;}}});
+  await c.open(f.interaction());const s=[...c.sessions.sessions.values()][0];s.event=event();s.phase='review';const creating=c.handle(f.interaction(`densuke:${s.id}:create`));await new Promise(r=>setImmediate(r));
+  await assert.rejects(c.open(f.interaction()),/処理中/);assert.equal(c.sessions.sessions.get(s.id),s);assert.equal(calls,1);finish();await creating;assert.equal(s.phase,'done');
+});
 test('largest form and preview fit Discord limits',()=>{
   const s={id:'test',phase:'review',event:{...event(),name:'a'.repeat(250),schedule:'a'.repeat(4000),description:'a'.repeat(2000)}};
   assert.equal(densukeModal(s).toJSON().components.length,4);

@@ -54,6 +54,11 @@ export class AdminSessions {
     if(!s || s.userId!==userId || s.expires<=this.now())throw new Error('この画面は終了しています。元のパネルまたは /admin から開き直してください。');
     return s;
   }
+  resume(userId,channelId,accept=()=>true){
+    const owned=[...this.sessions.values()].filter(s=>s.userId===userId);
+    if(owned.some(s=>s.busy))throw new Error('前の操作を処理中です。完了してから開き直してください。');
+    return owned.find(s=>s.expires>this.now()&&(s.originChannelId??s.channelId)===channelId&&accept(s));
+  }
 }
 const row=(...components)=>new ActionRowBuilder().addComponents(...components);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${action}`).setLabel(label).setStyle(style);
@@ -160,11 +165,13 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     try {
       if(!await access(interaction))throw new Error('管理画面は管理者専用です。');
       let action,token;
-      if(interaction.isChatInputCommand() || interaction.customId==='admin:open') {
+      const entry=interaction.customId?.match(/^admin:open-(section|feature):([^:]+)$/);
+      if(interaction.isChatInputCommand() || interaction.customId==='admin:open' || entry) {
         if(!interaction.deferred&&!interaction.replied){if(interaction.message?.flags?.has(MessageFlags.Ephemeral))await interaction.deferUpdate();else await interaction.deferReply({flags:MessageFlags.Ephemeral});}
         if([...sessions.sessions.values()].some(value=>value.userId===interaction.user.id&&value.busy))throw new Error('前の操作を処理中です。完了してから開き直してください。');
         s=sessions.create(interaction.user.id);s.originChannelId=interaction.channelId;
-        action=interaction.isChatInputCommand()?interaction.options?.getString('操作'):null;
+        if(entry?.[1]==='section'){if(!adminCategories.some(c=>c.id===entry[2]))throw new Error('カテゴリを選び直してください。');s.view=`category-${entry[2]}`;}
+        action=entry?.[1]==='feature'?entry[2]:interaction.isChatInputCommand()?interaction.options?.getString('操作'):null;
         if(!action){await interaction.editReply(screen(s));return;}
         if(!adminDestinations.some(destination=>destination.action===action))throw new Error('操作を選び直してください。');
       }else{

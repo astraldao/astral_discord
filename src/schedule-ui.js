@@ -2,7 +2,7 @@ import {calendarImage,calendarAlt} from './calendar-image.js';
 import {randomUUID} from 'node:crypto';
 import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P,escapeMarkdown} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
-import {payload,adminHomeButton} from './ui.js';
+import {payload,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton} from './ui.js';
 import {currentScheduleMonth,shiftScheduleMonth,scheduleMonth,scheduleDate} from './schedule-store.js';
 const safe=x=>escapeMarkdown(String(x)).replace(/@/g,'＠');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
@@ -27,7 +27,7 @@ const pages=(s,items,size)=>{const count=Math.max(1,Math.ceil(items.length/size)
 export function scheduleScreen(s,store,note=''){
   const admin=s.scope==='admin',intro=note?`${note}\n\n`:'';let m;
   if(s.view==='home'){
-    const p=pages(s,store.metadata(),10);m=payload('📅  予定表の管理',`${intro}${p.items.length?'予定表を選んでください。':'「予定表を作る」から始めてください。'}`,{components:[...(p.items.length?[row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:calendar`).setPlaceholder('予定表を選ぶ').addOptions(...p.items.map(c=>({label:c.title,value:c.id,description:`予定 ${c.count}件 · 投稿 ${c.publications.length}件`})) ))]:[]),row(button(s,'new-calendar','予定表を作る',ButtonStyle.Primary),adminHomeButton(),...(p.count>1?[button(s,'prev','前へ').setDisabled(s.page===0),button(s,'next','次へ').setDisabled(s.page===p.count-1)]:[]))]});
+    const p=pages(s,store.metadata(),10);m=payload('📅  予定表の管理',`${intro}${p.items.length?'予定表を選んでください。':'「予定表を作る」から始めてください。'}`,{components:[...(p.items.length?[row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:calendar`).setPlaceholder('予定表を選ぶ').addOptions(...p.items.map(c=>({label:c.title,value:c.id,description:`予定 ${c.count}件 · 投稿 ${c.publications.length}件`})) ))]:[]),row(button(s,'new-calendar','予定表を作る',ButtonStyle.Primary),...(p.count>1?[button(s,'prev','前へ').setDisabled(s.page===0),button(s,'next','次へ').setDisabled(s.page===p.count-1)]:[])),row(adminSectionButton('schedule'),adminHomeButton())]});
   }else{
     const c=store.calendar(s.calendarId),e=c.events.find(e=>e.id===s.eventId),p=c.publications.find(p=>p.id===s.publicationId);
     if(s.view==='event'){
@@ -73,13 +73,26 @@ function modal(s,kind,store,today){
 }
 export function createScheduleController({guild,store,now=()=>Date.now(),access=async(i,admin)=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel)||admin&&!member.permissions.has(P.Administrator))throw new Error(admin?'管理者権限がありません。':'このチャンネルでは予定表を閲覧できません。');}}){
   const sessions=new GameSessions(now);let refreshTail=Promise.resolve();
-  const get=(id,i)=>{const s=sessions.get(id,i.user.id);if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');if(s.scope==='viewer'){const p=store.publication(s.publicationId);if(p.status!=='ready'||p.channelId!==i.channelId||p.calendarId!==s.calendarId)throw new Error('この予定表は公開されていません。');}return s;};
+  const get=(id,i)=>{let s;try{s=sessions.get(id,i.user.id);}catch{throw new Error('この画面は終了しています。閲覧用は元の予定表の「カレンダーを開く」から、管理用は予定表を開き直してください。');}if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');if(s.scope==='viewer'){const p=store.publication(s.publicationId);if(p.status!=='ready'||p.channelId!==i.channelId||p.calendarId!==s.calendarId)throw new Error('この予定表は公開されていません。');}return s;};
   const channelFor=async id=>{const c=await guild.channels.fetch(id,{force:true}),me=await guild.members.fetchMe({force:true});if((c?.guildId??c?.guild?.id)!==guild.id||c?.type!==ChannelType.GuildText||!c.permissionsFor(me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks,P.ReadMessageHistory,P.AttachFiles]))throw new Error('送信先とBotの閲覧・送信・埋め込み・履歴・ファイル添付権限を確認してください。');return c;};
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
-  async function error(i,e){const m={...payload('📅  予定表',safe(e.message).slice(0,700),{state:'error'}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
+  async function error(i,e){let admin=false;try{await access(i,true);admin=true;}catch{}const m={...payload('📅  予定表',safe(e.message).slice(0,700),{state:'error',components:[row(...(admin?[adminFeatureButton('open-schedule'),adminSectionButton('schedule')]:[]),menuHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
   function refresh(calendarId){const job=refreshTail.then(async()=>{let updated=0,failed=0;const calendars=calendarId?[store.calendar(calendarId)]:store.metadata();for(const c of calendars)for(const publication of c.publications){if(publication.status!=='ready')continue;try{const channel=await channelFor(publication.channelId),message=await channel.messages.fetch(publication.messageId),p=store.publication(publication.id);if(message.author.id!==guild.members.me.id||!message.components.some(r=>r.components.some(b=>b.customId===`schedule:panel:${p.id}`)))throw new Error('投稿を確認できません。');await message.edit(schedulePanel(store.calendar(p.calendarId),p));updated++;}catch{failed++;}}return {updated,failed};});refreshTail=job.catch(()=>{});return job;}
   const refreshed=async id=>{const r=await refresh(id);return r.failed?`予定は保存しました。投稿更新 ${r.updated}件・失敗 ${r.failed}件。「投稿を管理」から確認してください。`:r.updated?`✓ 保存して、投稿 ${r.updated}件も更新しました。`:'✓ 保存しました。';};
-  async function open(i,admin=true,pubId){try{await ack(i);await access(i,admin);if([...sessions.sessions.values()].some(s=>s.userId===i.user.id&&s.busy))throw new Error('前の操作を処理中です。');let p;if(!admin){p=store.publication(pubId);if(p.status!=='ready'||p.channelId!==i.channelId||i.message?.id!==p.messageId)throw new Error('このチャンネルの予定表から開いてください。');}const s=sessions.create(i.user.id);Object.assign(s,{scope:admin?'admin':'viewer',channelId:i.channelId,guildId:guild.id,turn:0,today:new Date(now()+9*3600000).toISOString().slice(0,10),month:p?.month??currentScheduleMonth(now()),view:admin?'home':'list',...(p?{calendarId:p.calendarId,publicationId:p.id}:{})});await i.editReply(scheduleScreen(s,store));}catch(e){await error(i,e);}}
+  function resumedScreen(s){
+    let note='前の操作を再開しました。';
+    const c=s.calendarId?store.metadata().find(c=>c.id===s.calendarId):null;
+    if(s.view!=='home'&&!c){s.view='home';s.page=0;delete s.calendarId;note='前の予定表が見つからないため、予定表の一覧に戻りました。';}
+    else if(c){
+      const calendar=store.calendar(s.calendarId);
+      if(['event','delete-confirm'].includes(s.view)&&!calendar.events.some(e=>e.id===s.eventId)){s.view='list';note='前の予定が見つからないため、予定の一覧に戻りました。';}
+      if(['publication','cancel-confirm'].includes(s.view)&&!calendar.publications.some(p=>p.id===s.publicationId))s.view='publications';
+      s.view=({'delete-confirm':'event','publish-confirm':'list','cancel-confirm':'publication'})[s.view]??s.view;
+    }
+    delete s.form;delete s.deleteStage;delete s.publishStage;delete s.cancelRevision;s.turn++;
+    s.today=new Date(now()+9*3600000).toISOString().slice(0,10);return scheduleScreen(s,store,note);
+  }
+  async function open(i,admin=true,pubId){try{await ack(i);await access(i,admin);if([...sessions.sessions.values()].some(s=>s.userId===i.user.id&&s.busy))throw new Error('前の操作を処理中です。');const previous=admin?sessions.resume(i.user.id,i.channelId,s=>s.scope==='admin'):null;if(previous){await i.editReply(resumedScreen(previous));return;}let p;if(!admin){p=store.publication(pubId);if(p.status!=='ready'||p.channelId!==i.channelId||i.message?.id!==p.messageId)throw new Error('このチャンネルの予定表から開いてください。');}const s=sessions.create(i.user.id);Object.assign(s,{scope:admin?'admin':'viewer',channelId:i.channelId,guildId:guild.id,turn:0,today:new Date(now()+9*3600000).toISOString().slice(0,10),month:p?.month??currentScheduleMonth(now()),view:admin?'home':'list',...(p?{calendarId:p.calendarId,publicationId:p.id}:{})});await i.editReply(scheduleScreen(s,store));}catch(e){await error(i,e);}}
   async function handle(i){if(i.customId.startsWith('schedule:panel:')){await open(i,false,i.customId.slice(15));return;}let s,locked=false;try{
     const [,id,turn,action,token]=i.customId.split(':');s=get(id,i);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
     const forms=['new-calendar','rename','new-event','edit-event','edit-month','recover','month-jump','day-jump'];if(!forms.includes(action))await ack(i);await access(i,s.scope==='admin');get(id,i);if(String(s.turn)!==turn)throw new Error('古い画面です。元のメニューから開き直してください。');
