@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-16 更新。現行のコマンド構成はv3.34.0。過去の調査・検証記録は各版の節を参照。
+2026-10-16 更新。現行のコマンド構成はv3.35.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -26,7 +26,7 @@
 | TRPG・キャラシ・卓セット | `src/trpg-store.js`、`src/trpg-ui.js`、`src/iachara.js` |
 | 伝助・予定表 | `src/densuke*.js`、`src/schedule-*.js`、`src/calendar-image.js` |
 | ゲーム・チップ台帳 | `src/blackjack*.js`、`src/casino*.js`、`src/game-wallets.js`、`src/chip-*.js` |
-| 自動更新・プロセス監督 | `scripts/auto-update.js`、`scripts/supervisor.js`、`src/update-lifecycle.js` |
+| 手動更新・再起動・プロセス監督 | `scripts/auto-update.js`、`scripts/manual-update.js`、`scripts/manual-restart.js`、`scripts/supervisor.js`、`src/update-lifecycle.js`、`src/restart-ui.js` |
 
 現行コマンドは `/menu`（入室・読み上げ・ゲーム・本人設定）、管理者専用の `/admin`。操作早見表は [docs/COMMANDS.md](docs/COMMANDS.md)。
 v3.24.1で `/chips` を `/game → 自分のチップ` に統合した。
@@ -51,7 +51,7 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 更新中はdndを表示し、取得・検証後、処理やゲームが進行中なら切り替えを見送る。終了後に管理者が再実行する。初期化失敗では保存データと旧版を復元する。
 
 旧版の常駐プロセスはワーカー更新の対象外なので、v3.25以前からの移行にはREADMEのStartup CommandでQuaxlyを一度再起動・再導入する必要がある。移行済みの起動スクリプトはホスティング再起動時に保存済みの版を起動し、自動更新しない。
-旧ASTRAL_AUTO_UPDATE・ASTRAL_UPDATE_INTERVALは使用しない。VOICEVOXと常駐プロセス自身の刷新は再導入で扱う。
+旧ASTRAL_AUTO_UPDATE・ASTRAL_UPDATE_INTERVALは使用しない。VOICEVOXの刷新は再導入で扱う。v3.35以降のbootstrapは保存済みローカル版のindex.jsを選び、ホスティング再起動でその版の常駐プロセスも切り替える。mainの自動取得・適用はしない。
 更新後は稼働版、`/admin → 運用・管理 → 動作診断`、変更した機能を確認する。診断は音声生成・再生の試験ではない。
 
 ## 引き継ぎ時点の確認状況
@@ -120,3 +120,13 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 管理画面は運用・管理の「ENV・起動設定」、直接操作open-runtimeも追加。書き込みには入力・確認・保存を必要とし、フォームごとのトークンと画面世代で古い送信を拒否する。変数名の自由入力、DISCORD_TOKEN、GUILD_ID、VOICEVOX_PYTHONなどの実行パスは対象外。伝助メールは既存の専用設定を使う。
 
 この版は構文・実行ポリシー検査と459件の自動テストに成功。実モデルの先読み比較を実施し、記録はdocs/benchmarksに保存。Discord実機の音声・ENV変更後の再起動は未確認です。
+
+## v3.35 確認付きの管理者再起動
+
+`/admin` のホーム・運用カテゴリとENV設定から `src/restart-ui.js` を開く。本人・元チャンネル・10分期限・世代・現在のAdministrator/閲覧権限を検証し、保存設定のリビジョンを確認してから親へ要求する。`ASTRAL_RESTART_PROTOCOL=1` が親から渡されない旧常駐プロセスでは実行不可とし、一度のQuaxly再起動を案内する。
+
+親の `createManualRestarter` は1500ms後に再起動を実行する。手動更新とは排他にし、workerは同期的にbusy・設定リビジョンを検証して受付を凍結、保存処理をdrainする。停止通知には現在稼働中の許可済みENV2項目だけを含める。停止完了後に同じローカルソースを起動し、ready後にactivateする。起動失敗時はその2項目をruntime-env.jsonに原子的に戻して再起動する。更新用の取得・データ移行・スナップショット復元は行わない。
+
+bootstrapの既存導入向け経路は、保存済みstateから選んだローカル版のindex.jsを読み込む。このため一度のホスティング再起動で新しいsupervisorも有効になる。起動時にmainを取得したり保存済みの版を変更したりしない。手順は [docs/RESTART.md](docs/RESTART.md)。本番のDiscord/Quaxlyでの再起動は未確認。
+
+検証：構文・実行ポリシー検査と469件のテスト成功。実子プロセスのIPC停止/ready・同一ソース再起動・不正な起動設定からの復旧・.env不変・更新との排他・busy/リビジョン・管理画面権限/世代/期限・初回bootstrapの保存済み版選択・dnd表示を確認した。

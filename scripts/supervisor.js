@@ -3,9 +3,11 @@ import {randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {createManualUpdater,UPDATER_PROTOCOL} from './manual-update.js';
+import {createManualRestarter} from './manual-restart.js';
+import {RuntimeEnvStore,validateRuntimeValues} from '../src/runtime-env.js';
 import {prepareRelease,readState,writeState,releasePath,snapshotData,restoreData,cleanup,runFile} from './auto-update.js';
-export function launchWorker(root,source,{timeout=90000,updating=false}={}){
-  const child=spawn(process.execPath,[join(source,'index.js'),'--worker'],{cwd:root,shell:false,env:{...process.env,ASTRAL_DATA_ROOT:root,ASTRAL_SUPERVISED:'1',ASTRAL_UPDATER_PROTOCOL:UPDATER_PROTOCOL,ASTRAL_UPDATING:updating?'1':'0'},stdio:['inherit','inherit','inherit','ipc']});
+export function launchWorker(root,source,{timeout=90000,updating=false,restarting=false}={}){
+  const child=spawn(process.execPath,[join(source,'index.js'),'--worker'],{cwd:root,shell:false,env:{...process.env,ASTRAL_DATA_ROOT:root,ASTRAL_SUPERVISED:'1',ASTRAL_UPDATER_PROTOCOL:UPDATER_PROTOCOL,ASTRAL_RESTART_PROTOCOL:'1',ASTRAL_RESTARTING:restarting?'1':'0',ASTRAL_UPDATING:updating?'1':'0'},stdio:['inherit','inherit','inherit','ipc']});
   const exited=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));
   const ready=new Promise((accept,reject)=>{
     const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('新版の起動が時間内に完了しませんでした。'));},timeout);
@@ -14,17 +16,30 @@ export function launchWorker(root,source,{timeout=90000,updating=false}={}){
   });
   return {child,ready,exited};
 }
-export function requestStop(worker,{timeout=15000}={}){
+export function requestStop(worker,{timeout=15000,onStopped=()=>{},runtimeRevision}={}){
   return new Promise((accept,reject)=>{
     const id=randomUUID(),child=worker.child;
     const timer=setTimeout(()=>finish(new Error('更新待機の応答がありません。')),timeout);
     const finish=(error,busy=false)=>{clearTimeout(timer);child.off('message',message);child.off('exit',exit);error?reject(error):accept(!busy);};
-    const message=m=>{if(m?.id!==id)return;if(m.type==='update-busy')finish(null,true);else if(m.type==='update-stopped')finish();else if(m.type==='update-error')finish(new Error('データ保存に失敗しました。'));};
+    const message=m=>{if(m?.id!==id)return;if(m.type==='update-busy')finish(null,true);else if(m.type==='update-stopped'){try{onStopped(m);finish();}catch{finish(new Error('起動設定の復元情報を確認できません。'));}}else if(m.type==='update-error')finish(new Error('データ保存に失敗しました。'));};
     const exit=()=>finish(new Error('更新待機中にBotが終了しました。'));
     child.on('message',message);child.once('exit',exit);
     if(!child.connected)finish(new Error('Botとの接続が切れています。'));
-    else child.send({type:'prepare-update',id},error=>{if(error)finish(new Error('Botとの接続が切れています。'));});
+    else child.send({type:'prepare-update',id,...(runtimeRevision!==undefined?{runtimeRevision}:{})},error=>{if(error)finish(new Error('Botとの接続が切れています。'));});
   });
+}
+export async function restartWorker(root,source,current,revision,{launch=launchWorker,stop=requestStop}={}){
+  const settings=await new RuntimeEnvStore(join(root,'data','runtime-env.json')).load();
+  if(settings.snapshot().revision!==revision)throw Object.assign(new Error('設定が変わりました。'),{code:'RESTART_CHANGED'});
+  let running,candidate;
+  if(!await stop(current,{runtimeRevision:revision,onStopped:m=>{validateRuntimeValues(m.runtime);running=m.runtime;}}))throw Object.assign(new Error('処理中です。'),{code:'UPDATE_BUSY'});
+  await current.exited;
+  try{candidate=launch(root,source,{restarting:true});await candidate.ready;candidate.child.send({type:'activate'});return {worker:candidate,restored:false};}
+  catch(error){
+    if(candidate){candidate.child.kill('SIGKILL');await candidate.exited;}
+    if(!running)throw error;await settings.restoreRunning(running);
+    const fallback=launch(root,source,{restarting:true});try{await fallback.ready;fallback.child.send({type:'activate'});return {worker:fallback,restored:true};}catch(error){fallback.child.kill('SIGKILL');await fallback.exited;throw error;}
+  }
 }
 export async function switchRelease(root,state,release,{launch=launchWorker,save=writeState}={}){
   const sha=release.split('/').at(-1);let candidate;
@@ -49,12 +64,13 @@ export async function recoverTransition(root,state){
   await restoreData(root);const old={...state,failed:state.transition};delete old.transition;await writeState(root,old);return old;
 }
 export async function supervise(){
-  const root=process.cwd();let state=await readState(root),worker,managed=false,stopping=false,updateRunning=false;
+  const root=process.cwd();let state=await readState(root),worker,managed=false,stopping=false,updateRunning=false,restartRunning=false;
   const abort=new AbortController(),children=new Set();
   const send=(current,message)=>{if(current?.child.connected)current.child.send(message,()=>{});};
   const updater=createManualUpdater({
+    blocked:()=>restartRunning||stopping,
     current:async()=>({sha:state.sha,version:JSON.parse(await readFile(join(releasePath(root,state),'package.json'),'utf8')).version,failed:state.failed}),
-    presence:updating=>{updateRunning=updating;send(worker,{type:'update-presence',updating});},
+    presence:updating=>{updateRunning=updating;send(worker,{type:'update-presence',updating,restarting:restartRunning});},
     prepare:async sha=>{await cleanup(root,state);return prepareRelease(root,sha,{run:(command,args,options)=>runFile(command,args,{...options,signal:abort.signal})});},
     apply:async release=>{
       if(stopping)throw new Error('Botを停止しています。');
@@ -70,22 +86,27 @@ export async function supervise(){
       }
     },
   });
-  function launch(data,source){
+  const restarter=createManualRestarter({blocked:()=>updater.busy||managed||stopping,
+    presence:value=>{restartRunning=value;send(worker,{type:'update-presence',updating:updateRunning,restarting:value});},
+    restart:async revision=>{managed=true;try{const result=await restartWorker(root,releasePath(root,state),worker,revision,{launch});worker=result.worker;watch(worker);return result;}finally{managed=false;if(!stopping&&(worker.child.exitCode!==null||worker.child.signalCode!==null)){stopping=true;abort.abort();updater.close();restarter.close();process.exitCode=1;}}},
+  });
+  function launch(data,source,options={}){
     if(stopping)throw new Error('Botを停止しています。');
-    const current=launchWorker(data,source,{updating:updateRunning});children.add(current);void current.exited.then(()=>children.delete(current));return current;
+    const current=launchWorker(data,source,{updating:updateRunning,...options});children.add(current);void current.exited.then(()=>children.delete(current));return current;
   }
   function watch(current){
     current.child.on('message',m=>{
       if(current!==worker||stopping||m?.type!=='update-rpc'||typeof m.id!=='string'||m.id.length>64)return;
-      void updater.request(m.action,m.sha).then(data=>send(current,{type:'update-rpc-result',id:m.id,data})).catch(()=>send(current,{type:'update-rpc-result',id:m.id,error:'更新操作に失敗しました。画面を開き直して確認してください。'}));
+      const request=m.action==='restart-status'?()=>restarter.request('status'):m.action==='restart-start'?()=>restarter.request('start',m.sha):()=>updater.request(m.action,m.sha);
+      void Promise.resolve().then(request).then(data=>send(current,{type:'update-rpc-result',id:m.id,data})).catch(()=>send(current,{type:'update-rpc-result',id:m.id,error:'更新または再起動の操作を完了できません。処理中でないか確認して開き直してください。'}));
     });
     current.child.once('exit',code=>{
       if(current!==worker||managed||stopping)return;
-      console.error('Botが終了しました。ホスティング側から再起動してください。');stopping=true;abort.abort();updater.close();process.exitCode=code||1;
+      console.error('Botが終了しました。ホスティング側から再起動してください。');stopping=true;abort.abort();updater.close();restarter.close();process.exitCode=code||1;
     });
   }
   for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{
-    stopping=true;abort.abort();updater.close();for(const current of children)current.child.kill(signal);
+    stopping=true;abort.abort();updater.close();restarter.close();for(const current of children)current.child.kill(signal);
     const force=setTimeout(()=>{for(const current of children)current.child.kill('SIGKILL');process.exit(0);},15000);force.unref();
     void Promise.all([...children].map(current=>current.exited)).then(()=>{clearTimeout(force);process.exit(0);});
   });

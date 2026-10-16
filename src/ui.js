@@ -31,6 +31,7 @@ export const adminFeatureButton=action=>{
   const destination=adminDestinations.find(d=>d.action===action);if(!destination)throw new Error('不明な管理操作です。');
   return new ButtonBuilder().setCustomId(`admin:open-feature:${action}`).setLabel(`${destination.label}を開く`).setStyle(ButtonStyle.Primary);
 };
+export const restartButton=()=>new ButtonBuilder().setCustomId('restart:open').setLabel('Botを再起動').setStyle(ButtonStyle.Secondary);
 export const menuHomeButton=()=>new ButtonBuilder().setCustomId('menu:open').setLabel('メニューへ').setStyle(ButtonStyle.Secondary);
 export const personalReadingButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('profile:open').setLabel('自分の読み方').setStyle(ButtonStyle.Secondary));
 export const openButton=()=>new ActionRowBuilder().addComponents(new ButtonBuilder()

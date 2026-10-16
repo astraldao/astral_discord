@@ -9,7 +9,7 @@ export async function githubRelease({fetcher=fetch}={}){
   return {sha,version};
 }
 // No polling: work begins only after an explicit, checked admin request.
-export function createManualUpdater({current,latest=githubRelease,prepare,apply,presence=()=>{},now=Date.now,schedule=setTimeout,cancel=clearTimeout}){
+export function createManualUpdater({current,latest=githubRelease,prepare,apply,presence=()=>{},blocked=()=>false,now=Date.now,schedule=setTimeout,cancel=clearTimeout}){
   let candidate=null,checkedAt=null,phase='idle',error=null,checking=false,timer,closed=false;
   const active=()=>['preparing','switching'].includes(phase);
   const status=async()=>({supported:true,current:await current(),latest:candidate,checkedAt,phase,error});
@@ -22,9 +22,10 @@ export function createManualUpdater({current,latest=githubRelease,prepare,apply,
     }catch(e){phase=e.code==='UPDATE_BUSY'?'blocked':'failed';error=e.code==='UPDATE_BUSY'?'操作・VC入室・ゲームが進行中です。終了後にもう一度更新してください。':'更新を完了できませんでした。現在の版を確認してください。';}
     finally{presence(false);}
   }
-  return {status,async request(action,sha){
+  return {status,get busy(){return active()||checking;},async request(action,sha){
     if(closed)throw new Error('Botを停止しています。');
     if(action==='status')return status();
+    if(blocked())throw new Error('再起動の処理中です。');
     if(action==='check'){
       if(active()||checking)return status();
       if(checkedAt!==null&&now()-checkedAt<30000)return status();
@@ -36,6 +37,7 @@ export function createManualUpdater({current,latest=githubRelease,prepare,apply,
     if(active()||checking)throw new Error('別の更新操作を処理中です。');
     if(!candidate||!validSha(sha)||sha!==candidate.sha||now()-checkedAt>600000)throw new Error('更新を確認し直してください。');
     if((await current()).sha===sha)throw new Error('この版はすでに稼働しています。');
+    if(blocked())throw new Error('再起動の処理中です。');
     // Reserve before returning: simultaneous confirmations cannot launch twice.
     if(active())throw new Error('更新中です。');
     phase='preparing';error=null;presence(true);timer=schedule(()=>void run(),1500);

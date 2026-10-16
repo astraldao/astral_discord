@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text,menuHomeButton} from './ui.js';
+import {payload,text,menuHomeButton,restartButton} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 export {adminCategories} from './admin-navigation.js';
 import {diagnosticsScreen} from './diagnostics.js';
@@ -76,10 +76,10 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     components=[row(button(s,'save',destructive?'削除を確定':'変更を保存',destructive?ButtonStyle.Danger:ButtonStyle.Primary),button(s,`nav-${s.view}`,'変更せず戻る'))];
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
-    description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表とBotの更新は、下のボタンから直接開けます。';
+    description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表・Botの更新・再起動は、下のボタンから直接開けます。';
     description+='\n\n**カテゴリを選ぶ**\n目的に近いボタンを選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
     components=[
-      row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理')),
+      row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理'),restartButton()),
       ...Array.from({length:2},(_,index)=>row(...adminCategories.slice(index*2,index*2+2).map(category=>button(s,`nav-category-${category.id}`,category.label)))),
       row(menuHomeButton()),
     ];
@@ -135,7 +135,7 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
   const sessions=new AdminSessions();
   const screen=(s,note='')=>({...(s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
@@ -179,6 +179,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
+      if(action==='open-restart'){if(!openRestart)throw new Error('再起動を利用できません。');await openRestart(interaction);return;}
       if(action==='open-runtime'){if(!openRuntime)throw new Error('起動設定を利用できません。');await openRuntime(interaction);return;}
       if(action==='open-banner'){if(!openBanner)throw new Error('バナー設定を利用できません。');await openBanner(interaction);return;}
       if(action==='open-updates'){if(!openUpdates)throw new Error('バージョン管理を利用できません。');await openUpdates(interaction);return;}

@@ -4,13 +4,13 @@ export function updateBusy({active=0,pending=0,accounts=[],sessions=[],now=Date.
   if([...accounts].some(a=>a.pending?.expires>now || a.work?.ticket?.expires>now))return true;
   return sessions.some(pool=>[...(pool?.sessions?.values()??[])].some(s=>s.expires>now && (s.busy || s.game?.phase==='playing' || ['watch','playing','claim'].includes(s.view))));
 }
-export function createUpdateLifecycle({busy,freeze,drain,send,exit}){
+export function createUpdateLifecycle({busy,freeze,drain,send,exit,snapshot=()=>undefined,accept=()=>true}){
   let frozen=false;
   return async message=>{
     if(message?.type!=='prepare-update' || typeof message.id!=='string')return;
-    if(frozen || busy()){send({type:'update-busy',id:message.id});return;}
+    if(frozen || busy() || !accept(message)){send({type:'update-busy',id:message.id});return;}
     frozen=true;freeze();
-    try{await drain();send({type:'update-stopped',id:message.id},()=>exit(0));}
+    try{const runtime=snapshot();await drain();send({type:'update-stopped',id:message.id,...(runtime?{runtime}:{})},()=>exit(0));}
     catch{send({type:'update-error',id:message.id});exit(1);}
   };
 }

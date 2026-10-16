@@ -36,3 +36,11 @@ test('manual updating overrides activity and metrics with dnd until completion o
   const finish=p.activity();time=6000;await p.refresh();assert.equal(calls.at(-1).status,'dnd');finish();time=12000;p.setUpdating(false);assert.equal(calls.at(-1).status,'idle');p.stop();
   const startup=createResourcePresence(client,{updating:true,sample:async()=>({}),schedule:()=>({unref(){}}),cancel:()=>{}});startup.start();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).status,'dnd');startup.stop();
 });
+
+test('restart stays dnd across startup and operations, then restores normal presence',async()=>{
+  const calls=[],client={presence:{status:'idle'},isReady:()=>true,user:{setPresence:p=>{calls.push(p);client.presence.status=p.status;}}};
+  const p=createResourcePresence(client,{restarting:true,sample:async()=>({cpuPercent:1,memoryPercent:2}),schedule:()=>({unref(){}}),cancel:()=>{},after:()=>0,cancelAfter:()=>{}});
+  p.start();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).status,'dnd');assert.match(calls.at(-1).activities[0].state,/再起動中/);
+  const finish=p.activity();await p.refresh();assert.equal(calls.at(-1).status,'dnd');p.setUpdating(true);p.setRestarting(false);assert.equal(calls.at(-1).status,'dnd');assert.match(calls.at(-1).activities[0].state,/更新中/);
+  p.setUpdating(false);assert.equal(calls.at(-1).status,'online');finish();p.setRestarting(true);assert.equal(calls.at(-1).status,'dnd');p.setRestarting(false);assert.equal(calls.at(-1).status,'online');p.stop();
+});

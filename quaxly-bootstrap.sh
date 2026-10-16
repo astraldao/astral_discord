@@ -3,7 +3,15 @@ set -eu
 cd /home/container
 # Keep the manual-update launcher after its one-time migration.
 if [ -f .astral-updates/state.json ] && [ -f scripts/manual-update.js ] && [ -f .astral-updates/manual-launcher-v2 ]; then
-  exec node index.js
+  # Start the explicitly selected local release, including its supervisor. Never fetch main here.
+  exec node --input-type=module - <<'JS'
+import {readState,releasePath} from './scripts/auto-update.js';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+const root=process.cwd(),state=await readState(root);
+process.env.ASTRAL_DATA_ROOT=root;
+await import(pathToFileURL(join(releasePath(root,state),'index.js')).href);
+JS
 fi
 stage=$(mktemp -d /home/container/.astral-update.XXXXXX)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
