@@ -73,3 +73,14 @@ test('the production player pauses for a short transport loss and finishes the s
     connection.state={status:VoiceConnectionStatus.Ready};source.end(Buffer.alloc(11520));await job;assert.equal(player.state.status,AudioPlayerStatus.Idle);assert.equal(settled,true);
   }finally{abort.abort();player.stop(true);source.destroy();subscription.unsubscribe();}
 });
+
+test('production playback survives synthesis gaps longer than the previous three-second cutoff',async()=>{
+  const player=createAudioPlayer({behaviors:backupPlayerBehaviors}),source=new PassThrough(),abort=new AbortController();player.on('error',()=>{});
+  const connection={state:{status:VoiceConnectionStatus.Ready},prepareAudioPacket(){},dispatchAudio(){},setSpeaking(){},onSubscriptionRemoved(){}};
+  const subscription=player.subscribe(connection);let starts=0;
+  try{
+    const started=deferred();source.write(Buffer.alloc(11520));const job=playBackupAudio(player,source,{signal:abort.signal,onStart:()=>{starts++;started.resolve();}});job.catch(()=>{});
+    await started.promise;await delay(3300);assert.equal(player.state.status,AudioPlayerStatus.Playing);assert.equal(source.destroyed,false);
+    source.end(Buffer.alloc(11520));await job;assert.equal(starts,1);assert.equal(player.state.status,AudioPlayerStatus.Idle);
+  }finally{abort.abort();player.stop(true);source.destroy();subscription.unsubscribe();}
+});

@@ -68,7 +68,7 @@ test('persistent voice reuses its process, parses fragmented WAV frames and clos
   assert.deepEqual(await worker.synthesize('最初'),wave());assert.deepEqual(await worker.synthesize('次'),wave());await assert.rejects(worker.synthesize('a'.repeat(54)));worker.close();worker.close();assert.equal(child.kills,1);
 });
 test('worker startup/protocol/timeout failures reject pending work and do not leave a synthesis hanging',async()=>{
-  const child=fakeChild(()=>{}),worker=createPersistentVoice({launch:()=>child,synthesisTimeout:10});child.stdout.emit('data',frame({type:'ready'}));await worker.ready;await assert.rejects(worker.synthesize('テスト'),e=>e.code==='SYNTHESIS_TIMEOUT');assert.equal(child.kills,1);
+  const child=fakeChild(()=>{}),worker=createPersistentVoice({launch:()=>child,firstAudioTimeout:10});child.stdout.emit('data',frame({type:'ready'}));await worker.ready;await assert.rejects(worker.synthesize('テスト'),e=>e.code==='SYNTHESIS_START_TIMEOUT');assert.equal(child.kills,1);
   const broken=fakeChild(()=>{}),bad=createPersistentVoice({launch:()=>broken});broken.stdout.emit('data',Buffer.from('not json\n'));await assert.rejects(bad.ready);assert.equal(broken.kills,1);
   const unopened=fakeChild(()=>{}),closed=createPersistentVoice({launch:()=>unopened});closed.close();await assert.rejects(closed.ready);
 });
@@ -164,7 +164,7 @@ test('audio failures retain only a safe stop code in status and never replay fai
 });
 test('listener permission failures and idle transport faults have distinct safe diagnostics',async()=>{
   const {backupFault}=await import('../src/backup-fault.js');
-  for(const code of ['AUDIENCE','CONNECTION','PLAYBACK','SYNTHESIS_TIMEOUT','SYNTHESIS_EXIT','SYNTHESIS_PROTOCOL']){
+  for(const code of ['AUDIENCE','CONNECTION','PLAYBACK','SYNTHESIS_START_TIMEOUT','SYNTHESIS_TIMEOUT','SYNTHESIS_LIMIT','SYNTHESIS_EXIT','SYNTHESIS_PROTOCOL']){
     let fault,deny=false;const f=await fixture({authorize:async()=>{if(deny)throw backupFault(null,code);},speaker:async(_,__,o)=>{fault=o.onFault;return {healthy:()=>true,async play(){},close(){}};}});
     if(code==='AUDIENCE'){deny=true;f.message('読まない');await f.reader.idle();}else await fault(backupFault(null,code));
     assert.equal(f.reader.active,false);assert.equal(f.reader.lastFailure.code,code);assert.deepEqual(f.played,[]);

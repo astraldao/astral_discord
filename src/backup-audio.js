@@ -2,7 +2,8 @@ import {Readable} from 'node:stream';
 import {joinVoiceChannel,entersState,VoiceConnectionStatus,createAudioPlayer,createAudioResource,AudioPlayerStatus,StreamType,NoSubscriberBehavior} from '@discordjs/voice';
 import {watchBackupAudio} from './backup-health.js';
 import {backupFault} from './backup-fault.js';
-export const backupPlayerBehaviors={noSubscriber:NoSubscriberBehavior.Pause,maxMissedFrames:150};
+// The worker allows 15 seconds without a new WAV. Do not cut playback off before it.
+export const backupPlayerBehaviors={noSubscriber:NoSubscriberBehavior.Pause,maxMissedFrames:1000};
 export async function waitBackupReady(connection,signal){
   signal.throwIfAborted();if(connection.state.status===VoiceConnectionStatus.Ready)return false;
   try{await entersState(connection,VoiceConnectionStatus.Ready,AbortSignal.any([signal,AbortSignal.timeout(5000)]));return true;}
