@@ -1,0 +1,62 @@
+{
+  "scope": "Development environment. Real local VOICEVOX and Opus, injected progress reply error 10062; no Discord network, VC connection or playback. One run, not a latency guarantee.",
+  "node": "v24.19.0",
+  "displayFailures": [
+    {
+      "stage": "progress",
+      "code": 10062
+    }
+  ],
+  "result": {
+    "measuredAt": 1792165733577,
+    "ok": true,
+    "warmupMs": 1876,
+    "firstAudioMs": 469,
+    "synthesisMs": 3599,
+    "audioMs": 3552,
+    "parts": 7,
+    "maxGapMs": 747,
+    "encodingMs": 147,
+    "before": {
+      "arch": "x64",
+      "logicalCores": 2,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 2,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 447197184,
+      "cpuUsageUsec": 459205401,
+      "cpuThrottledUsec": 12219142,
+      "cpuPeriods": 28004,
+      "cpuThrottledPeriods": 592
+    },
+    "realTimeFactor": 1.01,
+    "info": {
+      "threads": 2,
+      "protocol": 2,
+      "warmupParts": 3
+    },
+    "encoding": {
+      "packets": 15,
+      "audioMs": 309
+    },
+    "elapsedMs": 5632,
+    "after": {
+      "arch": "x64",
+      "logicalCores": 2,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 2,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 589107200,
+      "cpuUsageUsec": 469710466,
+      "cpuThrottledUsec": 16549412,
+      "cpuPeriods": 28061,
+      "cpuThrottledPeriods": 640
+    },
+    "throttledMs": 4330,
+    "throttledPercent": 84
+  }
+}

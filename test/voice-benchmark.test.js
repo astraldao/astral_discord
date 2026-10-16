@@ -63,3 +63,40 @@ test('a measurement completing after navigation does not overwrite the new scree
   const f=uiFixture(),message={id:'private-message',flags:{has:()=>true}};await f.c.open(interaction('open',{message}));const s=[...f.c.sessions.sessions.values()][0],i=interaction(`perf:${s.id}:${s.turn}:start`,{message}),task=f.c.handle(i);await tick();
   f.c.leave(interaction('admin:open',{message}));i.result=null;f.setResult({ok:true,measuredAt:1,parts:1,firstAudioMs:100});await task;assert.equal(i.result,null);assert.equal(s.busy,false);
 });
+
+test('a failed progress reply never cancels the warmup and the completed result remains available',async()=>{
+  const ready=deferred();let closes=0;
+  const probe=createVoiceBenchmark({capacity:async()=>({}),worker:()=>({ready:ready.promise,diagnostics:{stage:'warmup',warmupParts:0},async stream(_,__,chunk){chunk(wave());},close(){closes++;ready.reject(new Error('closed'));}}),encode:async()=>({packets:5,audioMs:100})});
+  const notices=[],c=createBenchmarkController({probe,access:async()=>{},onDiagnostic:value=>notices.push(value)});await c.open(interaction());const s=[...c.sessions.sessions.values()][0];let replies=0;
+  const i=interaction(`perf:${s.id}:${s.turn}:start`,{async editReply(value){if(++replies===1)throw Object.assign(new Error('PRIVATE_DISPLAY_ERROR'),{code:10062});this.result=value;}}),task=c.handle(i);
+  try{await tick();assert.equal(probe.busy,true,'a failed display must leave synthesis running');assert.equal(probe.snapshot().phase,'warming');assert.equal(closes,0);}finally{ready.resolve();await task;}
+  const result=probe.snapshot().result;assert.equal(result.ok,true);assert.notEqual(result.cancelled,true);assert.equal(closes,1);assert.ok(JSON.stringify(i.result).includes('測定が完了'));assert.ok(!JSON.stringify(notices).includes('PRIVATE_DISPLAY_ERROR'));probe.close();
+});
+
+test('permanently unavailable replies preserve the result for a freshly authorized screen',async()=>{
+  const ready=deferred(),notices=[];const probe=createVoiceBenchmark({capacity:async()=>({}),worker:()=>({ready:ready.promise,async stream(_,__,chunk){chunk(wave());},close(){ready.reject(new Error('closed'));}}),encode:async()=>({packets:5,audioMs:100})});
+  const c=createBenchmarkController({probe,access:async()=>{},onDiagnostic:info=>notices.push(info)});await c.open(interaction());const s=[...c.sessions.sessions.values()][0];
+  const task=c.handle(interaction(`perf:${s.id}:${s.turn}:start`,{async editReply(){throw Object.assign(new Error('SECRET_TOKEN_AND_PATH'),{code:10015});}}));await tick();assert.equal(probe.busy,true);ready.resolve();await task;
+  assert.equal(s.busy,false);assert.equal(probe.snapshot().result.ok,true);assert.equal(probe.snapshot().result.cancelled,undefined);const reopen=interaction();await c.open(reopen);assert.ok(JSON.stringify(reopen.result).includes('測定が完了'));assert.deepEqual(notices,[{stage:'progress',code:10015},{stage:'error',code:10015}]);probe.close();
+});
+
+test('a transient progress permission lookup failure leaves the authorized fixed-text measurement running',async()=>{
+  const f=uiFixture();let checks=0;const c=createBenchmarkController({probe:f.probe,access:async i=>{if(i.customId.endsWith(':start')&&++checks===2)throw new Error('Permission lookup unavailable');}});await c.open(interaction());const s=[...c.sessions.sessions.values()][0],i=interaction(`perf:${s.id}:${s.turn}:start`),task=c.handle(i);await tick();
+  try{assert.equal(f.probe.snapshot().phase,'warming');assert.equal(s.busy,true);}finally{f.setResult({ok:true,measuredAt:1,parts:1});await task;}assert.ok(JSON.stringify(i.result).includes('測定が完了'));
+});
+
+test('explicit cancellation and shutdown retain their distinct causes and bounded warmup information',async()=>{
+  for(const reason of ['user','shutdown']){
+    const ready=deferred();let time=0;const probe=createVoiceBenchmark({now:()=>time,capacity:async()=>({}),worker:()=>({ready:ready.promise,diagnostics:{stage:'warmup',warmupParts:2,elapsedMs:1234,text:'PRIVATE'},close(){ready.reject(new Error('closed'));}})}),task=probe.run('owner');await tick();time=1234;
+    if(reason==='user')probe.cancel('owner');else probe.close();const r=await task;assert.equal(r.cancelled,true);assert.equal(r.cancelReason,reason);assert.equal(r.elapsedMs,1234);assert.deepEqual(r.info,{stage:'warmup',warmupParts:2,elapsedMs:1234});assert.equal(r.failure,undefined);
+    const view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r});assert.ok(JSON.stringify(view).includes(reason==='user'?'操作により':'Bot停止により'));assert.match(view.embeds[0].toJSON().description,/最長の分割待ち \*\*未計測/);probe.close();
+  }
+});
+
+test('a warmup timeout is a failure rather than a cancellation',async()=>{
+  const failure=backupFault(null,'SYNTHESIS_WARMUP_TIMEOUT',{stage:'warmup',warmupParts:1,elapsedMs:90000}),probe=createVoiceBenchmark({capacity:async()=>({}),worker:()=>({ready:Promise.reject(failure),diagnostics:{stage:'warmup'},close(){}})}),r=await probe.run('owner');assert.equal(r.cancelled,false);assert.equal(r.cancelReason,undefined);assert.equal(r.failure.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.equal(r.failure.info.warmupParts,1);probe.close();
+});
+
+test('navigation during the final permission fetch prevents an old measurement reply from overwriting the new screen',async()=>{
+  const f=uiFixture(),gate=deferred();let finalCheck=false;const c=createBenchmarkController({probe:f.probe,access:async()=>{if(finalCheck)await gate.promise;}}),message={id:'private-message',flags:{has:()=>true}};await c.open(interaction('open',{message}));const s=[...c.sessions.sessions.values()][0],i=interaction(`perf:${s.id}:${s.turn}:start`,{message}),task=c.handle(i);await tick();finalCheck=true;f.setResult({ok:true,measuredAt:1,parts:1});await tick();c.leave(interaction('admin:open',{message}));i.result=null;gate.resolve();await task;assert.equal(i.result,null);assert.equal(s.busy,false);
+});
