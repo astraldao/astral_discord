@@ -1,4 +1,5 @@
 import {VoiceConnectionStatus as Status} from '@discordjs/voice';
+import {backupFault} from './backup-fault.js';
 
 // A short reconnect may recover; a persistent disconnect must not leave a silent reader active.
 export function watchBackupAudio({connection,player,signal,onFault=()=>{},disconnectMs=5000,schedule=setTimeout,cancel=clearTimeout}){
@@ -8,14 +9,14 @@ export function watchBackupAudio({connection,player,signal,onFault=()=>{},discon
     if(closed||signal.aborted||fault)return;fault=error;clear();
     if(armed)Promise.resolve().then(()=>{if(!closed&&!signal.aborted)return onFault(error);}).catch(()=>{});
   }
-  const error=()=>report(new Error('音声接続または再生処理が停止しました。'));
+  const connectionError=()=>report(backupFault(null,'CONNECTION')),playerError=()=>report(backupFault(null,'PLAYBACK'));
   function changed(_before,after){
     if(closed||!armed)return;
     if(after.status===Status.Ready){clear();return;}
-    if(after.status===Status.Destroyed){report(new Error('音声接続が終了しました。'));return;}
-    if(after.status===Status.Disconnected&&timer===null){timer=schedule(()=>{timer=null;if(connection.state.status!==Status.Ready)report(new Error('音声接続が復旧しませんでした。'));},disconnectMs);timer?.unref?.();}
+    if(after.status===Status.Destroyed){report(backupFault(null,'CONNECTION'));return;}
+    if(after.status===Status.Disconnected&&timer===null){timer=schedule(()=>{timer=null;if(connection.state.status!==Status.Ready)report(backupFault(null,'CONNECTION'));},disconnectMs);timer?.unref?.();}
   }
-  function close(){if(closed)return;closed=true;clear();connection.off('stateChange',changed);connection.off('error',error);player.off('error',error);connection.on('error',()=>{});player.on('error',()=>{});signal.removeEventListener('abort',close);}
-  connection.on('stateChange',changed);connection.on('error',error);player.on('error',error);signal.addEventListener('abort',close,{once:true});
+  function close(){if(closed)return;closed=true;clear();connection.off('stateChange',changed);connection.off('error',connectionError);player.off('error',playerError);connection.on('error',()=>{});player.on('error',()=>{});signal.removeEventListener('abort',close);}
+  connection.on('stateChange',changed);connection.on('error',connectionError);player.on('error',playerError);signal.addEventListener('abort',close,{once:true});
   return {fault:()=>fault,arm(){if(signal.aborted||closed)throw new Error('音声接続は停止しています。');if(fault)throw fault;armed=true;},close};
 }

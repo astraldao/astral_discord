@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text,menuHomeButton,restartButton} from './ui.js';
+import {payload,text,menuHomeButton,restartButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 export {adminCategories} from './admin-navigation.js';
 import {diagnosticsScreen} from './diagnostics.js';
@@ -163,6 +163,8 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
   return {sessions,async handle(interaction){
     let s,locked=false;
     try {
+      const initialAction=interaction.customId?.split(':')[2];
+      if(!initialAction?.startsWith('form-')&&initialAction!=='word-edit')await acknowledgePrivate(interaction);
       if(!await access(interaction))throw new Error('管理画面は管理者専用です。');
       let action,token;
       const entry=interaction.customId?.match(/^admin:open-(section|feature):([^:]+)$/);

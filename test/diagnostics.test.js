@@ -24,12 +24,12 @@ test('voice file inspection matches configured directories without spawning or e
 });
 test('diagnostic completion rechecks fresh admin access and never displays data after revocation',async()=>{
   let allowed=true;const c=createAdminController({settings:{get:()=>({})},guild:{},access:async()=>allowed,diagnose:async()=>{allowed=false;return {version:'PRIVATE_DIAGNOSTIC'};}});
-  const s=c.sessions.create('admin');const replies=[];const i={customId:`admin:${s.id}:diagnose`,user:{id:'admin'},isChatInputCommand:()=>false,isModalSubmit:()=>false,message:{},async deferUpdate(){this.deferred=true;},async editReply(p){replies.push(p);},async reply(p){replies.push(p);}};
+  const s=c.sessions.create('admin');const replies=[];const i={customId:`admin:${s.id}:diagnose`,user:{id:'admin'},isChatInputCommand:()=>false,isModalSubmit:()=>false,message:{},async deferReply(){this.deferred=true;},async deferUpdate(){this.deferred=true;},async editReply(p){replies.push(p);},async reply(p){replies.push(p);}};
   await c.handle(i);assert.ok(!JSON.stringify(replies).includes('PRIVATE_DIAGNOSTIC'));assert.ok(JSON.stringify(replies).includes('管理者権限'));assert.equal(s.diagnostics,undefined);
 });
 test('admin controller ignores stale interaction permissions and fetches current role by default',async()=>{
   let fetched;const c=createAdminController({settings:{get:()=>({})},guild:{members:{async fetch(options){fetched=options;return {permissions:new PermissionsBitField()};}}}});
-  const replies=[];const i={user:{id:'former-admin'},memberPermissions:new PermissionsBitField(P.Administrator),async reply(p){replies.push(p);}};
+  const replies=[];const i={user:{id:'former-admin'},memberPermissions:new PermissionsBitField(P.Administrator),async deferReply(){this.deferred=true;},async editReply(p){replies.push(p);},async reply(p){replies.push(p);}};
   await c.handle(i);assert.deepEqual(fetched,{user:'former-admin',force:true});assert.ok(JSON.stringify(replies).includes('管理者専用'));
 });
 

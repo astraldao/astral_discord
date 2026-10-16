@@ -68,7 +68,7 @@ test('persistent voice reuses its process, parses fragmented WAV frames and clos
   assert.deepEqual(await worker.synthesize('最初'),wave());assert.deepEqual(await worker.synthesize('次'),wave());await assert.rejects(worker.synthesize('a'.repeat(54)));worker.close();worker.close();assert.equal(child.kills,1);
 });
 test('worker startup/protocol/timeout failures reject pending work and do not leave a synthesis hanging',async()=>{
-  const child=fakeChild(()=>{}),worker=createPersistentVoice({launch:()=>child,synthesisTimeout:10});child.stdout.emit('data',frame({type:'ready'}));await worker.ready;await assert.rejects(worker.synthesize('テスト'),/時間/);assert.equal(child.kills,1);
+  const child=fakeChild(()=>{}),worker=createPersistentVoice({launch:()=>child,synthesisTimeout:10});child.stdout.emit('data',frame({type:'ready'}));await worker.ready;await assert.rejects(worker.synthesize('テスト'),e=>e.code==='SYNTHESIS_TIMEOUT');assert.equal(child.kills,1);
   const broken=fakeChild(()=>{}),bad=createPersistentVoice({launch:()=>broken});broken.stdout.emit('data',Buffer.from('not json\n'));await assert.rejects(bad.ready);assert.equal(broken.kills,1);
   const unopened=fakeChild(()=>{}),closed=createPersistentVoice({launch:()=>unopened});closed.close();await assert.rejects(closed.ready);
 });
@@ -152,4 +152,26 @@ test('deleting either bound channel stops the session; unrelated channels and gu
     const f=await fixture();await f.reader.onChannelDelete({id,guildId:'other'});await f.reader.onChannelDelete({id:'other',guildId:'guild'});assert.equal(f.reader.active,true);
     await f.reader.onChannelDelete({id,guildId:'guild'});assert.equal(f.reader.active,false);assert.equal(f.workerClosed(),1);assert.equal(f.voiceClosed(),1);
   }
+});
+
+test('audio failures retain only a safe stop code in status and never replay failed or queued messages',async()=>{
+  let closed=0;const diagnostics=[],secret='PRIVATE_TEXT_AND_NATIVE_PATH';
+  const f=await fixture({onDiagnostic:d=>diagnostics.push(d),worker:()=>({ready:Promise.resolve(),async stream(){throw new Error(secret);},close(){closed++;}})});
+  f.message('失敗する文章');f.message('待っている文章');await f.reader.idle();assert.equal(f.reader.active,false);assert.equal(closed,1);assert.equal(f.voiceClosed(),1);assert.equal(diagnostics.length,1);assert.equal(diagnostics[0].code,'SYNTHESIS');
+  const status=i('status');await f.reader.handle(status);assert.ok(JSON.stringify(status.replies).includes('SYNTHESIS'));assert.ok(!JSON.stringify([...diagnostics,...status.replies]).includes(secret));assert.deepEqual(f.played,[]);
+  const copy=f.reader.lastFailure;copy.message=secret;assert.ok(!JSON.stringify(f.reader.lastFailure).includes(secret));
+  await f.reader.handle(i('start'));assert.equal(f.reader.lastFailure,null);assert.equal(f.reader.state.queue.length,0);await f.reader.close();
+});
+test('listener permission failures and idle transport faults have distinct safe diagnostics',async()=>{
+  const {backupFault}=await import('../src/backup-fault.js');
+  for(const code of ['AUDIENCE','CONNECTION','PLAYBACK','SYNTHESIS_TIMEOUT','SYNTHESIS_EXIT','SYNTHESIS_PROTOCOL']){
+    let fault,deny=false;const f=await fixture({authorize:async()=>{if(deny)throw backupFault(null,code);},speaker:async(_,__,o)=>{fault=o.onFault;return {healthy:()=>true,async play(){},close(){}};}});
+    if(code==='AUDIENCE'){deny=true;f.message('読まない');await f.reader.idle();}else await fault(backupFault(null,code));
+    assert.equal(f.reader.active,false);assert.equal(f.reader.lastFailure.code,code);assert.deepEqual(f.played,[]);
+  }
+});
+
+test('a warm worker that exits before the first post preserves its exit cause for the next request',async()=>{
+  const child=fakeChild(()=>{}),worker=createPersistentVoice({launch:()=>child});child.stdout.emit('data',frame({type:'ready'}));await worker.ready;child.emit('close',1);
+  await assert.rejects(worker.stream('最初の投稿',undefined,()=>assert.fail('must not synthesize')),e=>e.code==='SYNTHESIS_EXIT');worker.close();assert.equal(child.kills,1);
 });

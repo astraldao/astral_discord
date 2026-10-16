@@ -68,3 +68,9 @@ test('category buttons preserve session access and setting pages return to their
     assert.ok(b.some(c=>c.custom_id===`admin:id:${parent}`));
   }
 });
+
+test('admin acknowledges before a slow fresh-permission lookup without rendering or writing first',async()=>{
+  let release;const c=controller({access:()=>new Promise(resolve=>release=resolve)}),i=interaction(null),task=c.handle(i);
+  await new Promise(r=>setImmediate(r));assert.equal(i.deferred,true);assert.equal(i.acks.length,1);assert.equal(i.result,undefined);assert.equal(c.sessions.sessions.size,0);
+  release(false);await task;assert.equal(c.sessions.sessions.size,0);assert.ok(JSON.stringify(i.result).includes('管理者専用'));
+});

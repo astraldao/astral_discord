@@ -50,7 +50,7 @@ test('changed settings and busy workers are rejected before any new process laun
 });
 function interaction(id='open',extra={}){return {customId:id,user:{id:'owner'},channelId:'channel',message:{flags:{has:()=>true}},async deferUpdate(){this.deferred=true;},async deferReply(){this.deferred=true;},async editReply(m){this.result=m;},async reply(m){this.result=m;},...extra};}
 test('restart UI checks permissions, owner, channel, expiry, confirmation, revision and busy preflight',async t=>{
-  const root=await temp(t),store=await new RuntimeEnvStore(join(root,'data/runtime-env.json')).load();let allowed=true,busy=false,starts=0;const c=createRestartController({store,supported:true,access:async()=>{if(!allowed)throw new Error('permission');},beforeStart:async()=>{if(busy)throw new Error('busy');},rpc:{request:async action=>{if(action==='restart-start')starts++;return {supported:true,phase:'idle'};}}});
+  const root=await temp(t),store=await new RuntimeEnvStore(join(root,'data/runtime-env.json')).load();let allowed=true,busy=false,starts=0;const c=createRestartController({store,supported:true,access:async i=>{assert.ok(i.deferred||i.replied);if(!allowed)throw new Error('permission');},beforeStart:async()=>{if(busy)throw new Error('busy');},rpc:{request:async action=>{if(action==='restart-start')starts++;return {supported:true,phase:'idle'};}}});
   await c.open(interaction());const s=[...c.sessions.sessions.values()][0],click=(a,e)=>interaction(`restart:${s.id}:${s.turn}:${a}`,e);
   await c.handle(click('start'));assert.equal(starts,0);await c.handle(click('confirm'));
   for(const extra of [{user:{id:'other'}},{channelId:'other'}])await c.handle(click('start',extra));assert.equal(starts,0);

@@ -175,7 +175,7 @@ client.once('clientReady', async () => {
   try {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
-    backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity()});
+    backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity(),onDiagnostic:failure=>console.warn('読み上げ停止:',failure.code)});
     const bannerState=user=>({key:user.banner??null,url:user.bannerURL({extension:'png',size:1024})??null});
     banner=createBannerController({guild,current:async()=>{try{return bannerState(await client.user.fetch(true));}catch{throw new EntryError('現在のバナーを取得できませんでした。少し待ってから「現在を確認」を押してください。');}},update:async image=>{try{return bannerState(await client.user.setBanner(image));}catch{throw new EntryError('バナーの反映を確認できませんでした。「現在を確認」で状態を確認してからお試しください。');}}});
     refreshPanel=createPanelRefresher({settings,guild});
@@ -261,7 +261,8 @@ client.on('interactionCreate', async interaction => {
     const components=menuComponent||(command&&interaction.commandName==='menu')?[new ActionRowBuilder().addComponents(menuHomeButton())]:adminComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton().addComponents(menuHomeButton())];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
-    console.error('操作:',error.code ?? error.name);
+    const source=command?interaction.commandName:interaction.customId?.split(':')[0];
+    console.error('操作:',error.code ?? error.name,'機能:',source);
   }finally{finishActivity();}
 });
 client.on('messageCreate',message=>{if(ready&&!stopping)backupReader?.onMessage(message);});

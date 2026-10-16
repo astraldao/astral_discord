@@ -28,9 +28,10 @@ export function createVersionController({updater,access,beforeStart=async()=>{},
   const check=async(i,s)=>{if(!await access(i))throw new Error('管理者権限がありません。');if(s){sessions.get(s.id,i.user.id);if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');}};
   const ack=async i=>{if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});};
   async function error(i,e,s){let recover=false;try{await check(i,s);recover=true;}catch{}const m=payload('バージョン管理',text(e.message),{state:'error',components:recover?[row(...(s?[button(s,'check','更新を確認し直す')]:[]),adminHomeButton())]:[]});if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
-  return {sessions,async open(i){try{await check(i);await ack(i);const s=sessions.create(i.user.id);s.channelId=i.channelId;s.turn=0;s.data=await updater.request('status');await check(i,s);await i.editReply(versionScreen(s));}catch(e){await error(i,e);}},async handle(i){
+  return {sessions,async open(i){try{await ack(i);await check(i);const s=sessions.create(i.user.id);s.channelId=i.channelId;s.turn=0;s.data=await updater.request('status');await check(i,s);await i.editReply(versionScreen(s));}catch(e){await error(i,e);}},async handle(i){
     let s,locked=false;
     try{
+      await ack(i);
       const [,id,turn,action]=i.customId.split(':');s=sessions.get(id,i.user.id);await check(i,s);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
       if(String(s.turn)!==turn)throw new Error('古い画面です。/admin から開き直してください。');await ack(i);
       if(action==='check'||action==='status'){s.data=await updater.request(action);s.confirm=false;}

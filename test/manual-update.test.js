@@ -39,7 +39,7 @@ test('RPC correlates responses and disconnects/timeouts reject without exposing 
 });
 function i(customId='open',user='owner',channelId='channel'){return {customId,user:{id:user},channelId,message:{flags:{has:()=>true}},replies:[],async deferUpdate(){this.deferred=true;},async deferReply(){this.deferred=true;},async editReply(p){this.replies.push(p);},async reply(p){this.replies.push(p);this.replied=true;}};}
 test('admin version UI requires fresh permission, owner, channel, confirmation and current controls',async()=>{
-  const f=fixture();let allowed=true;const controller=createVersionController({updater:f.updater,access:async()=>allowed});await controller.open(i());const s=[...controller.sessions.sessions.values()][0];const click=action=>i(`updates:${s.id}:${s.turn}:${action}`);
+  const f=fixture();let allowed=true;const controller=createVersionController({updater:f.updater,access:async interaction=>{assert.ok(interaction.deferred||interaction.replied);return allowed;}});await controller.open(i());const s=[...controller.sessions.sessions.values()][0];const click=action=>i(`updates:${s.id}:${s.turn}:${action}`);
   await controller.handle(click('start'));assert.equal((await f.updater.status()).phase,'idle');
   await controller.handle(click('check'));await controller.handle(click('confirm'));assert.equal(s.confirm,true);
   const stale=click('start');stale.customId=stale.customId.replace(`:${s.turn}:`,':999:');await controller.handle(stale);assert.equal((await f.updater.status()).phase,'idle');
@@ -48,7 +48,7 @@ test('admin version UI requires fresh permission, owner, channel, confirmation a
   await controller.handle(click('start'));assert.equal((await f.updater.status()).phase,'preparing');assert.equal(s.confirm,false);assert.ok(JSON.stringify(s.data).includes('preparing'));f.updater.close();
 });
 test('permission loss during a version check does not display the returned version information',async()=>{
-  let allowed=true;const f=fixture({latest:async()=>{allowed=false;return {sha:fresh,version:'2.0.0'};}}),controller=createVersionController({updater:f.updater,access:async()=>allowed});await controller.open(i());const s=[...controller.sessions.sessions.values()][0],check=i(`updates:${s.id}:${s.turn}:check`);await controller.handle(check);assert.ok(!JSON.stringify(check.replies).includes('2.0.0'));assert.equal((await f.updater.status()).phase,'idle');
+  let allowed=true;const f=fixture({latest:async()=>{allowed=false;return {sha:fresh,version:'2.0.0'};}}),controller=createVersionController({updater:f.updater,access:async interaction=>{assert.ok(interaction.deferred||interaction.replied);return allowed;}});await controller.open(i());const s=[...controller.sessions.sessions.values()][0],check=i(`updates:${s.id}:${s.turn}:check`);await controller.handle(check);assert.ok(!JSON.stringify(check.replies).includes('2.0.0'));assert.equal((await f.updater.status()).phase,'idle');
 });
 
 test('active reader preflight prevents download/presence changes, then allows a deliberate retry after stopping',async()=>{
