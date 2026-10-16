@@ -5,14 +5,14 @@ import {createPersistentVoice} from './persistent-voice.js';
 import {connectBackupAudio} from './backup-audio.js';
 import {streamBackupSpeech} from './backup-playback.js';
 import {prepareBackupSpeech} from './backup-prefetch.js';
-import {backupFault,backupFailure} from './backup-fault.js';
+import {backupFault,backupFailure,backupFailureSummary} from './backup-fault.js';
 import {payload,menuHomeButton} from './ui.js';
 const guide=()=>new ButtonBuilder().setLabel('設定・困ったとき').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md');
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`read:${action}`).setLabel(label).setStyle(style);
 const refresh=()=>button('status','状態を更新');
 export function backupReaderScreen(s,enabled,{details=false,failure}={}){
   if(!enabled)return payload('バックアップ読み上げ','**まだ有効になっていません**\n管理者に読み上げの有効化を依頼してください。設定手順は下のリンクから確認できます。',{state:'warning',components:[new ActionRowBuilder().addComponents(refresh(),guide(),menuHomeButton())]});
-  if(!s)return payload('バックアップ読み上げ',`${failure?`**直前の停止理由 · ${failure.code}**\n${failure.message}\n\n`:''}**停止中**\n1. 聞きたいVCに参加する\n2. 読み上げたいテキストチャンネルで「このチャンネルで開始」を押す\n\n開始後の投稿を、本文50文字＋「以下略」で順番に読みます。`,{state:failure?'warning':'normal',components:[new ActionRowBuilder().addComponents(button('start','このチャンネルで開始',ButtonStyle.Primary),refresh(),guide(),menuHomeButton())]});
+  if(!s)return payload('バックアップ読み上げ',`${failure?`${backupFailureSummary(failure)}\n\n`:''}**停止中**\n1. 聞きたいVCに参加する\n2. 読み上げたいテキストチャンネルで「このチャンネルで開始」を押す\n\n開始後の投稿を、本文50文字＋「以下略」で順番に読みます。`,{state:failure?'warning':'normal',components:[new ActionRowBuilder().addComponents(button('start','このチャンネルで開始',ButtonStyle.Primary),refresh(),guide(),menuHomeButton())]});
   const m=s.metrics;
   const phase=!s.ready?'接続と音声を準備しています':s.phase==='playing'?'読み上げ中':s.phase==='processing'?'次の音声を準備しています':'投稿を待っています';
   const parts=m.lastParts,detail=details&&parts?`\n内訳：順番待ち ${parts.queuedMs}ms · 権限確認 ${parts.accessMs}ms · 先頭合成 ${parts.firstAudioMs}ms · 再生準備 ${parts.playerMs}ms\n次の投稿の先読み ${parts.prefetched?'使用':'なし'} · 累計 ${m.prefetched??0}件\n権限確認と合成は並行するため、内訳の単純な合計にはなりません。`:'';
@@ -52,8 +52,8 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
   async function failed(s,error,code='PLAYBACK'){
     if(session!==s||s.abort.signal.aborted)return;
     lastFailure=backupFailure(backupFault(error,code));
-    try{onDiagnostic({...lastFailure});}catch{}
-    await stop(`**停止理由 · ${lastFailure.code}**\n${lastFailure.message}`);
+    try{onDiagnostic(structuredClone(lastFailure));}catch{}
+    await stop(backupFailureSummary(lastFailure));
   }
   function alive(s){s.abort.signal.throwIfAborted();if(session!==s)throw new Error('読み上げは停止しています。');}
   function sameSession(s){if(session!==s)throw new Error('読み上げの状態が変わりました。「状態を更新」から開き直してください。');}
@@ -76,7 +76,7 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
   }
   const kick=s=>{if(running)return;running=drain(s).finally(()=>{running=null;if(session?.queue.length)kick(session);});};
   async function error(i,e){const m=payload('バックアップ読み上げ',e.message,{state:'error',components:[new ActionRowBuilder().addComponents(refresh(),guide(),menuHomeButton())]});if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
-  return {get active(){return session!==null;},get state(){return session;},get lastFailure(){return lastFailure?{...lastFailure}:null;},idle:()=>running??Promise.resolve(),close:()=>stop(),
+  return {get active(){return session!==null;},get state(){return session;},get lastFailure(){return lastFailure?structuredClone(lastFailure):null;},idle:()=>running??Promise.resolve(),close:()=>stop(),
     async handle(i,requestedAction){try{
       if(requestedAction!==undefined&&!['status','stop'].includes(requestedAction))throw new Error('読み上げ操作を確認してください。');
       const click=requestedAction?null:i.customId?.match(/^read:(start|stop|status|details)(?::([a-f0-9]{12}))?$/);
@@ -91,7 +91,7 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
       if(action!=='start')throw new Error('読み上げ操作を確認してください。');
       if(!enabled){await i.editReply(backupReaderScreen(null,false));return;}
       if(session){const current=session;await control(i,current);sameSession(current);if(current.textId!==i.channelId)throw new Error('別のテキストチャンネルで読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから開始してください。');await i.editReply(backupReaderScreen(current,true));return;}
-      if(voiceBusy())throw new Error('VC入室の音声処理が進行中です。終了後に開始してください。');
+      if(voiceBusy())throw new Error('別の音声処理・速度測定が進行中です。終了後に開始してください。');
       // Reserve before any asynchronous lookup so another start cannot race a voice join.
       const s={id:randomUUID().replaceAll('-','').slice(0,12),owner:i.user.id,textId:i.channelId,voiceId:null,phase:'preparing',ready:false,abort:new AbortController(),queue:[],metrics:{started:0,prefetched:0,lastMs:null,lastParts:null,overBudget:0,dropped:0}};session=s;
       try{

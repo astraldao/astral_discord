@@ -38,12 +38,23 @@ def segment_queries(query):
             yield part
             index+=1;offset+=length
 
+def warmup(synth):
+    # Exercise the same split-query path as reading, not just a full-sentence query.
+    count=0
+    for index,part in enumerate(segment_queries(query_for(synth,'テストなのだ'))):
+        wav=synth.synthesis(part,3)
+        if not 0<len(wav)<=4*1024*1024: raise ValueError('Invalid warmup audio')
+        frame({'type':'warmup','part':index},wav)
+        count+=1
+    if not count: raise ValueError('No warmup audio')
+    return count
+
 def main():
     threads=int(os.environ.get('VOICEVOX_BACKUP_THREADS','2'))
     if not 1<=threads<=4: raise ValueError('Invalid thread count')
     synth=create_synthesizer(threads)
-    synth.synthesis(query_for(synth,'テスト'),3)  # Load inference kernels before accepting channel messages.
-    frame({'type':'ready'})
+    parts=warmup(synth)
+    frame({'type':'ready','protocol':2,'threads':threads,'warmupParts':parts})
     while True:
         line=sys.stdin.buffer.readline(4097)
         if not line: return
@@ -54,14 +65,17 @@ def main():
         text=request.get('text')
         if not isinstance(text,str) or not 1<=len(text)<=53: raise ValueError('Invalid length')
         try:
+            frame({'id':token,'type':'progress','stage':'query'})
             query=query_for(synth,text)
             if request.get('stream'):
                 for index,part in enumerate(segment_queries(query)):
+                    frame({'id':token,'type':'progress','stage':'synthesis','part':index,'moras':len(part.accent_phrases[0].moras)})
                     wav=synth.synthesis(part,3)
                     if len(wav)>4*1024*1024: raise ValueError('Audio too large')
                     frame({'id':token,'part':index},wav)
                 frame({'id':token,'end':True})
             else:
+                frame({'id':token,'type':'progress','stage':'synthesis','part':0})
                 wav=synth.synthesis(query,3)
                 if len(wav)>4*1024*1024: raise ValueError('Audio too large')
                 frame({'id':token},wav)

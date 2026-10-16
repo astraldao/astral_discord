@@ -1,0 +1,55 @@
+{
+  "scope": "Development environment. Local VOICEVOX and Opus only; no Discord connection or playback. One run, not a latency guarantee.",
+  "node": "v24.19.0",
+  "result": {
+    "measuredAt": 1792164453195,
+    "ok": true,
+    "warmupMs": 1481,
+    "firstAudioMs": 300,
+    "synthesisMs": 2255,
+    "audioMs": 3552,
+    "parts": 7,
+    "maxGapMs": 478,
+    "encodingMs": 78,
+    "before": {
+      "arch": "x64",
+      "logicalCores": 2,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 2,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 286138368,
+      "cpuUsageUsec": 436882199,
+      "cpuThrottledUsec": 11759129,
+      "cpuPeriods": 25839,
+      "cpuThrottledPeriods": 562
+    },
+    "realTimeFactor": 0.63,
+    "info": {
+      "threads": 2,
+      "protocol": 2,
+      "warmupParts": 3
+    },
+    "encoding": {
+      "packets": 15,
+      "audioMs": 309
+    },
+    "after": {
+      "arch": "x64",
+      "logicalCores": 2,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 2,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 429666304,
+      "cpuUsageUsec": 443967540,
+      "cpuThrottledUsec": 12219142,
+      "cpuPeriods": 25878,
+      "cpuThrottledPeriods": 592
+    },
+    "throttledMs": 460,
+    "throttledPercent": 77
+  }
+}
