@@ -135,7 +135,7 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
   const sessions=new AdminSessions();
   const screen=(s,note='')=>({...(s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
@@ -179,6 +179,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
+      if(action==='open-runtime'){if(!openRuntime)throw new Error('起動設定を利用できません。');await openRuntime(interaction);return;}
       if(action==='open-banner'){if(!openBanner)throw new Error('バナー設定を利用できません。');await openBanner(interaction);return;}
       if(action==='open-updates'){if(!openUpdates)throw new Error('バージョン管理を利用できません。');await openUpdates(interaction);return;}
       if(action==='open-schedule'){if(!openSchedule)throw new Error('予定表を利用できません。');await openSchedule(interaction);return;}

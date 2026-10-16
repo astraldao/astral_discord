@@ -1,0 +1,116 @@
+{
+  "node": "v24.19.0",
+  "cpuCount": 2,
+  "warmupMs": 1615,
+  "simulatedAccessMs": 50,
+  "phrases": 3,
+  "samples": [
+    {
+      "round": 0,
+      "prefetch": false,
+      "rows": [
+        {
+          "index": 0,
+          "startMs": 550,
+          "finishMs": 3394
+        },
+        {
+          "index": 1,
+          "startMs": 3725,
+          "gapMs": 331,
+          "finishMs": 6237
+        },
+        {
+          "index": 2,
+          "startMs": 6509,
+          "gapMs": 272,
+          "finishMs": 9301
+        }
+      ],
+      "prefetched": 0
+    },
+    {
+      "round": 0,
+      "prefetch": true,
+      "rows": [
+        {
+          "index": 0,
+          "startMs": 274,
+          "finishMs": 3247
+        },
+        {
+          "index": 1,
+          "startMs": 3312,
+          "gapMs": 65,
+          "finishMs": 5719
+        },
+        {
+          "index": 2,
+          "startMs": 5776,
+          "gapMs": 57,
+          "finishMs": 8490
+        }
+      ],
+      "prefetched": 2
+    },
+    {
+      "round": 1,
+      "prefetch": true,
+      "rows": [
+        {
+          "index": 0,
+          "startMs": 260,
+          "finishMs": 3193
+        },
+        {
+          "index": 1,
+          "startMs": 3250,
+          "gapMs": 56,
+          "finishMs": 5665
+        },
+        {
+          "index": 2,
+          "startMs": 5722,
+          "gapMs": 57,
+          "finishMs": 8436
+        }
+      ],
+      "prefetched": 2
+    },
+    {
+      "round": 1,
+      "prefetch": false,
+      "rows": [
+        {
+          "index": 0,
+          "startMs": 297,
+          "finishMs": 3274
+        },
+        {
+          "index": 1,
+          "startMs": 3576,
+          "gapMs": 302,
+          "finishMs": 6049
+        },
+        {
+          "index": 2,
+          "startMs": 6343,
+          "gapMs": 294,
+          "finishMs": 9136
+        }
+      ],
+      "prefetched": 0
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "gapMedianMs": 298,
+      "gapMaxMs": 331
+    },
+    "prefetch": {
+      "gapMedianMs": 57,
+      "gapMaxMs": 65
+    }
+  },
+  "scope": "Real local VOICEVOX/Opus. Gaps include fresh simulated permissions and player startup. No Discord network or 300ms guarantee."
+}

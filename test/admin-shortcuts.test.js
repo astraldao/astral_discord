@@ -13,11 +13,11 @@ function interaction(action){return {user:{id:'owner'},channelId:'channel',optio
 function controller(extra={}){return createAdminController({settings:{get:()=>structuredClone(config),update:()=>assert.fail('navigation must not write')},guild:{channels:{cache:new Map()}},access:async()=>true,changed:()=>assert.fail('navigation must not cancel reservations'),pendingCount:()=>2,...extra});}
 test('every direct admin choice opens its exact destination once without changing settings',async()=>{
   const choices=commands().find(c=>c.name==='admin').toJSON().options[0].choices;
-  assert.equal(new Set(choices.map(c=>c.value)).size,12);
+  assert.equal(new Set(choices.map(c=>c.value)).size,13);
   assert.deepEqual(choices.map(c=>c.value),adminDestinations.map(d=>d.action));
   for(const d of adminDestinations){
     const calls=[],hooks={};
-    for(const [action,hook] of [['open-schedule','openSchedule'],['open-trpg','openTrpg'],['open-densuke','openDensuke'],['open-banner','openBanner'],['open-forum','openForum'],['open-updates','openUpdates'],['open-chips','openChips']])hooks[hook]=async i=>{assert.equal(i.deferred,true);calls.push(action);};
+    for(const [action,hook] of [['open-schedule','openSchedule'],['open-trpg','openTrpg'],['open-densuke','openDensuke'],['open-banner','openBanner'],['open-forum','openForum'],['open-updates','openUpdates'],['open-chips','openChips'],['open-runtime','openRuntime']])hooks[hook]=async i=>{assert.equal(i.deferred,true);calls.push(action);};
     const c=controller({...hooks,diagnose:async()=>{calls.push('diagnose');return {version:'test',node:'test',uptime:0,pending:2,voiceEnabled:true,voice:{},channels:[]};}}),i=interaction(d.action);await c.handle(i);
     assert.equal(i.acks.length,1);assert.equal(i.acks[0].flags,MessageFlags.Ephemeral);
     const s=[...c.sessions.sessions.values()][0];assert.equal(s.originChannelId,'channel');

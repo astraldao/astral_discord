@@ -4,6 +4,7 @@ import {backupText} from './backup-text.js';
 import {createPersistentVoice} from './persistent-voice.js';
 import {connectBackupAudio} from './backup-audio.js';
 import {streamBackupSpeech} from './backup-playback.js';
+import {prepareBackupSpeech} from './backup-prefetch.js';
 import {payload,menuHomeButton} from './ui.js';
 const guide=()=>new ButtonBuilder().setLabel('設定・困ったとき').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md');
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`read:${action}`).setLabel(label).setStyle(style);
@@ -13,10 +14,10 @@ export function backupReaderScreen(s,enabled,{details=false}={}){
   if(!s)return payload('バックアップ読み上げ','**停止中**\n1. 聞きたいVCに参加する\n2. 読み上げたいテキストチャンネルで「このチャンネルで開始」を押す\n\n開始後の投稿を、本文50文字＋「以下略」で順番に読みます。',{components:[new ActionRowBuilder().addComponents(button('start','このチャンネルで開始',ButtonStyle.Primary),refresh(),guide(),menuHomeButton())]});
   const m=s.metrics;
   const phase=!s.ready?'接続と音声を準備しています':s.phase==='playing'?'読み上げ中':s.phase==='processing'?'次の音声を準備しています':'投稿を待っています';
-  const parts=m.lastParts,detail=details&&parts?`\n内訳：順番待ち ${parts.queuedMs}ms · 権限確認 ${parts.accessMs}ms · 先頭合成 ${parts.firstAudioMs}ms · 再生準備 ${parts.playerMs}ms\n権限確認と合成は並行するため、内訳の単純な合計にはなりません。`:'';
+  const parts=m.lastParts,detail=details&&parts?`\n内訳：順番待ち ${parts.queuedMs}ms · 権限確認 ${parts.accessMs}ms · 先頭合成 ${parts.firstAudioMs}ms · 再生準備 ${parts.playerMs}ms\n次の投稿の先読み ${parts.prefetched?'使用':'なし'} · 累計 ${m.prefetched??0}件\n権限確認と合成は並行するため、内訳の単純な合計にはなりません。`:'';
   return payload('バックアップ読み上げ',`**${phase}**\n読む場所 <#${s.textId}>\n聞く場所 ${s.voiceId?`<#${s.voiceId}>`:'確認中'}\n\n${s.ready?'本文50文字を超えると「以下略」を付けます。投稿順に最後まで読み上げます。':'準備完了後の新しい投稿から読みます。準備中も停止できます。'}\n**待ち** ${s.queue.length}件 / 8件 · **再生開始** ${m.started}件\n**直近の開始待ち** ${m.lastMs===null?'未計測':`${m.lastMs}ms`} · 300ms超過 ${m.overBudget}件${detail}\n**読み飛ばし** ${m.dropped}件（待ち行列上限）\n\nVOICEVOX:ずんだもん\n開始待ちはBotの受信から再生開始までで、順番待ちを含みます。Discordで聞こえるまでの通信時間は別にかかります。`,{components:[new ActionRowBuilder().addComponents(refresh(),button(`stop:${s.id}`,'読み上げを停止',ButtonStyle.Danger)),new ActionRowBuilder().addComponents(button(`details:${s.id}`,'遅延の内訳').setDisabled(!parts),guide(),menuHomeButton())]});
 }
-export function createBackupReader({guild,enabled=false,worker=createPersistentVoice,speaker=connectBackupAudio,voiceBusy=()=>false,volume=()=>30,activity=()=>()=>{},now=()=>performance.now(),resolveTargets,authorize,canControl}={}){
+export function createBackupReader({guild,enabled=false,worker=createPersistentVoice,speaker=connectBackupAudio,voiceBusy=()=>false,volume=()=>30,activity=()=>()=>{},now=()=>performance.now(),resolveTargets,authorize,canControl,prefetch=true}={}){
   let session=null,running=null;
   const targets=resolveTargets??(async i=>{
     const [member,text]=await Promise.all([guild.members.fetch({user:i.user.id,force:true}),guild.channels.fetch(i.channelId,{force:true})]);
@@ -43,21 +44,26 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
     if(!text?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('元のテキストチャンネルを閲覧できません。停止は /menu の「操作」で「読み上げを停止」を使ってください。');
   });
   async function stop(reason='読み上げを停止しました。'){
-    const s=session;if(!s)return;session=null;s.abort.abort();s.queue.length=0;s.voice?.close();s.synth?.close();
-    if(s.notice)await s.notice.edit(payload('バックアップ読み上げ',`${reason}\nVOICEVOX:ずんだもん`)).catch(()=>{});
+    const s=session;if(!s)return;session=null;s.abort.abort();s.currentJob?.prepared?.dispose();for(const job of s.queue)job.prepared?.dispose();s.queue.length=0;s.voice?.close();s.synth?.close();
+    if(s.notice)await s.notice.edit(payload('バックアップ読み上げ',`${reason}\n再開するときは、聞きたいVCに参加してから「このチャンネルで開始」を押してください。\nVOICEVOX:ずんだもん`,{components:[new ActionRowBuilder().addComponents(button('start','このチャンネルで開始'),guide())]})).catch(()=>{});
   }
   function alive(s){s.abort.signal.throwIfAborted();if(session!==s)throw new Error('読み上げは停止しています。');}
   function sameSession(s){if(session!==s)throw new Error('読み上げの状態が変わりました。「状態を更新」から開き直してください。');}
+  function prepareNext(s){
+    if(!prefetch||session!==s||s.phase!=='playing'||!s.queue.length||s.queue[0].prepared)return;
+    const job=s.queue[0];job.prepared=prepareBackupSpeech({text:job.text,signal:s.abort.signal,synth:s.synth});job.prefetched=true;
+  }
   async function drain(s){
     while(session===s&&s.queue.length){const job=s.queue.shift(),finish=activity();
       try{
-        alive(s);s.phase='processing';const queuedMs=Math.round(now()-job.received);
-        await streamBackupSpeech({text:job.text,signal:s.abort.signal,synth:s.synth,voice:s.voice,authorize:async()=>{await access(s);alive(s);},volume,now,onStart:parts=>{
+        alive(s);s.currentJob=job;s.phase='processing';const queuedMs=Math.round(now()-job.received);
+        job.prepared??=prepareBackupSpeech({text:job.text,signal:s.abort.signal,synth:s.synth});
+        await streamBackupSpeech({text:job.text,signal:s.abort.signal,synth:{stream:(_text,_signal,onChunk)=>job.prepared.consume(onChunk)},voice:s.voice,authorize:async()=>{await access(s);alive(s);},volume,now,onStart:parts=>{
           alive(s);s.phase='playing';const ms=Math.round(now()-job.received);s.metrics.started++;s.metrics.lastMs=ms;
-          s.metrics.lastParts={queuedMs,...parts};if(ms>300)s.metrics.overBudget++;
+          s.metrics.lastParts={queuedMs,...parts,prefetched:!!job.prefetched};if(job.prefetched)s.metrics.prefetched++;if(ms>300)s.metrics.overBudget++;prepareNext(s);
         }});
       }catch{if(session===s)await stop('音声・権限・VCの状態を確認できないため停止しました。/menu → 読み上げ → 開始 から開始し直してください。');}
-      finally{if(session===s)s.phase='waiting';finish();}
+      finally{job.prepared?.dispose();if(s.currentJob===job)s.currentJob=null;if(session===s)s.phase='waiting';finish();}
     }
   }
   const kick=s=>{if(running)return;running=drain(s).finally(()=>{running=null;if(session?.queue.length)kick(session);});};
@@ -79,12 +85,12 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
       if(session){const current=session;await control(i,current);sameSession(current);if(current.textId!==i.channelId)throw new Error('別のテキストチャンネルで読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから開始してください。');await i.editReply(backupReaderScreen(current,true));return;}
       if(voiceBusy())throw new Error('VC入室の音声処理が進行中です。終了後に開始してください。');
       // Reserve before any asynchronous lookup so another start cannot race a voice join.
-      const s={id:randomUUID().replaceAll('-','').slice(0,12),owner:i.user.id,textId:i.channelId,voiceId:null,phase:'preparing',ready:false,abort:new AbortController(),queue:[],metrics:{started:0,lastMs:null,lastParts:null,overBudget:0,dropped:0}};session=s;
+      const s={id:randomUUID().replaceAll('-','').slice(0,12),owner:i.user.id,textId:i.channelId,voiceId:null,phase:'preparing',ready:false,abort:new AbortController(),queue:[],metrics:{started:0,prefetched:0,lastMs:null,lastParts:null,overBudget:0,dropped:0}};session=s;
       try{
         const {text,voice}=await targets(i);alive(s);s.voiceId=voice.id;
         await access(s);alive(s);await i.editReply(backupReaderScreen(s,true));
         s.synth=worker();
-        const connecting=Promise.resolve(speaker(voice,s.abort.signal)).then(v=>{if(session!==s){v.close();throw new Error('開始を取り消しました。');}s.voice=v;return v;});
+        const connecting=Promise.resolve(speaker(voice,s.abort.signal,{onFault:()=>{if(session===s)return stop('音声接続または再生に問題があるため停止しました。');}})).then(v=>{if(session!==s){v.close();throw new Error('開始を取り消しました。');}s.voice=v;return v;});
         await Promise.all([s.synth.ready,connecting]);await access(s);alive(s);
         s.notice=await text.send(payload('バックアップ読み上げ',`このチャンネルの新しいテキストを <#${s.voiceId}> へ読み上げます。本文50文字＋「以下略」、投稿順に再生。停止は /menu の「操作」で「読み上げを停止」。\nVOICEVOX:ずんだもん`));
         alive(s);s.ready=true;s.phase='waiting';await i.editReply(backupReaderScreen(s,true));
@@ -94,7 +100,7 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
       const s=session;if(!s?.ready||message.guildId!==guild.id||message.channelId!==s.textId||message.author?.bot||message.webhookId||message.system)return;
       const text=backupText(message.cleanContent??message.content);if(!text)return;
       if(s.queue.length>=8){s.metrics.dropped++;return;}
-      s.queue.push({text,received:now()});kick(s);
+      s.queue.push({text,received:now()});kick(s);prepareNext(s);
     },async onVoiceChange(before,after){
       const s=session;if(!s||after.guild.id!==guild.id)return;
       if(after.id===s.owner&&after.channelId!==s.voiceId){await stop('開始した人がVCを移動・退出したため停止しました。');return;}

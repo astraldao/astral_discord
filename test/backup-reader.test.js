@@ -24,7 +24,23 @@ test('only new human text from the command channel is read; no other guild/chann
 });
 test('messages finish in order without interruption and latency includes waiting, with bounded queue',async()=>{
   let release,plays=0;const f=await fixture({speaker:async()=>({healthy:()=>true,play:async(_,o)=>{o.onStart();if(++plays===1)await new Promise(r=>release=r);},close(){}})});
-  f.message('最初の文章');await tick();f.message('次の文章');for(let n=0;n<12;n++)f.message('後続'+n);assert.ok(f.reader.state.queue.length<=8);assert.ok(f.reader.state.metrics.dropped>0);assert.deepEqual(f.spoken,['最初の文章']);f.setTime(700);release();await f.reader.idle();assert.equal(f.spoken[1],'次の文章');assert.ok(f.reader.state.metrics.overBudget>0);await f.reader.close();
+  f.message('最初の文章');await tick();f.message('次の文章');for(let n=0;n<12;n++)f.message('後続'+n);assert.ok(f.reader.state.queue.length<=8);assert.ok(f.reader.state.metrics.dropped>0);await tick();assert.deepEqual(f.spoken,['最初の文章','次の文章']);f.setTime(700);release();await f.reader.idle();assert.equal(f.spoken[1],'次の文章');assert.ok(f.reader.state.metrics.overBudget>0);await f.reader.close();
+});
+test('only the next queued message is prepared during playback, preserving FIFO and the playback-time volume',async()=>{
+  let release,level=30;const values=[],wav=wave();for(let at=44;at<wav.length;at+=2)wav.writeInt16LE(1000,at);
+  const spoken=[],f=await fixture({volume:()=>level,worker:()=>({ready:Promise.resolve(),stream:async(text,_,chunk)=>{spoken.push(text);chunk(wav);},close(){}}),speaker:async()=>({healthy:()=>true,close(){},async play(source,o){o.onStart();const chunks=[];for await(const chunk of source)chunks.push(chunk);values.push(Buffer.concat(chunks).readInt16LE(6000));if(values.length===1)await new Promise(r=>release=r);}})});
+  f.message('一番');await tick();f.message('二番');f.message('三番');await tick();assert.deepEqual(spoken,['一番','二番']);assert.equal(values.length,1);assert.ok(f.reader.state.queue[0].prepared.bufferedBytes>0);assert.equal(f.reader.state.queue[1].prepared,undefined);
+  level=60;release();await f.reader.idle();assert.deepEqual(spoken,['一番','二番','三番']);assert.deepEqual(values,[300,600,600]);assert.equal(f.reader.state.metrics.prefetched,2);await f.reader.close();
+});
+test('prepared speech is discarded if permissions disappear before its turn and never reaches the player',async()=>{
+  let release,played=0;const f=await fixture({speaker:async()=>({healthy:()=>true,close(){},async play(_,o){o.onStart();played++;await new Promise(r=>release=r);}})});
+  f.message('先の文章');await tick();f.message('読む権限を失う文章');await tick();const prepared=f.reader.state.queue[0].prepared;assert.ok(prepared.bufferedBytes>0);
+  f.deny();release();await f.reader.idle();assert.equal(played,1);assert.equal(f.reader.active,false);assert.equal(prepared.bufferedBytes,0);assert.equal(f.workerClosed(),1);
+});
+test('an idle voice fault stops resources, offers restart, and an old fault cannot stop a replacement session',async()=>{
+  let fault,notice;const f=await fixture({resolveTargets:async()=>({text:{send:async()=>({edit:async m=>notice=m})},voice:{id:'voice'}}),speaker:async(_,__,options)=>{fault=options.onFault;return {healthy:()=>true,close(){}};}});
+  const old=fault;await old();assert.equal(f.reader.active,false);assert.equal(f.workerClosed(),1);assert.ok(JSON.stringify(notice).includes('read:start'));
+  await f.reader.handle(i('start'));const id=f.reader.state.id;await old();assert.equal(f.reader.state.id,id);await f.reader.close();
 });
 test('foreign stop is refused, lost permissions stop without speaking and owner voice departure stops immediately',async()=>{
   const f=await fixture();await f.reader.handle(i('stop','other'));assert.equal(f.reader.active,true);f.deny();f.message('読まない');await f.reader.idle();assert.equal(f.reader.active,false);assert.deepEqual(f.played,[]);

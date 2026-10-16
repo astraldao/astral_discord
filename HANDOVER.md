@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-16 更新。現行のコマンド構成はv3.33.0。過去の調査・検証記録は各版の節を参照。
+2026-10-16 更新。現行のコマンド構成はv3.34.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -18,7 +18,7 @@
 |---|---|
 | 起動・環境設定読込 | `index.js` |
 | Discord初期化・イベント・VC入室処理 | `src/index.js` |
-| バックアップ読み上げ | `src/backup-reader.js`、`src/backup-playback.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
+| バックアップ読み上げ | `src/backup-reader.js`、`src/backup-playback.js`、`src/backup-prefetch.js`、`src/backup-health.js`、`src/backup-audio.js`、`src/persistent-voice.js`、`scripts/backup-synthesize.py` |
 | Botのプロフィールバナー | `src/banner-ui.js`、`src/banner-image.js` |
 | コマンド登録・一般メニュー | `src/commands.js`、`src/main-menu.js`、`src/vc-entry-ui.js` |
 | 管理画面・設定・診断 | `src/admin.js`、`src/admin-navigation.js`、`src/settings.js`、`src/diagnostics.js` |
@@ -106,3 +106,17 @@ mainへのコミットだけではBotを更新しない。管理者が `/admin �
 `admin:open-section:<id>` と `admin:open-feature:<action>` はデータを含まない復旧ボタン。新しい管理セッションを作り、カテゴリ・操作の共通定義にある行き先のみ開く。管理者権限を確認し、保存・更新実行・パネル設置は入口から直接行わない。予定表の失敗画面では、最新の管理者権限がなければ一般メニューだけを表示する。
 
 この版は構文・実行ポリシー検査と444件の自動テストに成功。Discord実機での表示と操作は未確認です。
+
+## v3.34 読み上げの先行合成と接続監視
+
+`prepareBackupSpeech` は生成WAVを8MiB/256片までメモリ保持し、消費開始後は現在の再生ストリームへ転送する。readerはPlaying後に待ち行列先頭の1件だけを準備し、通常の合成プロセスの直列キューを使用する。同時合成プロセスは増やさない。次の文章も必ず再生直前にaccessを通し、PCM変換時の最新音量を使用する。キャンセル/合成失敗では保持分を消し、停止時には現在分と次の先読みをdisposeしてworkerとvoiceを閉じる。
+`watchBackupAudio` はプレイヤー/接続のerrorとDestroyedを監視し、Disconnectedには5秒の復旧猶予を置く。Readyでタイマー解除、手動close/abortでは通知しない。初期化失敗は既存の接続待ちから返し、arm後の障害だけreaderのonFaultへ通知する。古いセッションのコールバックで新しい読み上げを停止しない。停止案内には新しい開始操作を表示するが、残りを再送しない。
+`backup-queue-benchmark.js` は実モデル/Opusで3投稿をFIFO再生する。prefetch=false/trueを交互に2回ずつ、各方式4つの文章間ギャップを記録。権限確認の模擬時間はASTRAL_BENCH_ACCESS_MS（既定200、0..2000）。Discord通信と実際の聴取開始は計測しない。
+
+## v3.34 管理者による起動設定
+
+`RuntimeEnvStore` はASTRAL_BACKUP_TTSとVOICEVOX_BACKUP_THREADSの2項目だけを扱い、未知の変数名・不正値・不正な保存形式を拒否する。`.env` は読み書きせず、トークンなどを列挙/コピーしない。保存先は `data/runtime-env.json`、0600の一時ファイルから原子的に置換。直列化・期待リビジョンと書き込み前/rename前の権限チェックで競合を拒否。稼働中のprocess.envを保存操作では変更しない。
+`src/index.js` のClient/Intent作成前に読み込み、許可項目だけprocess.envへ反映する。専用保存値 > 外部環境変数 > 既定値。未指定/不正な外部値は既定値へ戻す。画面は稼働中と次回起動時を分ける。反映にはホスティング再起動が必要で、この画面からの自動再起動は追加しない。Message Content IntentのPortal設定を先に済ませる。保存のtailは正常終了時にも待つ。
+管理画面は運用・管理の「ENV・起動設定」、直接操作open-runtimeも追加。書き込みには入力・確認・保存を必要とし、フォームごとのトークンと画面世代で古い送信を拒否する。変数名の自由入力、DISCORD_TOKEN、GUILD_ID、VOICEVOX_PYTHONなどの実行パスは対象外。伝助メールは既存の専用設定を使う。
+
+この版は構文・実行ポリシー検査と459件の自動テストに成功。実モデルの先読み比較を実施し、記録はdocs/benchmarksに保存。Discord実機の音声・ENV変更後の再起動は未確認です。
