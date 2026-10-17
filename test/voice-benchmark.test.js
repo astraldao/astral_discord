@@ -189,3 +189,17 @@ test('diagnostics distinguish CPU execution from elapsed time without attributin
 test('the real Opus measurement reports bounded CPU time separately from wall time',async()=>{
   const r=await measureEncoding(wave(),new AbortController().signal);assert.ok(Number.isInteger(r.warmupCpuMs)&&r.warmupCpuMs>=0);assert.ok(Number.isInteger(r.processCpuMs)&&r.processCpuMs>=0);assert.ok(r.warmupMs>=0&&r.processMs>=0);
 });
+
+test('a stalled model load keeps the preparation duration, last checkpoint and CPU record without implying completion',async()=>{
+  let time=0;
+  const info={stage:'warmup',warmupStep:'model-load',warmupStepMs:38128,warmupCpuMs:200,elapsedMs:98128,timerLateMs:8128,warmupParts:0};
+  const probe=createVoiceBenchmark({now:()=>time,capacity:async()=>({}),worker:()=>({get ready(){time=98128;return Promise.reject(backupFault(null,'SYNTHESIS_WARMUP_TIMEOUT',info));},diagnostics:info,close(){}})});
+  const r=await probe.run('local');assert.equal(r.ok,false);assert.equal(r.cancelled,false);assert.equal(r.warmupMs,null);assert.equal(r.warmupElapsedMs,98128);assert.equal(r.parts,0);assert.equal(r.failure.info.warmupStep,'model-load');
+  const body=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r}).embeds[0].toJSON().description;
+  assert.match(body,/モデル準備経過 \*\*98,128ms/);assert.match(body,/準備箇所：音声モデルの読込/);assert.match(body,/準備（最終記録） \*\*200ms/);assert.match(body,/監視タイマーの遅れ 8128ms/);assert.ok(body.length<4096);probe.close();
+});
+test('active startup progress uses fixed stage labels and marks CPU as the last recorded value',()=>{
+  const view=benchmarkScreen({id:'s',turn:0},{phase:'warming',owner:'s',elapsedMs:30000,info:backupInfo({stage:'warmup',warmupStep:'analyzer',warmupStepMs:5000,warmupCpuMs:0,path:'PRIVATE'})});
+  const body=view.embeds[0].toJSON().description;assert.match(body,/日本語解析の準備/);assert.match(body,/準備CPU（最終記録） 0ms/);assert.ok(!body.includes('PRIVATE'));
+  assert.deepEqual(backupInfo({warmupStep:'PRIVATE',warmupStepMs:-1,timerLateMs:3600001}),{});
+});

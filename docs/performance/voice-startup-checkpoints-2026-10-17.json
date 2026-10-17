@@ -1,0 +1,259 @@
+{
+  "date": "2026-10-17",
+  "scope": "Development host pinned to one logical CPU, configured 3/native 1, real VOICEVOX Core 0.17.0 and real Opus. Normal fixed-text diagnostic, followed by a development fixture that sends SIGSTOP to itself immediately after the model-load checkpoint. Only the stalled test uses a 3000ms startup deadline; production remains 90000ms. Validates early checkpoints survive a real process stall and no WAV/progress extends the startup timer. No Discord/network/VC or production memory/host conditions reproduced. Fixed phrases only; numeric/static metadata, no user text/audio saved.",
+  "samples": [
+    {
+      "stalledAtModelLoad": false,
+      "startupDeadlineMs": 90000,
+      "checkpoints": [
+        {
+          "sequence": 1,
+          "step": "worker",
+          "cpuMs": 24,
+          "atMs": 25
+        },
+        {
+          "sequence": 2,
+          "step": "core-import",
+          "cpuMs": 24,
+          "atMs": 25
+        },
+        {
+          "sequence": 3,
+          "step": "dictionary",
+          "cpuMs": 39,
+          "atMs": 41
+        },
+        {
+          "sequence": 4,
+          "step": "runtime",
+          "cpuMs": 40,
+          "atMs": 41
+        },
+        {
+          "sequence": 5,
+          "step": "analyzer",
+          "cpuMs": 49,
+          "atMs": 51
+        },
+        {
+          "sequence": 6,
+          "step": "synthesizer",
+          "cpuMs": 49,
+          "atMs": 51
+        },
+        {
+          "sequence": 7,
+          "step": "model-open",
+          "cpuMs": 49,
+          "atMs": 51
+        },
+        {
+          "sequence": 8,
+          "step": "model-load",
+          "cpuMs": 49,
+          "atMs": 52
+        },
+        {
+          "sequence": 9,
+          "step": "warmup-query",
+          "cpuMs": 737,
+          "atMs": 740
+        },
+        {
+          "sequence": 10,
+          "step": "warmup-features",
+          "cpuMs": 738,
+          "atMs": 744
+        }
+      ],
+      "result": {
+        "measuredAt": 1792228293781,
+        "ok": true,
+        "warmupMs": 1907,
+        "firstAudioMs": 286,
+        "synthesisMs": 3108,
+        "audioMs": 3573,
+        "parts": 4,
+        "maxGapMs": 1492,
+        "encodingMs": 76,
+        "before": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 290074624,
+          "cpuUsageUsec": 627743806,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 51520,
+          "cpuThrottledPeriods": 36
+        },
+        "realTimeFactor": 0.87,
+        "info": {
+          "engine": "features",
+          "warmupCpuMs": 1898,
+          "synthesisCpuMs": 3101,
+          "firstAudioCpuMs": 284,
+          "threads": 1,
+          "configuredThreads": 3,
+          "protocol": 3,
+          "warmupParts": 3
+        },
+        "encoding": {
+          "packets": 7,
+          "audioMs": 128,
+          "warmupMs": 56,
+          "processMs": 11,
+          "warmupCpuMs": 40,
+          "processCpuMs": 3,
+          "backend": "worker-opusscript"
+        },
+        "elapsedMs": 5097,
+        "after": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 452374528,
+          "cpuUsageUsec": 632903618,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 51571,
+          "cpuThrottledPeriods": 36
+        },
+        "throttledMs": 0,
+        "throttledPercent": 0
+      }
+    },
+    {
+      "stalledAtModelLoad": true,
+      "startupDeadlineMs": 3000,
+      "checkpoints": [
+        {
+          "sequence": 1,
+          "step": "worker",
+          "cpuMs": 24,
+          "atMs": 24
+        },
+        {
+          "sequence": 2,
+          "step": "core-import",
+          "cpuMs": 24,
+          "atMs": 26
+        },
+        {
+          "sequence": 3,
+          "step": "dictionary",
+          "cpuMs": 40,
+          "atMs": 40
+        },
+        {
+          "sequence": 4,
+          "step": "runtime",
+          "cpuMs": 40,
+          "atMs": 40
+        },
+        {
+          "sequence": 5,
+          "step": "analyzer",
+          "cpuMs": 52,
+          "atMs": 52
+        },
+        {
+          "sequence": 6,
+          "step": "synthesizer",
+          "cpuMs": 52,
+          "atMs": 52
+        },
+        {
+          "sequence": 7,
+          "step": "model-open",
+          "cpuMs": 52,
+          "atMs": 53
+        },
+        {
+          "sequence": 8,
+          "step": "model-load",
+          "cpuMs": 52,
+          "atMs": 53
+        }
+      ],
+      "result": {
+        "measuredAt": 1792228298884,
+        "ok": false,
+        "warmupMs": null,
+        "firstAudioMs": null,
+        "synthesisMs": null,
+        "audioMs": 0,
+        "parts": 0,
+        "maxGapMs": 0,
+        "encodingMs": null,
+        "before": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 304951296,
+          "cpuUsageUsec": 632909392,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 51571,
+          "cpuThrottledPeriods": 36
+        },
+        "cancelled": false,
+        "failure": {
+          "code": "SYNTHESIS_WARMUP_TIMEOUT",
+          "message": "分割音声の準備が90秒以内に完了しませんでした。CPU割当・負荷とVOICEVOX環境を確認してください。",
+          "info": {
+            "stage": "warmup",
+            "warmupStep": "model-load",
+            "elapsedMs": 3000,
+            "warmupStepMs": 2947,
+            "timerLateMs": 0,
+            "warmupCpuMs": 52,
+            "warmupParts": 0
+          }
+        },
+        "warmupElapsedMs": 3002,
+        "elapsedMs": 3004,
+        "after": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 319221760,
+          "cpuUsageUsec": 632967508,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 51575,
+          "cpuThrottledPeriods": 36
+        },
+        "throttledMs": 0,
+        "throttledPercent": 0
+      }
+    }
+  ],
+  "latestUserScreenshot": {
+    "source": "User supplied v3.38.1 diagnostic; the failing startup phase and in-progress CPU were not recorded by that version. No reproduction of its root cause.",
+    "failure": "SYNTHESIS_WARMUP_TIMEOUT",
+    "elapsedMs": 98128,
+    "warmupParts": 0,
+    "memoryMiB": 315,
+    "memoryLimitMiB": 589,
+    "cpuCores": 1,
+    "throttledPercent": 1,
+    "throttledMs": 190,
+    "interactionAgeMs": 4338,
+    "interactionAckMs": 39725,
+    "interactionErrorCode": 10062
+  }
+}

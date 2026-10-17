@@ -53,7 +53,7 @@ test('a synchronous input-pipe failure cancels both timers without exposing the 
 });
 
 test('stage metadata identifies the timed-out native synthesis without extending any deadline',async t=>{
-  const f=await fixture(t,true),job=f.worker.stream('本文',undefined,()=>{});await tick();const failure=assert.rejects(job,e=>{assert.equal(e.code,'SYNTHESIS_TIMEOUT');assert.deepEqual(e.info,{protocol:2,threads:1,configuredThreads:3,warmupParts:1,stage:'synthesis',parts:1,activePart:1,moras:3,elapsedMs:17000,idleMs:15000});return true;});
+  const f=await fixture(t,true),job=f.worker.stream('本文',undefined,()=>{});await tick();const failure=assert.rejects(job,e=>{assert.equal(e.code,'SYNTHESIS_TIMEOUT');assert.deepEqual(e.info,{protocol:2,threads:1,configuredThreads:3,warmupParts:1,stage:'synthesis',parts:1,activePart:1,moras:3,elapsedMs:17000,idleMs:15000,timerLateMs:0});return true;});
   f.emit({type:'progress',stage:'query'});f.emit({type:'progress',stage:'synthesis',part:0,moras:2});f.timer.advance(2000);f.emit({part:0},wave());f.timer.advance(14000);f.emit({type:'progress',stage:'synthesis',part:1,moras:3});f.timer.advance(1000);await failure;assert.equal(f.timer.count,0);
 });
 test('query and partial-transfer diagnostics cannot masquerade as completed audio progress',async t=>{
@@ -76,7 +76,7 @@ test('modern readiness requires a complete validated warmup and a matching part 
 
 test('warmup timeout identifies model preparation before accepting any channel message',async()=>{
   const timer=clock(),child=new EventEmitter();child.stdin=new EventEmitter();child.stdin.write=()=>assert.fail();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
-  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now}),failure=assert.rejects(worker.ready,e=>{assert.equal(e.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.deepEqual(e.info,{stage:'warmup',warmupParts:0,elapsedMs:90000});return true;});timer.advance(90000);await failure;worker.close();assert.equal(timer.count,0);
+  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now}),failure=assert.rejects(worker.ready,e=>{assert.equal(e.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.deepEqual(e.info,{stage:'warmup',warmupParts:0,elapsedMs:90000,warmupStep:'process',warmupStepMs:90000,timerLateMs:0});return true;});timer.advance(90000);await failure;worker.close();assert.equal(timer.count,0);
 });
 
 const featureProgress=(part,start,end,frames=60)=>({type:'progress',stage:'synthesis',part,frameStart:start,frameEnd:end,frames});
@@ -140,4 +140,43 @@ test('invalid or regressing native CPU counters are rejected without changing WA
     f.emit(featureProgress(0,0,12,12));f.emit({part:0,synthesisCpuMs:10},wave(12*2048));f.emit({end:true,synthesisCpuMs:value});await rejected;assert.equal(f.timer.count,0);
   }
   for(const value of [-1,3600001,1.5])await assert.rejects(fixture(t,'features',{warmupCpuMs:value}),e=>e.code==='SYNTHESIS_PROTOCOL');
+});
+
+function cold(t){
+  const timer=clock(),child=new EventEmitter();let offset=0,kills=0;
+  child.stdin=new EventEmitter();child.stdin.write=()=>assert.fail('no request before ready');child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>kills++;
+  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now+offset});t.after(()=>worker.close());
+  return {timer,worker,setOffset:ms=>offset=ms,get kills(){return kills;},emit:(data,body)=>child.stdout.emit('data',frame(data,body))};
+}
+const startup=(sequence,step,warmupCpuMs)=>({type:'startup',sequence,step,warmupCpuMs});
+test('startup checkpoints retain the last stage and CPU record but never extend the 90 second deadline',async t=>{
+  const f=cold(t),failure=assert.rejects(f.worker.ready,e=>{assert.equal(e.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.deepEqual(e.info,{warmupCpuMs:300,stage:'warmup',warmupParts:0,warmupStep:'warmup-features',warmupStepMs:1000,elapsedMs:90000,timerLateMs:0});return true;});
+  f.timer.advance(1000);f.emit(startup(1,'core-import',80));f.timer.advance(19000);f.emit(startup(2,'model-load',150));f.timer.advance(69000);f.emit(startup(3,'warmup-features',300));
+  assert.equal(f.kills,0);f.timer.advance(1000);await failure;assert.equal(f.kills,1);assert.equal(f.timer.count,0);
+});
+test('startup checkpoints reject unknown stages, wrong sequence, CPU regressions, payloads and excess messages',async t=>{
+  for(const invalid of ['stage','sequence','cpu-backwards','cpu-fraction','cpu-limit','payload','excess','after-wav','ready-cpu-backwards','ready-no-wav','ready-legacy']){
+    const f=cold(t),failure=assert.rejects(f.worker.ready,e=>e.code==='SYNTHESIS_PROTOCOL');f.emit(startup(1,'worker',10));
+    if(invalid==='ready-legacy')f.emit({type:'ready'});
+    else if(invalid==='stage')f.emit(startup(2,'PRIVATE_PATH',20));
+    else if(invalid==='sequence')f.emit(startup(1,'runtime',20));
+    else if(invalid.startsWith('cpu'))f.emit(startup(2,'runtime',invalid==='cpu-backwards'?9:invalid==='cpu-fraction'?10.5:3600001));
+    else if(invalid==='payload')f.emit(startup(2,'runtime',20),wave());
+    else if(invalid==='excess'){for(let n=2;n<=33;n++)f.emit(startup(n,'runtime',n));}
+    else {
+      if(invalid!=='ready-no-wav')f.emit({type:'warmup',part:0},wave());
+      if(invalid==='after-wav')f.emit(startup(2,'runtime',20));
+      else f.emit({type:'ready',protocol:3,engine:'packed',threads:1,warmupParts:1,warmupCpuMs:invalid==='ready-cpu-backwards'?9:20});
+    }
+    await failure;assert.equal(f.kills,1);assert.equal(f.timer.count,0);
+  }
+});
+test('valid startup checkpoints are cleared after complete WAV validation and ready reports the full CPU total',async t=>{
+  const f=cold(t);f.emit(startup(1,'worker',10));f.emit(startup(2,'warmup-packed',20));f.emit({type:'warmup',part:0},wave());f.emit({type:'ready',protocol:3,engine:'packed',threads:1,warmupParts:1,warmupCpuMs:40});await f.worker.ready;
+  assert.equal(f.worker.diagnostics.warmupCpuMs,40);assert.equal(f.worker.diagnostics.warmupStep,undefined);assert.equal(f.timer.count,0);
+  f.emit(startup(3,'runtime',50));await assert.rejects(f.worker.synthesize('本文'),e=>e.code==='SYNTHESIS_PROTOCOL');assert.equal(f.kills,1);
+});
+test('a late startup watchdog reports its delay instead of claiming it fired exactly on time',async t=>{
+  const f=cold(t),failure=assert.rejects(f.worker.ready,e=>{assert.equal(e.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.equal(e.info.elapsedMs,98128);assert.equal(e.info.timerLateMs,8128);assert.equal(e.info.warmupStep,'model-load');assert.equal(e.info.warmupStepMs,38128);assert.equal(e.info.warmupCpuMs,200);return true;});
+  f.timer.advance(60000);f.emit(startup(1,'model-load',200));f.setOffset(8128);f.timer.advance(30000);await failure;assert.equal(f.timer.count,0);
 });

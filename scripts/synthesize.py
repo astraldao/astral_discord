@@ -5,8 +5,10 @@ from pathlib import Path
 import sys
 import subprocess
 
-def create_synthesizer(cpu_num_threads=1):
+def create_synthesizer(cpu_num_threads=1, on_progress=lambda _: None):
+    on_progress('core-import')
     from voicevox_core.blocking import Onnxruntime, OpenJtalk, Synthesizer, VoiceModelFile
+    on_progress('dictionary')
     root=Path(os.environ.get('VOICEVOX_ROOT','voicevox')).resolve()
     runtime=root/'onnxruntime'/'lib'/Onnxruntime.LIB_RECOMMENDED_VERSIONED_FILENAME
     enhanced=root/'dict'/'japanese-plus'
@@ -19,10 +21,17 @@ def create_synthesizer(cpu_num_threads=1):
     model=root/'models'/'vvms'/'0.vvm'
     for path in [runtime,dictionary,model]:
         if not path.exists(): raise RuntimeError(f'VOICEVOX component missing: {path}')
-    synth=Synthesizer(Onnxruntime.load_once(filename=str(runtime)),OpenJtalk(str(dictionary)),acceleration_mode='CPU',cpu_num_threads=cpu_num_threads)
+    on_progress('runtime')
+    engine=Onnxruntime.load_once(filename=str(runtime))
+    on_progress('analyzer')
+    analyzer=OpenJtalk(str(dictionary))
+    on_progress('synthesizer')
+    synth=Synthesizer(engine,analyzer,acceleration_mode='CPU',cpu_num_threads=cpu_num_threads)
+    on_progress('model-open')
     with VoiceModelFile.open(str(model)) as voice:
         if not any(meta.name=='ずんだもん' and any(style.id==3 for style in meta.styles) for meta in voice.metas):
             raise RuntimeError('Model does not contain VOICEVOX:ずんだもん style 3')
+        on_progress('model-load')
         synth.load_voice_model(voice)
     return synth
 

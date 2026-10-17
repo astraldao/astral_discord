@@ -108,7 +108,7 @@ class FeatureRenderer:
             start, part = stop, part + 1
 
 
-def prepare_renderer(synth, query, version=None):
+def prepare_renderer(synth, query, version=None, on_prepare=lambda _: None):
     if version is None:
         try:
             from voicevox_core import __version__
@@ -118,6 +118,7 @@ def prepare_renderer(synth, query, version=None):
     if version == '0.17.0':
         try:
             renderer = FeatureRenderer(synth)
+            on_prepare('warmup-features')
             warmup = list(renderer.chunks(query))
             if not warmup or sum(len(wav) for _, wav in warmup) > 8 * 1024 * 1024:
                 raise ValueError('Invalid warmup')
@@ -126,6 +127,7 @@ def prepare_renderer(synth, query, version=None):
             # No data has been emitted. Do not change adapters partway through a channel post.
             pass
     renderer = PackedRenderer(synth)
+    on_prepare('warmup-packed')
     warmup = list(renderer.chunks(query))
     if not warmup or sum(len(wav) for _, wav in warmup) > 8 * 1024 * 1024:
         raise ValueError('Invalid warmup')

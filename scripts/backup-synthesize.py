@@ -21,17 +21,25 @@ def query_for(synth, text):
     query.output_stereo=True
     return query
 
-def warmup(synth):
-    renderer, chunks = prepare_renderer(synth, query_for(synth,'テストなのだ'))
+def warmup(synth, on_progress=lambda _: None):
+    on_progress('warmup-query')
+    query=query_for(synth,'テストなのだ')
+    renderer, chunks = prepare_renderer(synth, query, on_prepare=on_progress)
     for index,(_,wav) in enumerate(chunks):
         frame({'type':'warmup','part':index},wav)
     return renderer,len(chunks)
 
 def main():
+    sequence=0
+    def startup(step):
+        nonlocal sequence
+        sequence+=1
+        frame({'type':'startup','sequence':sequence,'step':step,'warmupCpuMs':round(time.process_time()*1000)})
+    startup('worker')
     threads=int(os.environ.get('VOICEVOX_BACKUP_THREADS','2'))
     if not 1<=threads<=4: raise ValueError('Invalid thread count')
-    synth=create_synthesizer(threads)
-    renderer,parts=warmup(synth)
+    synth=create_synthesizer(threads,on_progress=startup)
+    renderer,parts=warmup(synth,startup)
     frame({'type':'ready','protocol':3,'engine':renderer.mode,'threads':threads,'warmupParts':parts,'warmupCpuMs':round(time.process_time()*1000)})
     while True:
         line=sys.stdin.buffer.readline(4097)
