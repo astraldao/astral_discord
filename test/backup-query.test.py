@@ -37,28 +37,33 @@ class WorkerProtocol(unittest.TestCase):
     def test_warmup_exercises_split_queries_and_progress_precedes_native_calls(self):
         import io
         import json
-        events=[]
+        events=[];cpu=[.125]
         class Synth:
             def create_audio_query(self,text,style):
+                cpu[0]+=.010
                 events.append(('query',text))
                 return N(accent_phrases=[N(moras=list(range(6)),accent=3,pause_mora=None,is_interrogative=False)])
             def synthesis(self,query,style):
+                cpu[0]+=.020
                 events.append(('synthesis',len(query.accent_phrases[0].moras)))
                 return wav_bytes()
-        old_frame,old_create,old_stdin=module.frame,module.create_synthesizer,module.sys.stdin
+        old_frame,old_create,old_stdin,old_cpu=module.frame,module.create_synthesizer,module.sys.stdin,module.time.process_time
         try:
             module.frame=lambda data,wav=b'': events.append(('frame',data))
-            module.create_synthesizer=lambda threads:Synth()
-            module.sys.stdin=N(buffer=io.BytesIO((json.dumps({'id':1,'text':'固定文','stream':True})+'\n').encode()))
+            def create(threads):cpu[0]+=.100;return Synth()
+            module.create_synthesizer=create
+            module.time.process_time=lambda:cpu[0]
+            module.sys.stdin=N(buffer=io.BytesIO(''.join(json.dumps({'id':n,'text':'固定文','stream':True})+'\n' for n in [1,2]).encode()))
             module.main()
         finally:
-            module.frame,module.create_synthesizer,module.sys.stdin=old_frame,old_create,old_stdin
+            module.frame,module.create_synthesizer,module.sys.stdin,module.time.process_time=old_frame,old_create,old_stdin,old_cpu
         ready=next(n for n,e in enumerate(events) if e[0]=='frame' and e[1].get('type')=='ready')
         warm=[e for e in events[:ready] if e[0]=='frame' and e[1].get('type')=='warmup']
         self.assertEqual([e[1]['part'] for e in warm],[0,1])
         self.assertEqual(events[ready][1]['protocol'],3)
         self.assertEqual(events[ready][1]['engine'],'packed')
         self.assertEqual(events[ready][1]['warmupParts'],2)
+        self.assertEqual(events[ready][1]['warmupCpuMs'],275)
         self.assertEqual([e[1] for e in events[:ready] if e[0]=='synthesis'],[2,4])
         later=events[ready+1:]
         for n,e in enumerate(later):
@@ -66,6 +71,9 @@ class WorkerProtocol(unittest.TestCase):
                 self.assertEqual(later[n-1][0],'frame')
                 self.assertEqual(later[n-1][1]['stage'],'synthesis')
         self.assertTrue(all('text' not in e[1] for e in events if e[0]=='frame'))
+        for token in [1,2]:
+            metrics=[e[1]['synthesisCpuMs'] for e in later if e[0]=='frame' and e[1].get('id')==token and 'synthesisCpuMs' in e[1]]
+            self.assertEqual(metrics,[30,50,50])
 
 class RenderAdapters(unittest.TestCase):
     @staticmethod

@@ -179,3 +179,13 @@ test('feature diagnostics show the chosen synthesis mode and bounded frame count
   const failure=backupFailure(backupFault(null,'SYNTHESIS_TIMEOUT',info)),view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:{ok:false,measuredAt:1,parts:1,info,failure}}),body=view.embeds[0].toJSON().description;
   assert.match(body,/特徴量を共有して連続生成/);assert.match(body,/フレーム 12\/60/);assert.ok(body.length<4096);assert.ok(!body.includes('PRIVATE'));
 });
+
+test('diagnostics distinguish CPU execution from elapsed time without attributing the gap to host contention',()=>{
+  const r={ok:true,measuredAt:1,parts:4,audioMs:3573,warmupMs:32029,firstAudioMs:2810,synthesisMs:13452,encodingMs:6884,info:{protocol:3,threads:1,warmupCpuMs:1000,firstAudioCpuMs:100,synthesisCpuMs:2000},encoding:{backend:'worker-opusscript',warmupMs:6194,processMs:266,warmupCpuMs:200,processCpuMs:50}};
+  const body=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r}).embeds[0].toJSON().description;
+  assert.match(body,/モデル準備 \*\*32,029ms/);assert.match(body,/CPU実行：準備 \*\*1,000ms/);assert.match(body,/Opus CPU：初期化 \*\*200ms/);assert.match(body,/差だけでホストの混雑は断定できません/);assert.ok(body.length<4096);
+  assert.deepEqual(backupInfo({warmupCpuMs:-1,synthesisCpuMs:3600001,firstAudioCpuMs:'PRIVATE'}),{});
+});
+test('the real Opus measurement reports bounded CPU time separately from wall time',async()=>{
+  const r=await measureEncoding(wave(),new AbortController().signal);assert.ok(Number.isInteger(r.warmupCpuMs)&&r.warmupCpuMs>=0);assert.ok(Number.isInteger(r.processCpuMs)&&r.processCpuMs>=0);assert.ok(r.warmupMs>=0&&r.processMs>=0);
+});

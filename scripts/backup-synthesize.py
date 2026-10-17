@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import time
 from synthesize import create_synthesizer
 from backup_render import prepare_renderer
 
@@ -31,7 +32,7 @@ def main():
     if not 1<=threads<=4: raise ValueError('Invalid thread count')
     synth=create_synthesizer(threads)
     renderer,parts=warmup(synth)
-    frame({'type':'ready','protocol':3,'engine':renderer.mode,'threads':threads,'warmupParts':parts})
+    frame({'type':'ready','protocol':3,'engine':renderer.mode,'threads':threads,'warmupParts':parts,'warmupCpuMs':round(time.process_time()*1000)})
     while True:
         line=sys.stdin.buffer.readline(4097)
         if not line: return
@@ -41,6 +42,9 @@ def main():
         if not isinstance(token,int) or token<1: raise ValueError('Invalid request')
         text=request.get('text')
         if not isinstance(text,str) or not 1<=len(text)<=53: raise ValueError('Invalid length')
+        cpu_began=time.process_time()
+        def cpu_ms():
+            return max(0,round((time.process_time()-cpu_began)*1000))
         try:
             frame({'id':token,'type':'progress','stage':'query'})
             query=query_for(synth,text)
@@ -51,16 +55,16 @@ def main():
                     frame({'id':token,'type':'progress','stage':'synthesis','part':index,**data})
                 for _,wav in renderer.chunks(query,progress):
                     if len(wav)>4*1024*1024: raise ValueError('Audio too large')
-                    frame({'id':token,'part':index},wav)
+                    frame({'id':token,'part':index,'synthesisCpuMs':cpu_ms()},wav)
                     index+=1
-                frame({'id':token,'end':True})
+                frame({'id':token,'end':True,'synthesisCpuMs':cpu_ms()})
             else:
                 frame({'id':token,'type':'progress','stage':'synthesis','part':0})
                 wav=synth.synthesis(query,3)
                 if len(wav)>4*1024*1024: raise ValueError('Audio too large')
-                frame({'id':token},wav)
+                frame({'id':token,'synthesisCpuMs':cpu_ms()},wav)
         except Exception:
-            frame({'id':token,'error':True})
+            frame({'id':token,'error':True,'synthesisCpuMs':cpu_ms()})
         finally:
             # Do not keep the last post or its query/audio while waiting for the next input.
             text=query=wav=request=None

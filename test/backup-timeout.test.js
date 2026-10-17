@@ -9,9 +9,9 @@ function clock(){let now=0,id=0;const jobs=new Map();return {
   schedule(fn,ms){jobs.set(++id,{at:now+ms,fn});return id;},cancel:id=>jobs.delete(id),get count(){return jobs.size;},get now(){return now;},
   advance(ms){const until=now+ms;for(;;){const next=[...jobs].filter(([,j])=>j.at<=until).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;const [key,job]=next;jobs.delete(key);now=job.at;job.fn();}now=until;},
 };}
-async function fixture(t,modern=false){
+async function fixture(t,modern=false,metadata={}){
   const timer=clock(),child=new EventEmitter(),writes=[];child.stdin=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin.write=raw=>writes.push(JSON.parse(raw));child.kills=0;child.kill=()=>child.kills++;
-  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now,threadPlan:{configuredThreads:3,threads:1}});t.after(()=>worker.close());if(modern)child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame(modern?{type:'ready',protocol:modern===true?2:3,...(typeof modern==='string'?{engine:modern}:{}),threads:1,warmupParts:1}:{type:'ready'}));await worker.ready;
+  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now,threadPlan:{configuredThreads:3,threads:1}});t.after(()=>worker.close());if(modern)child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame(modern?{type:'ready',protocol:modern===true?2:3,...(typeof modern==='string'?{engine:modern}:{}),threads:1,warmupParts:1,...metadata}:{type:'ready'}));await worker.ready;
   return {worker,child,timer,writes,emit:(data,body)=>child.stdout.emit('data',frame({id:writes.at(-1).id,...data},body))};
 }
 test('stream progress can exceed the old total timeout, including a first WAV after 15 seconds',async t=>{
@@ -120,4 +120,24 @@ test('public packed fallback accepts bounded mora chunks with the same warmup an
 test('unknown feature engine cannot announce readiness even with a valid warmup',async()=>{
   const child=new EventEmitter();child.stdin=new EventEmitter();child.stdin.write=()=>{};child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
   const worker=createPersistentVoice({launch:()=>child}),rejected=assert.rejects(worker.ready,e=>e.code==='SYNTHESIS_PROTOCOL');child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame({type:'ready',protocol:3,engine:'PRIVATE_ENGINE',threads:1,warmupParts:1}));await rejected;worker.close();
+});
+
+test('native CPU counters stay separate from elapsed time and reset for every queued post',async t=>{
+  const f=await fixture(t,'features',{warmupCpuMs:200}),first=f.worker.stream('一番',undefined,()=>{});await tick();
+  f.emit({type:'progress',stage:'query'});f.emit(featureProgress(0,0,12,12));f.timer.advance(4000);f.emit({part:0,synthesisCpuMs:50},wave(12*2048));f.timer.advance(8000);f.emit({end:true,synthesisCpuMs:70});await first;
+  assert.equal(f.worker.diagnostics.warmupCpuMs,200);assert.equal(f.worker.diagnostics.firstAudioCpuMs,50);assert.equal(f.worker.diagnostics.synthesisCpuMs,70);
+  const second=f.worker.stream('二番',undefined,()=>{});await tick();assert.equal(f.worker.diagnostics.synthesisCpuMs,undefined);assert.equal(f.worker.diagnostics.firstAudioCpuMs,undefined);
+  f.emit(featureProgress(0,0,12,12));f.emit({part:0,synthesisCpuMs:10},wave(12*2048));f.emit({end:true,synthesisCpuMs:12});await second;
+  assert.equal(f.worker.diagnostics.synthesisCpuMs,12);assert.equal(f.worker.diagnostics.firstAudioCpuMs,10);assert.equal(f.timer.count,0);
+});
+test('CPU metadata is optional and missing final metadata cannot present a partial CPU total as complete',async t=>{
+  const f=await fixture(t,'features'),job=f.worker.stream('本文',undefined,()=>{});await tick();f.emit(featureProgress(0,0,12,12));f.emit({part:0,synthesisCpuMs:50},wave(12*2048));f.emit({end:true});await job;
+  assert.equal(f.worker.diagnostics.synthesisCpuMs,undefined);assert.equal(f.worker.diagnostics.firstAudioCpuMs,50);
+});
+test('invalid or regressing native CPU counters are rejected without changing WAV deadlines',async t=>{
+  for(const value of [-1,3600001,1.5,9]){
+    const f=await fixture(t,'features'),job=f.worker.stream('本文',undefined,()=>{});await tick();const rejected=assert.rejects(job,e=>e.code==='SYNTHESIS_PROTOCOL');
+    f.emit(featureProgress(0,0,12,12));f.emit({part:0,synthesisCpuMs:10},wave(12*2048));f.emit({end:true,synthesisCpuMs:value});await rejected;assert.equal(f.timer.count,0);
+  }
+  for(const value of [-1,3600001,1.5])await assert.rejects(fixture(t,'features',{warmupCpuMs:value}),e=>e.code==='SYNTHESIS_PROTOCOL');
 });

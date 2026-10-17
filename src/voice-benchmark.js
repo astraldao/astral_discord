@@ -10,7 +10,7 @@ export async function measureEncoding(wav,signal){
   try{
     await encoder.ready;signal.throwIfAborted();const prepared=performance.now(),encodeSignal=AbortSignal.any([signal,AbortSignal.timeout(5000)]);output=encoder.stream(source,encodeSignal);let packets=0;
     for await(const packet of output){encodeSignal.throwIfAborted();packets++;}if(!packets)throw new Error('No packets');
-    return {packets,audioMs:Math.round(pcm.length/192),warmupMs:Math.round(prepared-began),processMs:Math.round(performance.now()-prepared),backend:'worker-opusscript'};
+    return {packets,audioMs:Math.round(pcm.length/192),warmupMs:Math.round(prepared-began),processMs:Math.round(performance.now()-prepared),...encoder.diagnostics,backend:'worker-opusscript'};
   }finally{source.destroy();output?.destroy();encoder.close();}
 }
 const delta=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>=a?b-a:null;

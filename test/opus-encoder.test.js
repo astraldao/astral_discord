@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter,getEventListeners} from 'node:events';
 import {Readable,PassThrough} from 'node:stream';
+import {Worker} from 'node:worker_threads';
 import OpusScript from 'opusscript';
 import {createSpeechEncoder} from '../src/opus-encoder.js';
 import {voiceThreads} from '../src/voice-threads.js';
@@ -12,7 +13,7 @@ function fake({signal,respond}={}){
   const child=new EventEmitter(),timer=clock(),sent=[];let terminated=0;
   child.terminate=()=>terminated++;child.postMessage=value=>{sent.push(value);respond?.(value,child);};
   const codec=createSpeechEncoder({signal,launch:()=>child,schedule:timer.schedule,cancel:timer.cancel});
-  return {child,timer,sent,codec,get terminated(){return terminated;},ready(){child.emit('message',{type:'ready',warmupMs:1});}};
+  return {child,timer,sent,codec,get terminated(){return terminated;},ready(extra={}){child.emit('message',{type:'ready',warmupMs:1,...extra});}};
 }
 function pcm(frames){const b=Buffer.alloc(frames*4);for(let n=0;n<frames;n++){const value=Math.round(Math.sin(n*2*Math.PI*240/48000)*4000);b.writeInt16LE(value,n*4);b.writeInt16LE(value,n*4+2);}return b;}
 async function collect(stream){const packets=[];for await(const p of stream)packets.push(p);return packets;}
@@ -66,4 +67,27 @@ test('invalid PCM and concurrent streams fail without retaining an active worker
   for(const data of [Buffer.alloc(3),Buffer.alloc(8*1024*1024+4)]){
     const g=fake({respond:(request,child)=>queueMicrotask(()=>child.emit('message',{sequence:request.sequence,packets:[]}))});g.ready();await g.codec.ready;await assert.rejects(collect(g.codec.stream(Readable.from([data]))),e=>e.code==='ENCODING');assert.equal(g.terminated,1);
   }
+});
+
+test('Opus CPU totals use only worker thread counters, sum microseconds before rounding and reset per stream',async()=>{
+  let incomplete=false;
+  const f=fake({respond:(request,child)=>queueMicrotask(()=>child.emit('message',{sequence:request.sequence,packets:request.type==='chunk'?[Buffer.from([1,2,3])]:[],...(!incomplete||request.type!=='chunk'?{cpuUs:600}:{})}))});
+  f.ready({warmupCpuMs:30});try{
+    await f.codec.ready;await collect(f.codec.stream(Readable.from([pcm(960)])));assert.deepEqual(f.codec.diagnostics,{warmupCpuMs:30,processCpuMs:2});
+    await collect(f.codec.stream(Readable.from([pcm(960)])));assert.equal(f.codec.diagnostics.processCpuMs,2);
+    incomplete=true;await collect(f.codec.stream(Readable.from([pcm(960)])));assert.deepEqual(f.codec.diagnostics,{warmupCpuMs:30});
+  }finally{f.codec.close();}
+});
+test('malformed Opus CPU counters cannot cross the worker boundary as diagnostics',async()=>{
+  for(const value of [-1,3600001,1.5]){
+    const f=fake(),read=assert.rejects(f.codec.ready,e=>e.code==='ENCODING');f.ready({warmupCpuMs:value});await read;assert.equal(f.terminated,1);
+  }
+  for(const value of [-1,3600000001,1.5]){
+    const f=fake({respond:(request,child)=>queueMicrotask(()=>child.emit('message',{sequence:request.sequence,packets:[],cpuUs:value}))});f.ready();await f.codec.ready;await assert.rejects(collect(f.codec.stream(Readable.from([pcm(960)]))),e=>e.code==='ENCODING');assert.equal(f.terminated,1);
+  }
+});
+
+test('an unavailable thread CPU counter never prevents real Opus audio from being encoded',async()=>{
+  const codec=createSpeechEncoder({launch:()=>new Worker(new URL('./fixtures/opus-worker-no-cpu.js',import.meta.url),{env:{},stdout:true,stderr:true})});
+  try{await codec.ready;const packets=await collect(codec.stream(Readable.from([pcm(960)])));assert.equal(packets.length,1);assert.deepEqual(codec.diagnostics,{});}finally{codec.close();}
 });

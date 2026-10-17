@@ -19,7 +19,7 @@ export function backupInfo(value){
   const info={};if(!value||typeof value!=='object')return info;
   if(['features','packed'].includes(value.engine))info.engine=value.engine;
   if(['warmup','waiting','query','synthesis','transfer','unknown'].includes(value.stage))info.stage=value.stage;
-  for(const [key,max] of [['parts',256],['activePart',256],['moras',12],['elapsedMs',3600000],['idleMs',3600000],['threads',4],['configuredThreads',4],['protocol',3],['frameStart',3750],['frameEnd',3750],['framesTotal',3750],['framesDone',3750],['warmupParts',256]])if(Number.isInteger(value[key])&&value[key]>=0&&value[key]<=max)info[key]=value[key];
+  for(const [key,max] of [['parts',256],['activePart',256],['moras',12],['elapsedMs',3600000],['idleMs',3600000],['warmupCpuMs',3600000],['synthesisCpuMs',3600000],['firstAudioCpuMs',3600000],['threads',4],['configuredThreads',4],['protocol',3],['frameStart',3750],['frameEnd',3750],['framesTotal',3750],['framesDone',3750],['warmupParts',256]])if(Number.isInteger(value[key])&&value[key]>=0&&value[key]<=max)info[key]=value[key];
   return info;
 }
 export function backupFault(error,code,info){const fault=error instanceof BackupFault?error:new BackupFault(Object.hasOwn(messages,code)?code:'PLAYBACK');if(info)fault.info={...backupInfo(info),...backupInfo(fault.info)};return fault;}

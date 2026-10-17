@@ -12,8 +12,8 @@ export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthes
   const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});
   ready.catch(()=>{});
   const startupBegan=now(),startup=schedule(()=>fail(backupFault(null,'SYNTHESIS_WARMUP_TIMEOUT',snapshot())),startupTimeout);
-  function finish(job){cancel(job.timer);cancel(job.limit);job.signal?.removeEventListener('abort',job.abort);pending=null;}
-  const snapshot=job=>({...runtime,...(job?{stage:job.stage,parts:job.part,activePart:job.activePart,moras:job.moras,frameStart:job.frameStart,frameEnd:job.frameEnd,framesTotal:job.framesTotal,framesDone:job.nextFrame,elapsedMs:Math.round(now()-job.began),idleMs:Math.round(now()-job.lastAudio)}:readySeen?{}:{stage:'warmup',warmupParts,elapsedMs:Math.round(now()-startupBegan)})});
+  function finish(job){cancel(job.timer);cancel(job.limit);job.signal?.removeEventListener('abort',job.abort);for(const key of ['synthesisCpuMs','firstAudioCpuMs'])if(job[key]!==undefined)runtime[key]=job[key];pending=null;}
+  const snapshot=job=>({...runtime,...(job?{stage:job.stage,parts:job.part,activePart:job.activePart,moras:job.moras,frameStart:job.frameStart,frameEnd:job.frameEnd,framesTotal:job.framesTotal,framesDone:job.nextFrame,synthesisCpuMs:job.synthesisCpuMs,firstAudioCpuMs:job.firstAudioCpuMs,elapsedMs:Math.round(now()-job.began),idleMs:Math.round(now()-job.lastAudio)}:readySeen?{}:{stage:'warmup',warmupParts,elapsedMs:Math.round(now()-startupBegan)})});
   function wait(job,timeout,code){cancel(job.timer);job.timer=schedule(()=>fail(backupFault(null,code,snapshot(job))),timeout);}
   function fail(error){if(closed)return;closed=true;failure=error;cancel(startup);readyReject(error);if(pending){const job=pending;finish(job);job.reject(error);}child.kill('SIGKILL');}
   child.on('error',()=>fail(new Error('バックアップ音声を起動できません。')));
@@ -35,10 +35,15 @@ export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthes
           if(readySeen||data.bytes!==0||pending)throw new Error();
           if(data.protocol===2||data.protocol===3){if(data.protocol===3&&!['features','packed'].includes(data.engine))throw new Error();if(!warmupParts||data.warmupParts!==warmupParts||!Number.isInteger(data.threads)||data.threads<1||data.threads>4)throw new Error();runtime={protocol:data.protocol,...(data.protocol===3?{engine:data.engine}:{}),threads:data.threads,configuredThreads:threadPlan.configuredThreads,warmupParts};}
           else {if(warmupParts||data.protocol!==undefined&&data.protocol!==1)throw new Error();runtime={protocol:1};}
+          if(data.warmupCpuMs!==undefined){if(!Number.isInteger(data.warmupCpuMs)||data.warmupCpuMs<0||data.warmupCpuMs>3600000)throw new Error();runtime.warmupCpuMs=data.warmupCpuMs;}
           readySeen=true;cancel(startup);readyResolve();continue;
         }
         if(!pending||pending.id!==data.id)throw new Error();
         const job=pending;
+        if(data.type!=='progress'){
+          if(data.synthesisCpuMs!==undefined){if(!Number.isInteger(data.synthesisCpuMs)||data.synthesisCpuMs<(job.lastCpuMs??0)||data.synthesisCpuMs>3600000)throw new Error();job.lastCpuMs=data.synthesisCpuMs;}
+          job.synthesisCpuMs=data.synthesisCpuMs;
+        }
         if(data.type==='progress'){
           if(![2,3].includes(runtime.protocol)||data.bytes!==0)throw new Error();
           if(data.stage==='query'){if(job.part||job.stage!=='waiting')throw new Error();job.stage='query';}
@@ -56,7 +61,7 @@ export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthes
         if(job.onChunk){
           if(data.end){if(data.bytes!==0||runtime.protocol===3&&(job.stage==='synthesis'||job.framesTotal!==undefined&&job.nextFrame!==job.framesTotal))throw new Error();finish(job);job.resolve();continue;}
           if(data.part!==job.part)throw new Error();job.bytes+=wav.length;if(job.bytes>8*1024*1024)throw new Error();
-          const pcm=wavPcm(wav);if(runtime.engine==='features'){if(job.frameStart===undefined||pcm.length!==(job.frameEnd-job.frameStart)*2048)throw new Error();job.nextFrame=job.frameEnd;}job.part++;job.onChunk(wav);
+          const pcm=wavPcm(wav);if(runtime.engine==='features'){if(job.frameStart===undefined||pcm.length!==(job.frameEnd-job.frameStart)*2048)throw new Error();job.nextFrame=job.frameEnd;}if(!job.part&&job.synthesisCpuMs!==undefined)job.firstAudioCpuMs=job.synthesisCpuMs;job.part++;job.onChunk(wav);
           // Only a complete, valid WAV is progress. Partial bytes cannot extend the wait.
           if(pending===job&&!closed){job.lastAudio=now();job.stage=runtime.protocol>=2?'waiting':'unknown';delete job.activePart;delete job.moras;delete job.frameStart;delete job.frameEnd;wait(job,synthesisTimeout,'SYNTHESIS_TIMEOUT');}continue;
         }
@@ -69,7 +74,7 @@ export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthes
     const job=tail.then(async()=>{await ready;signal?.throwIfAborted();if(closed)throw failure;
       if(!Array.from(text).length||Array.from(text).length>53)throw new Error('音声の文字数が不正です。');
       return new Promise((resolve,reject)=>{
-        const id=++serial,began=now(),job={id,resolve,reject,onChunk,part:0,bytes:0,signal,began,lastAudio:began,stage:runtime.protocol>=2?'waiting':'unknown',abort:()=>fail(signal.reason??new Error('読み上げを停止しました。'))};pending=job;
+        const id=++serial,began=now(),job={id,resolve,reject,onChunk,part:0,bytes:0,signal,began,lastAudio:began,stage:runtime.protocol>=2?'waiting':'unknown',abort:()=>fail(signal.reason??new Error('読み上げを停止しました。'))};delete runtime.synthesisCpuMs;delete runtime.firstAudioCpuMs;pending=job;
         wait(job,firstAudioTimeout,'SYNTHESIS_START_TIMEOUT');job.limit=schedule(()=>fail(backupFault(null,'SYNTHESIS_LIMIT',snapshot(job))),maxSynthesisTime);
         signal?.addEventListener('abort',job.abort,{once:true});
         try{child.stdin.write(JSON.stringify({id,text,stream:!!onChunk})+'\n');}catch{fail(backupFault(null,'SYNTHESIS_EXIT',snapshot(job)));}

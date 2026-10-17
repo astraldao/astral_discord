@@ -14,6 +14,11 @@ export function benchmarkScreen(s,state){
   const engine=r?.info?.engine??r?.failure?.info?.engine;if(engine)body+=`\n合成方式：${engine==='features'?'特徴量を共有して連続生成':'短い句をまとめて生成'}`;
   if(r?.encoding?.backend==='worker-opusscript')body+=`\nOpus内訳：初期化 **${ms(r.encoding.warmupMs)}** · 変換 **${ms(r.encoding.processMs)}**\n読み上げでは接続時に初期化し、同じVC接続中は変換環境を再利用します。`;
   if(r?.cancelled)body+=`\n\n中断時の経過 **${ms(r.elapsedMs)}**${r.info?.stage?` · ${stages[r.info.stage]??'未確認'}`:''}\n受信 ${r.parts??0}片${r.info?.activePart!==undefined?` · 処理中 ${r.info.activePart+1}片目`:''}\n中断元はコンソールの「速度測定の操作」で確認できます。`;
+  const cpu={...r?.failure?.info,...r?.info},hasCpu=['warmupCpuMs','firstAudioCpuMs','synthesisCpuMs'].some(key=>Number.isFinite(cpu[key]));
+  if(hasCpu)body+=`\n\nCPU実行：準備 **${ms(cpu.warmupCpuMs)}** · 先頭 **${ms(cpu.firstAudioCpuMs)}** · 合成 **${ms(cpu.synthesisCpuMs)}**`;
+  const hasOpusCpu=Number.isFinite(r?.encoding?.warmupCpuMs)||Number.isFinite(r?.encoding?.processCpuMs);
+  if(hasOpusCpu)body+=`\nOpus CPU：初期化 **${ms(r.encoding.warmupCpuMs)}** · 変換 **${ms(r.encoding.processCpuMs)}**`;
+  if(hasCpu||hasOpusCpu)body+='\nCPU実行は処理に使ったCPU時間です。経過との差には実行待ち・入出力等を含みます。差だけでホストの混雑は断定できません。合成は全スレッドの合計なので、経過時間を超える場合があります。';
   if(confirm)body+='\n\n**測定は続いています。中断しますか？**\n中断する場合は「中断を確定」を押してください。確認は30秒間有効です。';
   if(r?.failure)body+=`\n\n${backupFailureSummary(r.failure)}`;
   if(r?.ok&&r.realTimeFactor>=1)body+='\n\n合成が音声の長さより遅いため、連続投稿では順番待ちが増える可能性があります。この結果は測定時の負荷を含みます。読み上げでは接続時の準備と、投稿後の開始待ちを分けて確認できます。';

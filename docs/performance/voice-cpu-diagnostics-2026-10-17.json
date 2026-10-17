@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-17",
+  "scope": "Development environment, complete Node process pinned to one logical CPU, native threads limited to 1. Real VOICEVOX Core 0.17.0 and real Opus worker. Two fixed-text diagnostics: normal, then native process paused once with SIGSTOP/SIGCONT for 1000ms just before the synthesis request. This controlled pause verifies CPU accounting excludes non-execution time; it does not reproduce or diagnose the production host. No Discord/VC, production contention, or 589MiB cap reproduced. Numeric counters only; no user text/audio retained.",
+  "node": "v24.19.0",
+  "samples": [
+    {
+      "injectedNativePauseMs": 0,
+      "pauses": 0,
+      "result": {
+        "measuredAt": 1792225736959,
+        "ok": true,
+        "warmupMs": 2133,
+        "firstAudioMs": 316,
+        "synthesisMs": 3076,
+        "audioMs": 3573,
+        "parts": 4,
+        "maxGapMs": 1480,
+        "encodingMs": 68,
+        "before": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 289128448,
+          "cpuUsageUsec": 563578105,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 47214,
+          "cpuThrottledPeriods": 36
+        },
+        "realTimeFactor": 0.86,
+        "info": {
+          "engine": "features",
+          "warmupCpuMs": 2127,
+          "synthesisCpuMs": 3068,
+          "firstAudioCpuMs": 309,
+          "threads": 1,
+          "configuredThreads": 3,
+          "protocol": 3,
+          "warmupParts": 3
+        },
+        "encoding": {
+          "packets": 7,
+          "audioMs": 128,
+          "warmupMs": 49,
+          "processMs": 11,
+          "warmupCpuMs": 36,
+          "processCpuMs": 3,
+          "backend": "worker-opusscript"
+        },
+        "elapsedMs": 5284,
+        "after": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 460800000,
+          "cpuUsageUsec": 568912709,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 47267,
+          "cpuThrottledPeriods": 36
+        },
+        "throttledMs": 0,
+        "throttledPercent": 0
+      }
+    },
+    {
+      "injectedNativePauseMs": 1000,
+      "pauses": 1,
+      "result": {
+        "measuredAt": 1792225742245,
+        "ok": true,
+        "warmupMs": 1792,
+        "firstAudioMs": 1287,
+        "synthesisMs": 4082,
+        "audioMs": 3573,
+        "parts": 4,
+        "maxGapMs": 1496,
+        "encodingMs": 55,
+        "before": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 302899200,
+          "cpuUsageUsec": 568917612,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 47267,
+          "cpuThrottledPeriods": 36
+        },
+        "realTimeFactor": 1.14,
+        "info": {
+          "engine": "features",
+          "warmupCpuMs": 1789,
+          "synthesisCpuMs": 3076,
+          "firstAudioCpuMs": 284,
+          "threads": 1,
+          "configuredThreads": 3,
+          "protocol": 3,
+          "warmupParts": 3
+        },
+        "encoding": {
+          "packets": 7,
+          "audioMs": 128,
+          "warmupMs": 45,
+          "processMs": 9,
+          "warmupCpuMs": 32,
+          "processCpuMs": 3,
+          "backend": "worker-opusscript"
+        },
+        "elapsedMs": 5933,
+        "after": {
+          "arch": "x64",
+          "logicalCores": 1,
+          "cpuLimitCores": 2,
+          "cpuQuotaKnown": true,
+          "effectiveCores": 1,
+          "memoryLimitBytes": 8589934592,
+          "memoryQuotaKnown": true,
+          "memoryUsedBytes": 466567168,
+          "cpuUsageUsec": 573850635,
+          "cpuThrottledUsec": 142722,
+          "cpuPeriods": 47317,
+          "cpuThrottledPeriods": 36
+        },
+        "throttledMs": 0,
+        "throttledPercent": 0
+      }
+    }
+  ],
+  "latestUserScreenshot": {
+    "source": "User supplied production diagnostic screenshot after v3.38.0; load is not controlled or paired with the earlier screenshot. CPU execution time was not yet measured.",
+    "protocol": 3,
+    "engine": "features",
+    "threads": 1,
+    "configuredThreads": 3,
+    "cpuCores": 1,
+    "memoryMiB": 284,
+    "memoryLimitMiB": 589,
+    "warmupMs": 32029,
+    "firstAudioMs": 2810,
+    "synthesisMs": 13452,
+    "audioMs": 3573,
+    "parts": 4,
+    "maxGapMs": 5943,
+    "encodingMs": 6884,
+    "encodingWarmupMs": 6194,
+    "encodingProcessMs": 266,
+    "realTimeFactor": 3.76,
+    "throttledPercent": 13,
+    "throttledMs": 2095
+  }
+}
