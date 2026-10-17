@@ -17,8 +17,9 @@ const messages={
 class BackupFault extends Error{constructor(code){super(messages[code]);this.name='BackupFault';this.code=code;}}
 export function backupInfo(value){
   const info={};if(!value||typeof value!=='object')return info;
+  if(['features','packed'].includes(value.engine))info.engine=value.engine;
   if(['warmup','waiting','query','synthesis','transfer','unknown'].includes(value.stage))info.stage=value.stage;
-  for(const [key,max] of [['parts',256],['activePart',256],['moras',12],['elapsedMs',3600000],['idleMs',3600000],['threads',4],['configuredThreads',4],['protocol',2],['warmupParts',256]])if(Number.isInteger(value[key])&&value[key]>=0&&value[key]<=max)info[key]=value[key];
+  for(const [key,max] of [['parts',256],['activePart',256],['moras',12],['elapsedMs',3600000],['idleMs',3600000],['threads',4],['configuredThreads',4],['protocol',3],['frameStart',3750],['frameEnd',3750],['framesTotal',3750],['framesDone',3750],['warmupParts',256]])if(Number.isInteger(value[key])&&value[key]>=0&&value[key]<=max)info[key]=value[key];
   return info;
 }
 export function backupFault(error,code,info){const fault=error instanceof BackupFault?error:new BackupFault(Object.hasOwn(messages,code)?code:'PLAYBACK');if(info)fault.info={...backupInfo(info),...backupInfo(fault.info)};return fault;}
@@ -26,5 +27,5 @@ export const backupFailure=error=>{const fault=backupFault(error,'PLAYBACK');ret
 export const safeBackupFailure=value=>value&&Object.hasOwn(messages,value.code)?backupFailure(backupFault(null,value.code,value.info)):null;
 export function backupFailureSummary(failure){
   const info=backupInfo(failure.info),stage={warmup:'音声モデル準備',waiting:'音声待ち',query:'文章解析',synthesis:'分割合成',transfer:'音声受信',unknown:'旧音声プロトコル'}[info.stage];
-  return `**停止理由 · ${failure.code}**\n${failure.message}${stage?`\n処理：${stage} · 音声受信 ${info.parts??info.warmupParts??0}片${info.activePart!==undefined?` · 対象 ${info.activePart+1}片目`:''}${info.threads?` · ${info.threads}スレッド`:''}\n経過 ${info.elapsedMs??0}ms${info.idleMs!==undefined?` · 最終音声から ${info.idleMs}ms`:''}`:''}`;
+  return `**停止理由 · ${failure.code}**\n${failure.message}${stage?`\n処理：${stage} · 音声受信 ${info.parts??info.warmupParts??0}片${info.activePart!==undefined?` · 対象 ${info.activePart+1}片目`:''}${info.threads?` · ${info.threads}スレッド`:''}${info.framesTotal!==undefined?` · フレーム ${info.framesDone??0}/${info.framesTotal}`:''}\n経過 ${info.elapsedMs??0}ms${info.idleMs!==undefined?` · 最終音声から ${info.idleMs}ms`:''}`:''}`;
 }

@@ -1,0 +1,365 @@
+{
+  "date": "2026-10-17",
+  "scope": "Development host, one logical CPU affinity (taskset -c 0), VOICEVOX Core 0.17.0, native threads=1, OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1. Three fixed synthetic phrases, two passes with reversed mode order, after per-mode fixed warmup. No Discord/VC/network, production sharing or 589MiB memory limit reproduced. No user text or audio retained. First means a complete WAV received by Python, not audible playback.",
+  "baselineCommit": "25211f1bab02f2ada556b4add049152af1e38f4f",
+  "baselineAlgorithm": "v3.37.1 segment_queries (2,3,6,12 moras, accent phrase boundaries), frozen from that commit. Same native instance, text, query settings and thread count as candidates.",
+  "candidateAlgorithm": "PackedRenderer and FeatureRenderer from scripts/backup_render.py. Feature windows 12,48,192 frames (native 93.75Hz), shrink later windows when previous render indicates a call may exceed 10s. 15s hard WAV-gap deadline unchanged.",
+  "selection": "Feature sharing prioritizes first audio and full-query pronunciation. Public packed fallback has slightly lower total time on these samples but a slower first WAV. Features retain query post-silence, approximately 21ms more audio than the baseline.",
+  "phraseDefinitions": [
+    "benchmarkText from src/voice-benchmark.js",
+    "next session at 8pm, 23 Japanese characters",
+    "53-character synthetic backup length-limit phrase including 以下略"
+  ],
+  "summaryByPhrase": [
+    {
+      "phrase": 0,
+      "modes": {
+        "legacy": {
+          "firstMs": 384.5,
+          "totalMs": 3536.0,
+          "audioMs": 3552.0,
+          "parts": 7.0,
+          "maxGapMs": 707.5
+        },
+        "packed": {
+          "firstMs": 381.0,
+          "totalMs": 2791.5,
+          "audioMs": 3552.0,
+          "parts": 3.0,
+          "maxGapMs": 1399.0
+        },
+        "features": {
+          "firstMs": 279.0,
+          "totalMs": 2979.0,
+          "audioMs": 3573.0,
+          "parts": 4.0,
+          "maxGapMs": 1468.0
+        }
+      }
+    },
+    {
+      "phrase": 1,
+      "modes": {
+        "legacy": {
+          "firstMs": 391.0,
+          "totalMs": 3580.5,
+          "audioMs": 3264.0,
+          "parts": 8.0,
+          "maxGapMs": 646.0
+        },
+        "packed": {
+          "firstMs": 386.0,
+          "totalMs": 2621.5,
+          "audioMs": 3264.0,
+          "parts": 3.0,
+          "maxGapMs": 1158.0
+        },
+        "features": {
+          "firstMs": 297.0,
+          "totalMs": 2831.0,
+          "audioMs": 3285.0,
+          "parts": 4.0,
+          "maxGapMs": 1467.5
+        }
+      }
+    },
+    {
+      "phrase": 2,
+      "modes": {
+        "legacy": {
+          "firstMs": 381.5,
+          "totalMs": 6970.5,
+          "audioMs": 6859.0,
+          "parts": 14.0,
+          "maxGapMs": 1111.5
+        },
+        "packed": {
+          "firstMs": 386.0,
+          "totalMs": 5467.5,
+          "audioMs": 6859.0,
+          "parts": 6.0,
+          "maxGapMs": 1336.0
+        },
+        "features": {
+          "firstMs": 304.5,
+          "totalMs": 5591.0,
+          "audioMs": 6880.0,
+          "parts": 6.0,
+          "maxGapMs": 1529.0
+        }
+      }
+    }
+  ],
+  "samples": [
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "legacy",
+      "firstMs": 387,
+      "totalMs": 3550,
+      "audioMs": 3552,
+      "parts": 7,
+      "maxGapMs": 711
+    },
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "packed",
+      "firstMs": 381,
+      "totalMs": 2790,
+      "audioMs": 3552,
+      "parts": 3,
+      "maxGapMs": 1400
+    },
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "features",
+      "firstMs": 277,
+      "totalMs": 2965,
+      "audioMs": 3573,
+      "parts": 4,
+      "maxGapMs": 1462
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "legacy",
+      "firstMs": 387,
+      "totalMs": 3529,
+      "audioMs": 3264,
+      "parts": 8,
+      "maxGapMs": 612
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "packed",
+      "firstMs": 386,
+      "totalMs": 2613,
+      "audioMs": 3264,
+      "parts": 3,
+      "maxGapMs": 1146
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "features",
+      "firstMs": 319,
+      "totalMs": 2851,
+      "audioMs": 3285,
+      "parts": 4,
+      "maxGapMs": 1466
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "legacy",
+      "firstMs": 380,
+      "totalMs": 6981,
+      "audioMs": 6859,
+      "parts": 14,
+      "maxGapMs": 1108
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "packed",
+      "firstMs": 383,
+      "totalMs": 5446,
+      "audioMs": 6859,
+      "parts": 6,
+      "maxGapMs": 1335
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "features",
+      "firstMs": 293,
+      "totalMs": 5514,
+      "audioMs": 6880,
+      "parts": 6,
+      "maxGapMs": 1510
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "features",
+      "firstMs": 281,
+      "totalMs": 2993,
+      "audioMs": 3573,
+      "parts": 4,
+      "maxGapMs": 1474
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "packed",
+      "firstMs": 381,
+      "totalMs": 2793,
+      "audioMs": 3552,
+      "parts": 3,
+      "maxGapMs": 1398
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "legacy",
+      "firstMs": 382,
+      "totalMs": 3522,
+      "audioMs": 3552,
+      "parts": 7,
+      "maxGapMs": 704
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "features",
+      "firstMs": 275,
+      "totalMs": 2811,
+      "audioMs": 3285,
+      "parts": 4,
+      "maxGapMs": 1469
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "packed",
+      "firstMs": 386,
+      "totalMs": 2630,
+      "audioMs": 3264,
+      "parts": 3,
+      "maxGapMs": 1170
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "legacy",
+      "firstMs": 395,
+      "totalMs": 3632,
+      "audioMs": 3264,
+      "parts": 8,
+      "maxGapMs": 680
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "features",
+      "firstMs": 316,
+      "totalMs": 5668,
+      "audioMs": 6880,
+      "parts": 6,
+      "maxGapMs": 1548
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "packed",
+      "firstMs": 389,
+      "totalMs": 5489,
+      "audioMs": 6859,
+      "parts": 6,
+      "maxGapMs": 1337
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "legacy",
+      "firstMs": 383,
+      "totalMs": 6960,
+      "audioMs": 6859,
+      "parts": 14,
+      "maxGapMs": 1115
+    }
+  ],
+  "pcmEquivalence": {
+    "reference": "Public Synthesizer.synthesis using the same complete AudioQuery, before volume/fades/Opus. Concatenation of candidate WAV PCM. Exact byte lengths match; differences are in integer PCM sample values. No dropped/repeated frames in these three samples.",
+    "measurements": [
+      {
+        "equivalence": true,
+        "phrase": 0,
+        "pcmBytes": 686080,
+        "samples": 343040,
+        "maxSampleDifference": 1,
+        "rmsSampleDifference": 0.006829479558851913,
+        "changedSamples": 16
+      },
+      {
+        "equivalence": true,
+        "phrase": 1,
+        "pcmBytes": 630784,
+        "samples": 315392,
+        "maxSampleDifference": 1,
+        "rmsSampleDifference": 0.003561268014363686,
+        "changedSamples": 4
+      },
+      {
+        "equivalence": true,
+        "phrase": 2,
+        "pcmBytes": 1320960,
+        "samples": 660480,
+        "maxSampleDifference": 1,
+        "rmsSampleDifference": 0.0065110222586559465,
+        "changedSamples": 28
+      }
+    ]
+  },
+  "realNodeDiagnostic": {
+    "measuredAt": 1792224304734,
+    "ok": true,
+    "warmupMs": 1824,
+    "firstAudioMs": 287,
+    "synthesisMs": 3061,
+    "audioMs": 3573,
+    "parts": 4,
+    "maxGapMs": 1500,
+    "encodingMs": 76,
+    "before": {
+      "arch": "x64",
+      "logicalCores": 1,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 1,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 286588928,
+      "cpuUsageUsec": 417526884,
+      "cpuThrottledUsec": 118646,
+      "cpuPeriods": 43844,
+      "cpuThrottledPeriods": 34
+    },
+    "realTimeFactor": 0.86,
+    "info": {
+      "engine": "features",
+      "threads": 1,
+      "configuredThreads": 3,
+      "protocol": 3,
+      "warmupParts": 3
+    },
+    "encoding": {
+      "packets": 7,
+      "audioMs": 128,
+      "warmupMs": 56,
+      "processMs": 11,
+      "backend": "worker-opusscript"
+    },
+    "elapsedMs": 4968,
+    "after": {
+      "arch": "x64",
+      "logicalCores": 1,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 1,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 462204928,
+      "cpuUsageUsec": 422492997,
+      "cpuThrottledUsec": 118646,
+      "cpuPeriods": 43894,
+      "cpuThrottledPeriods": 34
+    },
+    "throttledMs": 0,
+    "throttledPercent": 0
+  },
+  "limitations": "Small local sample; not a 300ms guarantee, production latency measurement, perceptual listening test or memory peak measurement. Hidden Core API has no upstream compatibility guarantee; guarded by exact version, capabilities and fixed-WAV warmup, otherwise public API fallback."
+}

@@ -172,3 +172,10 @@ test('a 46-second preparation and repeated expired refreshes cannot cancel the a
   for(let n=0;n<4;n++)await c.handle(interaction(`perf:${s.id}:${s.turn}:status`,{createdTimestamp:time-4000,async deferUpdate(){throw Object.assign(new Error('Expired'),{code:10062});},async reply(){assert.fail('do not retry');}}));
   assert.equal(probe.busy,true);assert.deepEqual(audit,[]);assert.equal(reports.filter(r=>r.stage==='ack'&&r.code===10062).length,4);ready.resolve();await task;assert.equal(probe.snapshot().result.ok,true);assert.notEqual(probe.snapshot().result.cancelled,true);assert.equal(probe.snapshot().result.warmupMs,46173);assert.ok(JSON.stringify(start.result).includes('測定が完了'));probe.close();
 });
+
+test('feature diagnostics show the chosen synthesis mode and bounded frame counts without arbitrary native fields',()=>{
+  const info=backupInfo({engine:'features',protocol:3,threads:1,stage:'synthesis',framesDone:12,framesTotal:60,frameStart:12,frameEnd:60,text:'PRIVATE',feature:'PRIVATE'});
+  assert.equal(info.protocol,3);assert.equal(info.framesTotal,60);assert.ok(!JSON.stringify(info).includes('PRIVATE'));assert.deepEqual(backupInfo({engine:'PRIVATE',framesTotal:3751,frameEnd:-1}),{});
+  const failure=backupFailure(backupFault(null,'SYNTHESIS_TIMEOUT',info)),view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:{ok:false,measuredAt:1,parts:1,info,failure}}),body=view.embeds[0].toJSON().description;
+  assert.match(body,/特徴量を共有して連続生成/);assert.match(body,/フレーム 12\/60/);assert.ok(body.length<4096);assert.ok(!body.includes('PRIVATE'));
+});

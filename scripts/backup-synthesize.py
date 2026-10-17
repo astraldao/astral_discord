@@ -1,9 +1,9 @@
 """Warm local VOICEVOX worker. Bounded JSON lines in, framed WAV out; no text logs."""
 import json
-import copy
 import os
 import sys
 from synthesize import create_synthesizer
+from backup_render import prepare_renderer
 
 def frame(data, wav=b''):
     sys.stdout.buffer.write(json.dumps({**data,'bytes':len(wav)}).encode()+b'\n'+wav)
@@ -20,41 +20,18 @@ def query_for(synth, text):
     query.output_stereo=True
     return query
 
-def segment_queries(query):
-    index=0
-    for phrase in query.accent_phrases:
-        offset=0
-        while offset<len(phrase.moras):
-            length=2 if index==0 else 3 if index==1 else 6 if index==2 else 12
-            piece=copy.deepcopy(phrase)
-            piece.moras=piece.moras[offset:offset+length]
-            piece.accent=max(1,min(len(piece.moras),phrase.accent-offset))
-            last=offset+length>=len(phrase.moras)
-            if not last: piece.pause_mora=None;piece.is_interrogative=False
-            part=copy.deepcopy(query)
-            part.accent_phrases=[piece]
-            part.pre_phoneme_length=0.02 if index==0 else 0
-            part.post_phoneme_length=0
-            yield part
-            index+=1;offset+=length
-
 def warmup(synth):
-    # Exercise the same split-query path as reading, not just a full-sentence query.
-    count=0
-    for index,part in enumerate(segment_queries(query_for(synth,'テストなのだ'))):
-        wav=synth.synthesis(part,3)
-        if not 0<len(wav)<=4*1024*1024: raise ValueError('Invalid warmup audio')
+    renderer, chunks = prepare_renderer(synth, query_for(synth,'テストなのだ'))
+    for index,(_,wav) in enumerate(chunks):
         frame({'type':'warmup','part':index},wav)
-        count+=1
-    if not count: raise ValueError('No warmup audio')
-    return count
+    return renderer,len(chunks)
 
 def main():
     threads=int(os.environ.get('VOICEVOX_BACKUP_THREADS','2'))
     if not 1<=threads<=4: raise ValueError('Invalid thread count')
     synth=create_synthesizer(threads)
-    parts=warmup(synth)
-    frame({'type':'ready','protocol':2,'threads':threads,'warmupParts':parts})
+    renderer,parts=warmup(synth)
+    frame({'type':'ready','protocol':3,'engine':renderer.mode,'threads':threads,'warmupParts':parts})
     while True:
         line=sys.stdin.buffer.readline(4097)
         if not line: return
@@ -68,11 +45,14 @@ def main():
             frame({'id':token,'type':'progress','stage':'query'})
             query=query_for(synth,text)
             if request.get('stream'):
-                for index,part in enumerate(segment_queries(query)):
-                    frame({'id':token,'type':'progress','stage':'synthesis','part':index,'moras':len(part.accent_phrases[0].moras)})
-                    wav=synth.synthesis(part,3)
+                # Request progress is announced before each native call.
+                index=0
+                def progress(data):
+                    frame({'id':token,'type':'progress','stage':'synthesis','part':index,**data})
+                for _,wav in renderer.chunks(query,progress):
                     if len(wav)>4*1024*1024: raise ValueError('Audio too large')
                     frame({'id':token,'part':index},wav)
+                    index+=1
                 frame({'id':token,'end':True})
             else:
                 frame({'id':token,'type':'progress','stage':'synthesis','part':0})
@@ -81,6 +61,10 @@ def main():
                 frame({'id':token},wav)
         except Exception:
             frame({'id':token,'error':True})
+        finally:
+            # Do not keep the last post or its query/audio while waiting for the next input.
+            text=query=wav=request=None
+            line=b''
 
 if __name__=='__main__':
     try: main()

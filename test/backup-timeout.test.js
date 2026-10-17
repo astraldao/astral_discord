@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createPersistentVoice} from '../src/persistent-voice.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-function wave(){const b=Buffer.alloc(44+3840);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(2,22);b.writeUInt32LE(48000,24);b.writeUInt32LE(192000,28);b.writeUInt16LE(4,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(3840,40);return b;}
+function wave(bytes=3840){const b=Buffer.alloc(44+bytes);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(2,22);b.writeUInt32LE(48000,24);b.writeUInt32LE(192000,28);b.writeUInt16LE(4,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(bytes,40);return b;}
 const frame=(data,body=Buffer.alloc(0))=>Buffer.concat([Buffer.from(JSON.stringify({...data,bytes:body.length})+'\n'),body]);
 function clock(){let now=0,id=0;const jobs=new Map();return {
   schedule(fn,ms){jobs.set(++id,{at:now+ms,fn});return id;},cancel:id=>jobs.delete(id),get count(){return jobs.size;},get now(){return now;},
@@ -11,7 +11,7 @@ function clock(){let now=0,id=0;const jobs=new Map();return {
 };}
 async function fixture(t,modern=false){
   const timer=clock(),child=new EventEmitter(),writes=[];child.stdin=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin.write=raw=>writes.push(JSON.parse(raw));child.kills=0;child.kill=()=>child.kills++;
-  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now,threadPlan:{configuredThreads:3,threads:1}});t.after(()=>worker.close());if(modern)child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame(modern?{type:'ready',protocol:2,threads:1,warmupParts:1}:{type:'ready'}));await worker.ready;
+  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now,threadPlan:{configuredThreads:3,threads:1}});t.after(()=>worker.close());if(modern)child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame(modern?{type:'ready',protocol:modern===true?2:3,...(typeof modern==='string'?{engine:modern}:{}),threads:1,warmupParts:1}:{type:'ready'}));await worker.ready;
   return {worker,child,timer,writes,emit:(data,body)=>child.stdout.emit('data',frame({id:writes.at(-1).id,...data},body))};
 }
 test('stream progress can exceed the old total timeout, including a first WAV after 15 seconds',async t=>{
@@ -77,4 +77,47 @@ test('modern readiness requires a complete validated warmup and a matching part 
 test('warmup timeout identifies model preparation before accepting any channel message',async()=>{
   const timer=clock(),child=new EventEmitter();child.stdin=new EventEmitter();child.stdin.write=()=>assert.fail();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
   const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now}),failure=assert.rejects(worker.ready,e=>{assert.equal(e.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.deepEqual(e.info,{stage:'warmup',warmupParts:0,elapsedMs:90000});return true;});timer.advance(90000);await failure;worker.close();assert.equal(timer.count,0);
+});
+
+const featureProgress=(part,start,end,frames=60)=>({type:'progress',stage:'synthesis',part,frameStart:start,frameEnd:end,frames});
+test('feature streams preserve all frames, serialize posts and reset frame counters for the next request',async t=>{
+  const f=await fixture(t,'features'),chunks=[];
+  const first=f.worker.stream('一番',undefined,wav=>chunks.push(wav)),second=f.worker.stream('二番',undefined,wav=>chunks.push(wav));await tick();assert.equal(f.writes.length,1);
+  f.emit({type:'progress',stage:'query'});f.emit(featureProgress(0,0,12));f.emit({part:0},wave(12*2048));f.emit(featureProgress(1,12,60));f.emit({part:1},wave(48*2048));f.emit({end:true});await first;await tick();assert.equal(f.writes.length,2);
+  f.emit({type:'progress',stage:'query'});f.emit(featureProgress(0,0,12,12));f.emit({part:0},wave(12*2048));f.emit({end:true});await second;
+  assert.deepEqual(chunks.map(w=>w.length-44),[12*2048,48*2048,12*2048]);assert.equal(f.timer.count,0);assert.equal(f.child.kills,0);assert.equal(f.worker.diagnostics.engine,'features');
+});
+test('feature ranges reject gaps, overlaps, changed totals and oversized dimensions before any audio is accepted',async t=>{
+  for(const invalid of [featureProgress(1,13,60),featureProgress(1,11,60),featureProgress(1,12,60,61),featureProgress(1,12,205,205),featureProgress(1,12,60,3751),featureProgress(1,12,60.5,61)]){
+    const f=await fixture(t,'features'),job=f.worker.stream('本文',undefined,()=>{});await tick();const rejected=assert.rejects(job,e=>e.code==='SYNTHESIS_PROTOCOL');
+    f.emit({type:'progress',stage:'query'});f.emit(featureProgress(0,0,12));f.emit({part:0},wave(12*2048));f.emit(invalid);await rejected;assert.equal(f.child.kills,1);assert.equal(f.timer.count,0);
+  }
+});
+test('feature audio must match its announced range and completion cannot silently discard remaining frames',async t=>{
+  for(const invalid of ['no-range','wrong-length','no-audio','early-end']){
+    const f=await fixture(t,'features'),job=f.worker.stream('本文',undefined,()=>{});await tick();const rejected=assert.rejects(job,e=>e.code==='SYNTHESIS_PROTOCOL');
+    f.emit({type:'progress',stage:'query'});if(invalid!=='no-range')f.emit(featureProgress(0,0,12));
+    if(invalid==='no-audio')f.emit({end:true});
+    else {f.emit({part:0},wave(invalid==='wrong-length'?11*2048:12*2048));if(invalid==='early-end')f.emit({end:true});}
+    await rejected;assert.equal(f.child.kills,1);
+  }
+});
+test('feature progress and partial transfers retain frame diagnostics without renewing the WAV deadline',async t=>{
+  for(const partial of [false,true]){
+    const f=await fixture(t,'features'),job=f.worker.stream('本文',undefined,()=>{});await tick();const rejected=assert.rejects(job,e=>{assert.equal(e.code,'SYNTHESIS_TIMEOUT');assert.equal(e.info.engine,'features');assert.equal(e.info.protocol,3);assert.equal(e.info.framesDone,12);assert.equal(e.info.framesTotal,60);assert.equal(e.info.frameStart,12);assert.equal(e.info.frameEnd,60);assert.equal(e.info.idleMs,15000);assert.equal(e.info.stage,partial?'transfer':'synthesis');return true;});
+    f.emit({type:'progress',stage:'query'});f.emit(featureProgress(0,0,12));f.emit({part:0},wave(12*2048));f.timer.advance(14000);f.emit(featureProgress(1,12,60));
+    if(partial){const raw=frame({id:f.writes[0].id,part:1},wave(48*2048));f.child.stdout.emit('data',raw.subarray(0,raw.length-1));}f.timer.advance(1000);await rejected;assert.equal(f.timer.count,0);
+  }
+});
+test('punctuation-only feature requests complete without audio and do not poison the next request',async t=>{
+  const f=await fixture(t,'features'),empty=f.worker.stream('。',undefined,()=>assert.fail());await tick();f.emit({type:'progress',stage:'query'});f.emit({end:true});await empty;
+  const next=f.worker.stream('次',undefined,()=>{});await tick();f.emit(featureProgress(0,0,12,12));f.emit({part:0},wave(12*2048));f.emit({end:true});await next;assert.equal(f.child.kills,0);
+});
+test('public packed fallback accepts bounded mora chunks with the same warmup and streaming contract',async t=>{
+  const f=await fixture(t,'packed'),chunks=[],job=f.worker.stream('本文',undefined,wav=>chunks.push(wav));await tick();f.emit({type:'progress',stage:'query'});
+  for(const [part,moras] of [[0,2],[1,12]]){f.emit({type:'progress',stage:'synthesis',part,moras});f.emit({part},wave());}f.emit({end:true});await job;assert.equal(chunks.length,2);assert.equal(f.worker.diagnostics.engine,'packed');assert.equal(f.timer.count,0);
+});
+test('unknown feature engine cannot announce readiness even with a valid warmup',async()=>{
+  const child=new EventEmitter();child.stdin=new EventEmitter();child.stdin.write=()=>{};child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
+  const worker=createPersistentVoice({launch:()=>child}),rejected=assert.rejects(worker.ready,e=>e.code==='SYNTHESIS_PROTOCOL');child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame({type:'ready',protocol:3,engine:'PRIVATE_ENGINE',threads:1,warmupParts:1}));await rejected;worker.close();
 });

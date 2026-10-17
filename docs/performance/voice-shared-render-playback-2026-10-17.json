@@ -1,0 +1,82 @@
+{
+  "scope": "Development environment, whole Node process pinned to one logical CPU. Real VOICEVOX, reusable Opus worker and AudioPlayer, FIFO with next-post prefetch. Authorization is a fixed simulated 50ms delay. No Discord network/VC, no Quaxly host contention or 589MiB memory limit reproduced. Synthetic phrases only; no text/audio retained.",
+  "node": "v24.19.0",
+  "before": {
+    "arch": "x64",
+    "logicalCores": 1,
+    "cpuLimitCores": 2,
+    "cpuQuotaKnown": true,
+    "effectiveCores": 1,
+    "memoryLimitBytes": 8589934592,
+    "memoryQuotaKnown": true,
+    "memoryUsedBytes": 323211264,
+    "cpuUsageUsec": 424289350,
+    "cpuThrottledUsec": 118646,
+    "cpuPeriods": 44193,
+    "cpuThrottledPeriods": 34
+  },
+  "after": {
+    "arch": "x64",
+    "logicalCores": 1,
+    "cpuLimitCores": 2,
+    "cpuQuotaKnown": true,
+    "effectiveCores": 1,
+    "memoryLimitBytes": 8589934592,
+    "memoryQuotaKnown": true,
+    "memoryUsedBytes": 606507008,
+    "cpuUsageUsec": 437942063,
+    "cpuThrottledUsec": 118646,
+    "cpuPeriods": 44374,
+    "cpuThrottledPeriods": 34
+  },
+  "configuredThreads": 3,
+  "runtime": {
+    "protocol": 3,
+    "engine": "features",
+    "threads": 1,
+    "configuredThreads": 3,
+    "warmupParts": 3
+  },
+  "modelWarmupMs": 1880,
+  "codecWarmupMs": 103,
+  "sessionReadyMs": 1984,
+  "normalizedCharacters": [
+    22,
+    53,
+    13
+  ],
+  "samples": [
+    {
+      "index": 0,
+      "queuedMs": 0,
+      "accessMs": 51,
+      "firstAudioMs": 295,
+      "playerMs": 130,
+      "prefetched": false,
+      "startAfterPostsMs": 426,
+      "finishAfterPostsMs": 5553
+    },
+    {
+      "index": 1,
+      "queuedMs": 5552,
+      "accessMs": 50,
+      "firstAudioMs": 0,
+      "playerMs": 3,
+      "prefetched": true,
+      "startAfterPostsMs": 5606,
+      "finishAfterPostsMs": 13725
+    },
+    {
+      "index": 2,
+      "queuedMs": 13724,
+      "accessMs": 51,
+      "firstAudioMs": 0,
+      "playerMs": 6,
+      "prefetched": true,
+      "startAfterPostsMs": 13782,
+      "finishAfterPostsMs": 16117
+    }
+  ],
+  "maxHeartbeatGapMs": 134,
+  "diagnostics": []
+}
