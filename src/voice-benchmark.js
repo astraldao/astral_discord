@@ -14,10 +14,10 @@ export async function measureEncoding(wav,signal){
   }finally{source.destroy();output?.destroy();encoder.close();}
 }
 const delta=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>=a?b-a:null;
-export function createVoiceBenchmark({worker=createPersistentVoice,capacity=systemCapacity,encode=measureEncoding,canStart=()=>{},activity=()=>()=>{},now=()=>performance.now(),date=Date.now}={}){
+export function createVoiceBenchmark({worker=createPersistentVoice,capacity=systemCapacity,encode=measureEncoding,canStart=()=>{},activity=()=>()=>{},now=()=>performance.now(),date=Date.now,onDiagnostic=()=>{}}={}){
   let job=null,last=null,nextStart=-Infinity,closed=false;
   const snapshot=()=>structuredClone(job?{owner:job.owner,phase:job.phase,info:backupInfo(job.synth?.diagnostics),elapsedMs:Math.round(now()-job.began)}:{phase:'idle',result:last});
-  const cancel=(owner,reason='user')=>{if(job&&owner!==undefined&&job.owner!==owner)throw new Error('測定を開始した画面から中断してください。');if(job&&!job.abort.signal.aborted){job.cancelReason=reason==='shutdown'?'shutdown':'user';job.cancelInfo=backupInfo(job.synth?.diagnostics);job.phase='cancelling';job.abort.abort();job.synth?.close();}};
+  const cancel=(owner,reason='system')=>{if(job&&owner!==undefined&&job.owner!==owner)throw new Error('測定を開始した画面から中断してください。');if(job&&!job.abort.signal.aborted){job.cancelReason=reason==='shutdown'?'shutdown':reason==='confirmed-user'?'user':'system';try{onDiagnostic({stage:'cancel',cause:job.cancelReason,phase:job.phase,elapsedMs:Math.round(now()-job.began)});}catch{}job.cancelInfo=backupInfo(job.synth?.diagnostics);job.phase='cancelling';job.abort.abort();job.synth?.close();}};
   return {get busy(){return !!job;},snapshot,cancel,close(){closed=true;cancel(undefined,'shutdown');},async run(owner){
     if(closed)throw new Error('Botを停止しています。');if(job)throw new Error('別の処理速度測定を実行中です。');if(now()<nextStart)throw new Error(`次の測定まであと${Math.ceil((nextStart-now())/1000)}秒です。`);
     canStart();const current={owner,phase:'warming',began:now(),abort:new AbortController()};job=current;let finish=()=>{},firstWav,warmupAt,synthesisAt,previous,encodingAt;

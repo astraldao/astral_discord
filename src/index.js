@@ -178,8 +178,8 @@ client.once('clientReady', async () => {
   try {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
-    voiceProbe=createVoiceBenchmark({canStart:()=>{if(backupReader?.active||pending.size||queue.size||resourcePresence.activeCount>1)throw new EntryError('読み上げ・VC入室・別の操作が進行中です。終了後に測定してください。');},activity:()=>resourcePresence.activity()});
-    speedMeasurements=createBenchmarkController({guild,probe:voiceProbe,onDiagnostic:info=>console.warn('速度測定の画面更新:',JSON.stringify(info))});
+    voiceProbe=createVoiceBenchmark({onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info)),canStart:()=>{if(backupReader?.active||pending.size||queue.size||resourcePresence.activeCount>1)throw new EntryError('読み上げ・VC入室・別の操作が進行中です。終了後に測定してください。');},activity:()=>resourcePresence.activity()});
+    speedMeasurements=createBenchmarkController({guild,probe:voiceProbe,onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info))});
     backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>voiceProbe.busy||pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity(),onDiagnostic:failure=>console.warn('読み上げ停止:',failure.code,`v${botVersion}`,JSON.stringify(failure.info??{}))});
     const bannerState=user=>({key:user.banner??null,url:user.bannerURL({extension:'png',size:1024})??null});
     banner=createBannerController({guild,current:async()=>{try{return bannerState(await client.user.fetch(true));}catch{throw new EntryError('現在のバナーを取得できませんでした。少し待ってから「現在を確認」を押してください。');}},update:async image=>{try{return bannerState(await client.user.setBanner(image));}catch{throw new EntryError('バナーの反映を確認できませんでした。「現在を確認」で状態を確認してからお試しください。');}}});
@@ -218,13 +218,16 @@ client.on('interactionCreate', async interaction => {
   const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
   const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(perf|restart|runtime|banner|read|updates|admin|densuke|trpg|profile|forum|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
   if (!command && !component && !adminComponent && !menuComponent) return;
+  // Acknowledge performance buttons before presence updates and other bookkeeping.
+  if(adminComponent&&interaction.customId.startsWith('perf:')&&!await speedMeasurements.acknowledge(interaction))return;
   let finishActivity=()=>{};
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
     if(!cancellation) {
       const wait=limits.consume(interaction.user.id,component && interaction.isStringSelectMenu());
       if(wait) {
-        await quiet(()=>interaction.reply({...payload('✧  少しお待ちください',`操作が続いています。**${wait}秒後** にもう一度お試しください。${pending.has(interaction.user.id)?'入室予約はキャンセルできます。':''}`),flags:MessageFlags.Ephemeral}));
+        const notice=payload('✧  少しお待ちください',`操作が続いています。**${wait}秒後** にもう一度お試しください。${pending.has(interaction.user.id)?'入室予約はキャンセルできます。':''}`);
+        await quiet(()=>interaction.deferred||interaction.replied?interaction.editReply(notice):interaction.reply({...notice,flags:MessageFlags.Ephemeral}));
         return;
       }
     }
