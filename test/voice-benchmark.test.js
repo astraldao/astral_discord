@@ -100,3 +100,8 @@ test('a warmup timeout is a failure rather than a cancellation',async()=>{
 test('navigation during the final permission fetch prevents an old measurement reply from overwriting the new screen',async()=>{
   const f=uiFixture(),gate=deferred();let finalCheck=false;const c=createBenchmarkController({probe:f.probe,access:async()=>{if(finalCheck)await gate.promise;}}),message={id:'private-message',flags:{has:()=>true}};await c.open(interaction('open',{message}));const s=[...c.sessions.sessions.values()][0],i=interaction(`perf:${s.id}:${s.turn}:start`,{message}),task=c.handle(i);await tick();finalCheck=true;f.setResult({ok:true,measuredAt:1,parts:1});await tick();c.leave(interaction('admin:open',{message}));i.result=null;gate.resolve();await task;assert.equal(i.result,null);assert.equal(s.busy,false);
 });
+
+test('diagnostics distinguish configured and effective threads and cold initialization from steady encoding',()=>{
+  const view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:{ok:true,measuredAt:1,parts:7,audioMs:3552,synthesisMs:21000,realTimeFactor:5.91,encodingMs:10002,info:{threads:1,configuredThreads:3,protocol:2},encoding:{backend:'worker-opusscript',warmupMs:10000,processMs:2}}});
+  const body=view.embeds[0].toJSON().description;assert.match(body,/合成スレッド 1（設定上限 3/);assert.match(body,/初期化 \*\*10,000ms/);assert.match(body,/変換 \*\*2ms/);assert.ok(body.includes('同じVC接続中'));assert.ok(body.length<4096);
+});

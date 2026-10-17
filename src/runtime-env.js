@@ -3,7 +3,7 @@ import {dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 export const runtimeVariables=[
   {key:'ASTRAL_BACKUP_TTS',label:'バックアップ読み上げ',default:'0',valid:value=>/^[01]$/.test(value),help:'0=OFF、1=ON。ONにする前にDiscord Developer PortalでMessage Content Intentを有効にしてください。'},
-  {key:'VOICEVOX_BACKUP_THREADS',label:'合成スレッド数',default:'2',valid:value=>/^[1-4]$/.test(value),help:'1〜4。既定は2。多くすれば速くなるとは限りません。'},
+  {key:'VOICEVOX_BACKUP_THREADS',label:'合成スレッド上限',default:'2',valid:value=>/^[1-4]$/.test(value),help:'1〜4。既定は2。実行時はCPU割当・並列度までに制限します。1コアなら1スレッドです。'},
 ];
 export function validateRuntimeValues(values){
   if(!values||typeof values!=='object'||Array.isArray(values)||Object.keys(values).some(key=>!runtimeVariables.some(d=>d.key===key)))throw new Error('許可されていない起動設定です。');

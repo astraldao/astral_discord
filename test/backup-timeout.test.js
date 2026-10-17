@@ -11,7 +11,7 @@ function clock(){let now=0,id=0;const jobs=new Map();return {
 };}
 async function fixture(t,modern=false){
   const timer=clock(),child=new EventEmitter(),writes=[];child.stdin=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin.write=raw=>writes.push(JSON.parse(raw));child.kills=0;child.kill=()=>child.kills++;
-  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now});t.after(()=>worker.close());if(modern)child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame(modern?{type:'ready',protocol:2,threads:1,warmupParts:1}:{type:'ready'}));await worker.ready;
+  const worker=createPersistentVoice({launch:()=>child,schedule:timer.schedule,cancel:timer.cancel,now:()=>timer.now,threadPlan:{configuredThreads:3,threads:1}});t.after(()=>worker.close());if(modern)child.stdout.emit('data',frame({type:'warmup',part:0},wave()));child.stdout.emit('data',frame(modern?{type:'ready',protocol:2,threads:1,warmupParts:1}:{type:'ready'}));await worker.ready;
   return {worker,child,timer,writes,emit:(data,body)=>child.stdout.emit('data',frame({id:writes.at(-1).id,...data},body))};
 }
 test('stream progress can exceed the old total timeout, including a first WAV after 15 seconds',async t=>{
@@ -53,7 +53,7 @@ test('a synchronous input-pipe failure cancels both timers without exposing the 
 });
 
 test('stage metadata identifies the timed-out native synthesis without extending any deadline',async t=>{
-  const f=await fixture(t,true),job=f.worker.stream('本文',undefined,()=>{});await tick();const failure=assert.rejects(job,e=>{assert.equal(e.code,'SYNTHESIS_TIMEOUT');assert.deepEqual(e.info,{protocol:2,threads:1,warmupParts:1,stage:'synthesis',parts:1,activePart:1,moras:3,elapsedMs:17000,idleMs:15000});return true;});
+  const f=await fixture(t,true),job=f.worker.stream('本文',undefined,()=>{});await tick();const failure=assert.rejects(job,e=>{assert.equal(e.code,'SYNTHESIS_TIMEOUT');assert.deepEqual(e.info,{protocol:2,threads:1,configuredThreads:3,warmupParts:1,stage:'synthesis',parts:1,activePart:1,moras:3,elapsedMs:17000,idleMs:15000});return true;});
   f.emit({type:'progress',stage:'query'});f.emit({type:'progress',stage:'synthesis',part:0,moras:2});f.timer.advance(2000);f.emit({part:0},wave());f.timer.advance(14000);f.emit({type:'progress',stage:'synthesis',part:1,moras:3});f.timer.advance(1000);await failure;assert.equal(f.timer.count,0);
 });
 test('query and partial-transfer diagnostics cannot masquerade as completed audio progress',async t=>{

@@ -1,0 +1,137 @@
+{
+  "scope": "Development environment, whole Node process pinned to one logical CPU. Real VOICEVOX, reusable Opus worker and AudioPlayer, FIFO with next-post prefetch. Authorization is a fixed simulated 50ms delay. No Discord network/VC, no Quaxly host contention or 589MiB memory limit reproduced. Synthetic phrases only; no text/audio retained.",
+  "node": "v24.19.0",
+  "before": {
+    "arch": "x64",
+    "logicalCores": 1,
+    "cpuLimitCores": 2,
+    "cpuQuotaKnown": true,
+    "effectiveCores": 1,
+    "memoryLimitBytes": 8589934592,
+    "memoryQuotaKnown": true,
+    "memoryUsedBytes": 300998656,
+    "cpuUsageUsec": 59262182,
+    "cpuThrottledUsec": 4752,
+    "cpuPeriods": 1676,
+    "cpuThrottledPeriods": 1
+  },
+  "after": {
+    "arch": "x64",
+    "logicalCores": 1,
+    "cpuLimitCores": 2,
+    "cpuQuotaKnown": true,
+    "effectiveCores": 1,
+    "memoryLimitBytes": 8589934592,
+    "memoryQuotaKnown": true,
+    "memoryUsedBytes": 496902144,
+    "cpuUsageUsec": 76051546,
+    "cpuThrottledUsec": 4752,
+    "cpuPeriods": 1860,
+    "cpuThrottledPeriods": 1
+  },
+  "configuredThreads": 3,
+  "runtime": {
+    "protocol": 2,
+    "threads": 1,
+    "configuredThreads": 3,
+    "warmupParts": 3
+  },
+  "modelWarmupMs": 2163,
+  "codecWarmupMs": 116,
+  "sessionReadyMs": 2267,
+  "normalizedCharacters": [
+    22,
+    53,
+    13
+  ],
+  "samples": [
+    {
+      "index": 0,
+      "queuedMs": 0,
+      "accessMs": 50,
+      "firstAudioMs": 395,
+      "playerMs": 155,
+      "prefetched": false,
+      "startAfterPostsMs": 551,
+      "finishAfterPostsMs": 4615
+    },
+    {
+      "index": 1,
+      "queuedMs": 4614,
+      "accessMs": 50,
+      "firstAudioMs": 1,
+      "playerMs": 8,
+      "prefetched": true,
+      "startAfterPostsMs": 4672,
+      "finishAfterPostsMs": 13785
+    },
+    {
+      "index": 2,
+      "queuedMs": 13784,
+      "accessMs": 52,
+      "firstAudioMs": 2,
+      "playerMs": 4,
+      "prefetched": true,
+      "startAfterPostsMs": 13841,
+      "finishAfterPostsMs": 16158
+    }
+  ],
+  "maxHeartbeatGapMs": 134,
+  "diagnostics": [],
+  "diagnostic": {
+    "measuredAt": 1792195273405,
+    "ok": true,
+    "warmupMs": 1781,
+    "firstAudioMs": 399,
+    "synthesisMs": 3619,
+    "audioMs": 3552,
+    "parts": 7,
+    "maxGapMs": 719,
+    "encodingMs": 99,
+    "before": {
+      "arch": "x64",
+      "logicalCores": 1,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 1,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 282603520,
+      "cpuUsageUsec": 100244508,
+      "cpuThrottledUsec": 4752,
+      "cpuPeriods": 2289,
+      "cpuThrottledPeriods": 1
+    },
+    "realTimeFactor": 1.02,
+    "info": {
+      "threads": 1,
+      "configuredThreads": 3,
+      "protocol": 2,
+      "warmupParts": 3
+    },
+    "encoding": {
+      "packets": 16,
+      "audioMs": 309,
+      "warmupMs": 56,
+      "processMs": 32,
+      "backend": "worker-opusscript"
+    },
+    "elapsedMs": 5513,
+    "after": {
+      "arch": "x64",
+      "logicalCores": 1,
+      "cpuLimitCores": 2,
+      "cpuQuotaKnown": true,
+      "effectiveCores": 1,
+      "memoryLimitBytes": 8589934592,
+      "memoryQuotaKnown": true,
+      "memoryUsedBytes": 430628864,
+      "cpuUsageUsec": 105753991,
+      "cpuThrottledUsec": 4752,
+      "cpuPeriods": 2344,
+      "cpuThrottledPeriods": 1
+    },
+    "throttledMs": 0,
+    "throttledPercent": 0
+  }
+}

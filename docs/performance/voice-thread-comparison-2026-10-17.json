@@ -1,0 +1,76 @@
+{
+  "scope": "Development environment: only Python is pinned to one logical CPU; configured 1, 2 and 3 native threads explicitly launched for comparison before the production cap. Fixed synthetic text, no Discord network, no Quaxly host contention or 589MiB memory limit reproduced. Two samples per thread count.",
+  "samples": [
+    {
+      "threads": 3,
+      "warmupMs": 4154,
+      "firstAudioMs": 1167,
+      "synthesisMs": 8096,
+      "parts": 7,
+      "audioMs": 3552,
+      "scope": "Python affinity one CPU in development. Not Quaxly quota/host contention."
+    },
+    {
+      "threads": 1,
+      "warmupMs": 1773,
+      "firstAudioMs": 385,
+      "synthesisMs": 3551,
+      "parts": 7,
+      "audioMs": 3552,
+      "scope": "Python affinity one CPU in development. Not Quaxly quota/host contention."
+    },
+    {
+      "threads": 2,
+      "warmupMs": 2648,
+      "firstAudioMs": 695,
+      "synthesisMs": 5708,
+      "parts": 7,
+      "audioMs": 3552,
+      "scope": "Python affinity one CPU in development. Not Quaxly quota/host contention."
+    },
+    {
+      "threads": 1,
+      "warmupMs": 1761,
+      "firstAudioMs": 384,
+      "synthesisMs": 3558,
+      "parts": 7,
+      "audioMs": 3552,
+      "scope": "Python affinity one CPU in development. Not Quaxly quota/host contention."
+    },
+    {
+      "threads": 3,
+      "warmupMs": 3740,
+      "firstAudioMs": 1011,
+      "synthesisMs": 7896,
+      "parts": 7,
+      "audioMs": 3552,
+      "scope": "Python affinity one CPU in development. Not Quaxly quota/host contention."
+    },
+    {
+      "threads": 2,
+      "warmupMs": 2664,
+      "firstAudioMs": 690,
+      "synthesisMs": 5364,
+      "parts": 7,
+      "audioMs": 3552,
+      "scope": "Python affinity one CPU in development. Not Quaxly quota/host contention."
+    }
+  ],
+  "medians": {
+    "1": {
+      "warmupMs": 1767.0,
+      "firstAudioMs": 384.5,
+      "synthesisMs": 3554.5
+    },
+    "2": {
+      "warmupMs": 2656.0,
+      "firstAudioMs": 692.5,
+      "synthesisMs": 5536.0
+    },
+    "3": {
+      "warmupMs": 3947.0,
+      "firstAudioMs": 1089.0,
+      "synthesisMs": 7996.0
+    }
+  }
+}

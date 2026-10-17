@@ -11,7 +11,7 @@ export function announcementText(name,words=[],personalReading=null) {
   const reading=personalReading===null?readingFor(clean,words):validatePersonalReading(personalReading);
   return `${reading ? reading+'さん' : '新しい方'}が、まもなく参加するのだ。`;
 }
-export function gentlePcm(wav,volume=30,{fadeMs=20}={}) {
+export function wavPcm(wav) {
   if(!Buffer.isBuffer(wav) || wav.length<44 || wav.toString('ascii',0,4)!=='RIFF' || wav.toString('ascii',8,12)!=='WAVE')throw new Error('音声データがWAVではありません。');
   let fmt,data;
   for(let offset=12;offset+8<=wav.length;) {
@@ -22,6 +22,10 @@ export function gentlePcm(wav,volume=30,{fadeMs=20}={}) {
     offset=start+size+(size%2);
   }
   if(!fmt || fmt.length<16 || fmt.readUInt16LE(0)!==1 || fmt.readUInt16LE(2)!==2 || fmt.readUInt32LE(4)!==48000 || fmt.readUInt16LE(14)!==16 || !data || data.length%4 || !data.length || data.length>48000*4*20)throw new Error('48kHz・ステレオPCM16bit・20秒以内の音声が必要です。');
+  return data;
+}
+export function gentlePcm(wav,volume=30,{fadeMs=20}={}) {
+  const data=wavPcm(wav);
   if(!Number.isInteger(volume) || volume<10 || volume>60)throw new Error('音量は10〜60です。');
   if(!Number.isInteger(fadeMs)||fadeMs<1||fadeMs>20)throw new Error('フェード時間が不正です。');
   const out=Buffer.alloc(data.length),frames=data.length/4,fade=48*fadeMs,gain=volume/100;
@@ -41,7 +45,7 @@ export async function synthesize(name,signal,words=[],personalReading=null) {
   const text=announcementText(name,words,personalReading),hash=createHash('sha256').update('zundamon-dictionaries-v2:'+text).digest('hex');
   const cache=resolve('data/voice-cache'),file=resolve(cache,`${hash}.wav`);
   await mkdir(cache,{recursive:true});
-  try {const wav=await readFile(file);gentlePcm(wav);signal.throwIfAborted();return wav;}
+  try {const wav=await readFile(file);wavPcm(wav);signal.throwIfAborted();return wav;}
   catch(error){if(error.name==='AbortError')throw error;}
   const python=process.env.VOICEVOX_PYTHON || (existsSync('.voicevox-venv/bin/python')?resolve('.voicevox-venv/bin/python'):'python3');
   const wav=await new Promise((done,fail)=>{
@@ -59,7 +63,7 @@ export async function synthesize(name,signal,words=[],personalReading=null) {
     });
     child.stdin.end(JSON.stringify({text}));
   });
-  gentlePcm(wav);signal.throwIfAborted();
+  wavPcm(wav);signal.throwIfAborted();
   await writeFile(`${file}.tmp`,wav);await rename(`${file}.tmp`,file);
   const files=(await readdir(cache)).filter(x=>/^[a-f0-9]{64}\.wav$/.test(x));
   if(files.length>64){const entries=await Promise.all(files.map(async x=>({path:resolve(cache,x),time:(await stat(resolve(cache,x))).mtimeMs})));entries.sort((a,b)=>a.time-b.time);for(const item of entries.slice(0,entries.length-64))await unlink(item.path);}

@@ -2,11 +2,12 @@ import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {gentlePcm} from './speech.js';
+import {wavPcm} from './speech.js';
+import {voiceThreads} from './voice-threads.js';
 import {backupFault} from './backup-fault.js';
-export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthesisTimeout=15000,firstAudioTimeout=30000,maxSynthesisTime=60000,schedule=setTimeout,cancel=clearTimeout,now=()=>performance.now()}={}){
+export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthesisTimeout=15000,firstAudioTimeout=30000,maxSynthesisTime=60000,schedule=setTimeout,cancel=clearTimeout,now=()=>performance.now(),threadPlan=voiceThreads()}={}){
   const python=process.env.VOICEVOX_PYTHON||(existsSync('.voicevox-venv/bin/python')?resolve('.voicevox-venv/bin/python'):'python3');
-  const child=launch(python,[fileURLToPath(new URL('../scripts/backup-synthesize.py',import.meta.url))],{shell:false,stdio:['pipe','pipe','pipe'],env:{...process.env,OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1'}});
+  const child=launch(python,[fileURLToPath(new URL('../scripts/backup-synthesize.py',import.meta.url))],{shell:false,stdio:['pipe','pipe','pipe'],env:{...process.env,OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1',VOICEVOX_BACKUP_THREADS:String(threadPlan.threads)}});
   let buffer=Buffer.alloc(0),header=null,pending=null,serial=0,closed=false,failure,readySeen=false,tail=Promise.resolve(),readyResolve,readyReject,warmupParts=0,warmupBytes=0,runtime={};
   const ready=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});
   ready.catch(()=>{});
@@ -28,11 +29,11 @@ export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthes
         if(buffer.length<header.bytes)return;
         const wav=Buffer.from(buffer.subarray(0,header.bytes)),data=header;buffer=buffer.subarray(header.bytes);header=null;
         if(data.type==='warmup'){
-          if(readySeen||pending||data.part!==warmupParts||warmupParts>=256||(warmupBytes+=wav.length)>8*1024*1024)throw new Error();gentlePcm(wav);warmupParts++;continue;
+          if(readySeen||pending||data.part!==warmupParts||warmupParts>=256||(warmupBytes+=wav.length)>8*1024*1024)throw new Error();wavPcm(wav);warmupParts++;continue;
         }
         if(data.type==='ready'){
           if(readySeen||data.bytes!==0||pending)throw new Error();
-          if(data.protocol===2){if(!warmupParts||data.warmupParts!==warmupParts||!Number.isInteger(data.threads)||data.threads<1||data.threads>4)throw new Error();runtime={protocol:2,threads:data.threads,warmupParts};}
+          if(data.protocol===2){if(!warmupParts||data.warmupParts!==warmupParts||!Number.isInteger(data.threads)||data.threads<1||data.threads>4)throw new Error();runtime={protocol:2,threads:data.threads,configuredThreads:threadPlan.configuredThreads,warmupParts};}
           else {if(warmupParts||data.protocol!==undefined&&data.protocol!==1)throw new Error();runtime={protocol:1};}
           readySeen=true;cancel(startup);readyResolve();continue;
         }
@@ -50,12 +51,12 @@ export function createPersistentVoice({launch=spawn,startupTimeout=90000,synthes
         if(job.onChunk){
           if(data.end){if(data.bytes!==0)throw new Error();finish(job);job.resolve();continue;}
           if(data.part!==job.part)throw new Error();job.bytes+=wav.length;if(job.bytes>8*1024*1024)throw new Error();
-          gentlePcm(wav);job.part++;job.onChunk(wav);
+          wavPcm(wav);job.part++;job.onChunk(wav);
           // Only a complete, valid WAV is progress. Partial bytes cannot extend the wait.
           if(pending===job&&!closed){job.lastAudio=now();job.stage=runtime.protocol===2?'waiting':'unknown';delete job.activePart;delete job.moras;wait(job,synthesisTimeout,'SYNTHESIS_TIMEOUT');}continue;
         }
         finish(job);
-        try{gentlePcm(wav);job.resolve(wav);}catch(error){job.reject(error);}
+        try{wavPcm(wav);job.resolve(wav);}catch(error){job.reject(error);}
       }
     }catch{fail(backupFault(null,'SYNTHESIS_PROTOCOL',snapshot(pending)));}
   });

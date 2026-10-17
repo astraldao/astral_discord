@@ -1,15 +1,17 @@
 import {Readable} from 'node:stream';
-import {createAudioResource,StreamType} from '@discordjs/voice';
+import {createSpeechEncoder} from './opus-encoder.js';
 import {createPersistentVoice} from './persistent-voice.js';
-import {gentlePcm} from './speech.js';
+import {gentlePcm,wavPcm} from './speech.js';
 import {backupFault,backupFailure,backupInfo} from './backup-fault.js';
 import {systemCapacity} from './system-capacity.js';
 export const benchmarkText='こんにちは。音声の処理速度を確認しています。';
 export async function measureEncoding(wav,signal){
-  signal.throwIfAborted();const pcm=gentlePcm(wav,30).subarray(0,192000),source=Readable.from([pcm]);source.on('error',()=>{});
-  let resource;const stop=()=>{source.destroy(new Error('測定を停止しました。'));resource?.playStream.destroy(new Error('測定を停止しました。'));};signal.addEventListener('abort',stop,{once:true});
-  try{resource=createAudioResource(source,{inputType:StreamType.Raw});let packets=0;for await(const packet of resource.playStream){signal.throwIfAborted();packets++;}if(!packets)throw new Error('No packets');return {packets,audioMs:Math.round(pcm.length/192)};}
-  finally{signal.removeEventListener('abort',stop);source.destroy();resource?.playStream.destroy();}
+  signal.throwIfAborted();const pcm=gentlePcm(wav,30).subarray(0,192000),source=Readable.from([pcm]),began=performance.now(),encoder=createSpeechEncoder({signal});source.on('error',()=>{});let output;
+  try{
+    await encoder.ready;signal.throwIfAborted();const prepared=performance.now(),encodeSignal=AbortSignal.any([signal,AbortSignal.timeout(5000)]);output=encoder.stream(source,encodeSignal);let packets=0;
+    for await(const packet of output){encodeSignal.throwIfAborted();packets++;}if(!packets)throw new Error('No packets');
+    return {packets,audioMs:Math.round(pcm.length/192),warmupMs:Math.round(prepared-began),processMs:Math.round(performance.now()-prepared),backend:'worker-opusscript'};
+  }finally{source.destroy();output?.destroy();encoder.close();}
 }
 const delta=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&b>=a?b-a:null;
 export function createVoiceBenchmark({worker=createPersistentVoice,capacity=systemCapacity,encode=measureEncoding,canStart=()=>{},activity=()=>()=>{},now=()=>performance.now(),date=Date.now}={}){
@@ -26,11 +28,11 @@ export function createVoiceBenchmark({worker=createPersistentVoice,capacity=syst
       try{
         await current.synth.ready;current.abort.signal.throwIfAborted();result.warmupMs=Math.round(now()-warmupAt);current.phase='synthesis';synthesisAt=now();
         await current.synth.stream(benchmarkText,current.abort.signal,wav=>{
-          current.abort.signal.throwIfAborted();const at=now();if(firstWav===undefined){firstWav=wav;result.firstAudioMs=Math.round(at-synthesisAt);}else result.maxGapMs=Math.max(result.maxGapMs,Math.round(at-previous));previous=at;result.parts++;result.audioMs+=gentlePcm(wav,30).length/192;
+          current.abort.signal.throwIfAborted();const at=now();if(firstWav===undefined){firstWav=wav;result.firstAudioMs=Math.round(at-synthesisAt);}else result.maxGapMs=Math.max(result.maxGapMs,Math.round(at-previous));previous=at;result.parts++;result.audioMs+=wavPcm(wav).length/192;
         });
         current.abort.signal.throwIfAborted();result.synthesisMs=Math.round(now()-synthesisAt);result.audioMs=Math.round(result.audioMs);if(!firstWav)throw backupFault(null,'SYNTHESIS');
         result.realTimeFactor=Math.round(result.synthesisMs/result.audioMs*100)/100;result.info=backupInfo(current.synth.diagnostics);current.phase='encoding';encodingAt=now();
-        result.encoding=await encode(firstWav,AbortSignal.any([current.abort.signal,AbortSignal.timeout(5000)]));result.encodingMs=Math.round(now()-encodingAt);current.abort.signal.throwIfAborted();result.ok=true;
+        result.encoding=await encode(firstWav,AbortSignal.any([current.abort.signal,AbortSignal.timeout(35000)]));result.encodingMs=Math.round(now()-encodingAt);current.abort.signal.throwIfAborted();result.ok=true;
       }finally{current.abort.signal.removeEventListener('abort',stop);}
     }catch(error){result.cancelled=current.abort.signal.aborted;if(result.cancelled){result.cancelReason=current.cancelReason;result.info=current.cancelInfo;}if(!result.cancelled)result.failure=backupFailure(backupFault(error,encodingAt===undefined?'SYNTHESIS':'ENCODING',current.synth?.diagnostics));if(synthesisAt!==undefined&&result.synthesisMs===null)result.synthesisMs=Math.round(now()-synthesisAt);}
     finally{
