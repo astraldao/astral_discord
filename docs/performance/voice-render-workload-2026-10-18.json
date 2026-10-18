@@ -1,0 +1,1986 @@
+{
+  "date": "2026-10-18",
+  "baselineCommit": "5a9c0f7d8dfbbc7c2e75b44795c21ef5f8fb96f3",
+  "candidateSourceSha256": "efa26bfc4c2bd14c237b5297e4ed76fad514c568f0d6795a2dc4c7ea8e391f3d",
+  "sourceReference": "https://github.com/VOICEVOX/voicevox_core/blob/0.17.0/crates/voicevox_core/src/synthesizer.rs",
+  "scope": "Development environment, one logical CPU affinity per benchmark process and native threads 1, Core 0.17.0, unchanged model/style 3 and query settings. Initial exploratory balance and prefix experiments overlapped on separate CPUs under a shared 2-CPU cgroup quota. Selected playback/FIFO/native-reference tests ran sequentially, not alongside those experiments. Not a production/Discord/VC/589MiB memory-cap test. Synthetic fixed phrases only; no user text or audio retained. Small samples, no confidence intervals or latency guarantee.",
+  "selectedPolicy": "Keep first 12 frames. Adjust only the second chunk to eliminate a trailing native call where possible, with unchanged cap 192 and conservative 10s adaptation. Estimate baseline playback starvation from the first native render including 28 context frames; retain the original short second chunk if the proposed merge predicts a longer pause. From the third chunk, keep the original maximum-size schedule. No graph/model/runtime replacement, hidden API scope remains Core 0.17.0 only.",
+  "selectionNotes": [
+    "First audio path/length stays identical; observed first-start differences are not attributed to this change.",
+    "Long 53-character playback phrase used the original 6-part schedule in selected tests: no demonstrated CPU reduction, small wall/gap differences are noise rather than a general improvement claim.",
+    "Shorter-first-8-frame option was rejected because early output could consist almost entirely of quiet lead-in.",
+    "Numerical PCM comparison precedes volume/fades/Opus; it verifies frame preservation on three examples, not a human perceptual quality test. Existing 3ms playback fades remain, with fewer chunk boundaries where merging is used."
+  ],
+  "playbackSummaryByPhrase": [
+    {
+      "phrase": 0,
+      "modes": {
+        "before": {
+          "startMs": 377.5,
+          "finishMs": 5658.0,
+          "parts": 4.0,
+          "maxGapMs": 1697.0,
+          "missingAudioMs": 1600.0,
+          "maxConsecutiveMissingMs": 1170.0,
+          "cpuMs": 3238.0
+        },
+        "after": {
+          "startMs": 301.0,
+          "finishMs": 5320.5,
+          "parts": 3.0,
+          "maxGapMs": 1680.5,
+          "missingAudioMs": 1330.0,
+          "maxConsecutiveMissingMs": 1080.0,
+          "cpuMs": 3036.5
+        }
+      },
+      "cpuReductionPercent": 6.22
+    },
+    {
+      "phrase": 1,
+      "modes": {
+        "before": {
+          "startMs": 313.5,
+          "finishMs": 5199.5,
+          "parts": 4.0,
+          "maxGapMs": 1576.5,
+          "missingAudioMs": 1470.0,
+          "maxConsecutiveMissingMs": 1070.0,
+          "cpuMs": 2969.5
+        },
+        "after": {
+          "startMs": 300.5,
+          "finishMs": 4977.0,
+          "parts": 3.0,
+          "maxGapMs": 1560.0,
+          "missingAudioMs": 1260.0,
+          "maxConsecutiveMissingMs": 800.0,
+          "cpuMs": 2744.0
+        }
+      },
+      "cpuReductionPercent": 7.59
+    },
+    {
+      "phrase": 2,
+      "modes": {
+        "before": {
+          "startMs": 322.5,
+          "finishMs": 9906.0,
+          "parts": 6.0,
+          "maxGapMs": 1679.5,
+          "missingAudioMs": 1470.0,
+          "maxConsecutiveMissingMs": 1060.0,
+          "cpuMs": 6588.0
+        },
+        "after": {
+          "startMs": 351.5,
+          "finishMs": 10008.0,
+          "parts": 6.0,
+          "maxGapMs": 1663.0,
+          "missingAudioMs": 1540.0,
+          "maxConsecutiveMissingMs": 1130.0,
+          "cpuMs": 6572.0
+        }
+      },
+      "cpuReductionPercent": 0.24
+    }
+  ],
+  "nativePcmComparison": [
+    {
+      "phrase": 0,
+      "mode": "before",
+      "firstMs": 291,
+      "firstCpuMs": 291,
+      "totalMs": 3259,
+      "cpuMs": 3258,
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1,
+      "changedSamples": 16,
+      "ranges": [
+        [
+          0,
+          12
+        ],
+        [
+          12,
+          60
+        ],
+        [
+          60,
+          252
+        ],
+        [
+          252,
+          335
+        ]
+      ],
+      "receivedAtMs": [
+        291,
+        820,
+        2452,
+        3259
+      ]
+    },
+    {
+      "phrase": 0,
+      "mode": "after",
+      "firstMs": 311,
+      "firstCpuMs": 311,
+      "totalMs": 3169,
+      "cpuMs": 3169,
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1,
+      "changedSamples": 16,
+      "ranges": [
+        [
+          0,
+          12
+        ],
+        [
+          12,
+          143
+        ],
+        [
+          143,
+          335
+        ]
+      ],
+      "receivedAtMs": [
+        311,
+        1492,
+        3169
+      ]
+    },
+    {
+      "phrase": 1,
+      "mode": "before",
+      "firstMs": 306,
+      "firstCpuMs": 306,
+      "totalMs": 3101,
+      "cpuMs": 3100,
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1,
+      "changedSamples": 4,
+      "ranges": [
+        [
+          0,
+          12
+        ],
+        [
+          12,
+          60
+        ],
+        [
+          60,
+          252
+        ],
+        [
+          252,
+          308
+        ]
+      ],
+      "receivedAtMs": [
+        306,
+        867,
+        2491,
+        3101
+      ]
+    },
+    {
+      "phrase": 1,
+      "mode": "after",
+      "firstMs": 303,
+      "firstCpuMs": 303,
+      "totalMs": 2859,
+      "cpuMs": 2859,
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1,
+      "changedSamples": 4,
+      "ranges": [
+        [
+          0,
+          12
+        ],
+        [
+          12,
+          116
+        ],
+        [
+          116,
+          308
+        ]
+      ],
+      "receivedAtMs": [
+        303,
+        1224,
+        2859
+      ]
+    },
+    {
+      "phrase": 2,
+      "mode": "before",
+      "firstMs": 297,
+      "firstCpuMs": 297,
+      "totalMs": 5797,
+      "cpuMs": 5796,
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1,
+      "changedSamples": 28,
+      "ranges": [
+        [
+          0,
+          12
+        ],
+        [
+          12,
+          60
+        ],
+        [
+          60,
+          252
+        ],
+        [
+          252,
+          444
+        ],
+        [
+          444,
+          636
+        ],
+        [
+          636,
+          645
+        ]
+      ],
+      "receivedAtMs": [
+        297,
+        827,
+        2387,
+        3970,
+        5540,
+        5797
+      ]
+    },
+    {
+      "phrase": 2,
+      "mode": "after",
+      "firstMs": 302,
+      "firstCpuMs": 302,
+      "totalMs": 5480,
+      "cpuMs": 5480,
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1,
+      "changedSamples": 16,
+      "ranges": [
+        [
+          0,
+          12
+        ],
+        [
+          12,
+          69
+        ],
+        [
+          69,
+          261
+        ],
+        [
+          261,
+          453
+        ],
+        [
+          453,
+          645
+        ]
+      ],
+      "receivedAtMs": [
+        302,
+        881,
+        2418,
+        3958,
+        5480
+      ]
+    }
+  ],
+  "exploratoryBalanceCandidates": [
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "current",
+      "firstMs": 302,
+      "totalMs": 3122,
+      "cpuMs": 3113,
+      "queryCpuMs": 17,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 277
+        },
+        {
+          "frames": 48,
+          "wallMs": 526
+        },
+        {
+          "frames": 192,
+          "wallMs": 1529
+        },
+        {
+          "frames": 83,
+          "wallMs": 766
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "balanced",
+      "firstMs": 284,
+      "totalMs": 2892,
+      "cpuMs": 2891,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 271
+        },
+        {
+          "frames": 162,
+          "wallMs": 1321
+        },
+        {
+          "frames": 161,
+          "wallMs": 1287
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "balanced-margin",
+      "firstMs": 293,
+      "totalMs": 3096,
+      "cpuMs": 3096,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 280
+        },
+        {
+          "frames": 162,
+          "wallMs": 1405
+        },
+        {
+          "frames": 161,
+          "wallMs": 1398
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 0,
+      "mode": "large-balanced",
+      "firstMs": 281,
+      "totalMs": 2921,
+      "cpuMs": 2921,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 268
+        },
+        {
+          "frames": 162,
+          "wallMs": 1337
+        },
+        {
+          "frames": 161,
+          "wallMs": 1303
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "current",
+      "firstMs": 286,
+      "totalMs": 2914,
+      "cpuMs": 2914,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 273
+        },
+        {
+          "frames": 48,
+          "wallMs": 535
+        },
+        {
+          "frames": 192,
+          "wallMs": 1519
+        },
+        {
+          "frames": 56,
+          "wallMs": 575
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "balanced",
+      "firstMs": 295,
+      "totalMs": 2724,
+      "cpuMs": 2723,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 283
+        },
+        {
+          "frames": 148,
+          "wallMs": 1217
+        },
+        {
+          "frames": 148,
+          "wallMs": 1212
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "balanced-margin",
+      "firstMs": 283,
+      "totalMs": 2728,
+      "cpuMs": 2728,
+      "queryCpuMs": 13,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 270
+        },
+        {
+          "frames": 148,
+          "wallMs": 1223
+        },
+        {
+          "frames": 148,
+          "wallMs": 1222
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 1,
+      "mode": "large-balanced",
+      "firstMs": 293,
+      "totalMs": 2786,
+      "cpuMs": 2786,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 281
+        },
+        {
+          "frames": 148,
+          "wallMs": 1249
+        },
+        {
+          "frames": 148,
+          "wallMs": 1244
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "current",
+      "firstMs": 304,
+      "totalMs": 5674,
+      "cpuMs": 5672,
+      "queryCpuMs": 32,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 270
+        },
+        {
+          "frames": 48,
+          "wallMs": 543
+        },
+        {
+          "frames": 192,
+          "wallMs": 1544
+        },
+        {
+          "frames": 192,
+          "wallMs": 1533
+        },
+        {
+          "frames": 192,
+          "wallMs": 1498
+        },
+        {
+          "frames": 9,
+          "wallMs": 253
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "balanced",
+      "firstMs": 300,
+      "totalMs": 5399,
+      "cpuMs": 5398,
+      "queryCpuMs": 27,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 273
+        },
+        {
+          "frames": 159,
+          "wallMs": 1305
+        },
+        {
+          "frames": 158,
+          "wallMs": 1269
+        },
+        {
+          "frames": 158,
+          "wallMs": 1265
+        },
+        {
+          "frames": 158,
+          "wallMs": 1258
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "balanced-margin",
+      "firstMs": 296,
+      "totalMs": 5293,
+      "cpuMs": 5292,
+      "queryCpuMs": 27,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 269
+        },
+        {
+          "frames": 159,
+          "wallMs": 1246
+        },
+        {
+          "frames": 158,
+          "wallMs": 1236
+        },
+        {
+          "frames": 158,
+          "wallMs": 1249
+        },
+        {
+          "frames": 158,
+          "wallMs": 1265
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 0,
+      "phrase": 2,
+      "mode": "large-balanced",
+      "firstMs": 304,
+      "totalMs": 5321,
+      "cpuMs": 5317,
+      "queryCpuMs": 29,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 275
+        },
+        {
+          "frames": 211,
+          "wallMs": 1649
+        },
+        {
+          "frames": 211,
+          "wallMs": 1644
+        },
+        {
+          "frames": 211,
+          "wallMs": 1724
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "large-balanced",
+      "firstMs": 340,
+      "totalMs": 3200,
+      "cpuMs": 3194,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 326
+        },
+        {
+          "frames": 162,
+          "wallMs": 1432
+        },
+        {
+          "frames": 161,
+          "wallMs": 1428
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "balanced-margin",
+      "firstMs": 283,
+      "totalMs": 2905,
+      "cpuMs": 2903,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 269
+        },
+        {
+          "frames": 162,
+          "wallMs": 1296
+        },
+        {
+          "frames": 161,
+          "wallMs": 1326
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "balanced",
+      "firstMs": 287,
+      "totalMs": 2943,
+      "cpuMs": 2938,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 274
+        },
+        {
+          "frames": 162,
+          "wallMs": 1324
+        },
+        {
+          "frames": 161,
+          "wallMs": 1332
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 0,
+      "mode": "current",
+      "firstMs": 283,
+      "totalMs": 3262,
+      "cpuMs": 3260,
+      "queryCpuMs": 13,
+      "frames": 335,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 270
+        },
+        {
+          "frames": 48,
+          "wallMs": 522
+        },
+        {
+          "frames": 192,
+          "wallMs": 1697
+        },
+        {
+          "frames": 83,
+          "wallMs": 760
+        }
+      ],
+      "pcmBytes": 686080,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "large-balanced",
+      "firstMs": 285,
+      "totalMs": 2839,
+      "cpuMs": 2837,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 273
+        },
+        {
+          "frames": 148,
+          "wallMs": 1295
+        },
+        {
+          "frames": 148,
+          "wallMs": 1259
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "balanced-margin",
+      "firstMs": 375,
+      "totalMs": 2833,
+      "cpuMs": 2830,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 363
+        },
+        {
+          "frames": 148,
+          "wallMs": 1221
+        },
+        {
+          "frames": 148,
+          "wallMs": 1237
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "balanced",
+      "firstMs": 312,
+      "totalMs": 2822,
+      "cpuMs": 2804,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 288
+        },
+        {
+          "frames": 148,
+          "wallMs": 1224
+        },
+        {
+          "frames": 148,
+          "wallMs": 1285
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 1,
+      "mode": "current",
+      "firstMs": 278,
+      "totalMs": 2872,
+      "cpuMs": 2871,
+      "queryCpuMs": 12,
+      "frames": 308,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 266
+        },
+        {
+          "frames": 48,
+          "wallMs": 503
+        },
+        {
+          "frames": 192,
+          "wallMs": 1515
+        },
+        {
+          "frames": 56,
+          "wallMs": 576
+        }
+      ],
+      "pcmBytes": 630784,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "large-balanced",
+      "firstMs": 296,
+      "totalMs": 5663,
+      "cpuMs": 5662,
+      "queryCpuMs": 28,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 268
+        },
+        {
+          "frames": 211,
+          "wallMs": 1689
+        },
+        {
+          "frames": 211,
+          "wallMs": 1794
+        },
+        {
+          "frames": 211,
+          "wallMs": 1884
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "balanced-margin",
+      "firstMs": 311,
+      "totalMs": 5487,
+      "cpuMs": 5487,
+      "queryCpuMs": 29,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 282
+        },
+        {
+          "frames": 159,
+          "wallMs": 1355
+        },
+        {
+          "frames": 158,
+          "wallMs": 1285
+        },
+        {
+          "frames": 158,
+          "wallMs": 1283
+        },
+        {
+          "frames": 158,
+          "wallMs": 1254
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "balanced",
+      "firstMs": 328,
+      "totalMs": 5391,
+      "cpuMs": 5391,
+      "queryCpuMs": 30,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 298
+        },
+        {
+          "frames": 159,
+          "wallMs": 1306
+        },
+        {
+          "frames": 158,
+          "wallMs": 1246
+        },
+        {
+          "frames": 158,
+          "wallMs": 1258
+        },
+        {
+          "frames": 158,
+          "wallMs": 1253
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    },
+    {
+      "run": 1,
+      "phrase": 2,
+      "mode": "current",
+      "firstMs": 296,
+      "totalMs": 6175,
+      "cpuMs": 6173,
+      "queryCpuMs": 27,
+      "frames": 645,
+      "parts": [
+        {
+          "frames": 12,
+          "wallMs": 269
+        },
+        {
+          "frames": 48,
+          "wallMs": 511
+        },
+        {
+          "frames": 192,
+          "wallMs": 1594
+        },
+        {
+          "frames": 192,
+          "wallMs": 1940
+        },
+        {
+          "frames": 192,
+          "wallMs": 1572
+        },
+        {
+          "frames": 9,
+          "wallMs": 262
+        }
+      ],
+      "pcmBytes": 1320960,
+      "maxSampleDifference": 1
+    }
+  ],
+  "rejectedShortPrefix": {
+    "reason": "8-frame first WAV can contain almost only quiet lead-in (one fixed phrase had only 4 of 8192 int16 samples above amplitude 256, peak 358 before playback volume). Final policy preserves 12 frames.",
+    "samples": [
+      {
+        "run": 0,
+        "phrase": 0,
+        "firstFrames": 8,
+        "firstMs": 257,
+        "firstCpuMs": 255,
+        "totalMs": 2894,
+        "cpuMs": 2885,
+        "firstChunkSampleCount": 8192,
+        "firstChunkAbove256": 68,
+        "firstChunkPeak": 708,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 8,
+            "wallMs": 243
+          },
+          {
+            "frames": 164,
+            "wallMs": 1313
+          },
+          {
+            "frames": 163,
+            "wallMs": 1323
+          }
+        ]
+      },
+      {
+        "run": 0,
+        "phrase": 0,
+        "firstFrames": 12,
+        "firstMs": 282,
+        "firstCpuMs": 281,
+        "totalMs": 2976,
+        "cpuMs": 2970,
+        "firstChunkSampleCount": 12288,
+        "firstChunkAbove256": 1188,
+        "firstChunkPeak": 1802,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 12,
+            "wallMs": 269
+          },
+          {
+            "frames": 162,
+            "wallMs": 1341
+          },
+          {
+            "frames": 161,
+            "wallMs": 1353
+          }
+        ]
+      },
+      {
+        "run": 0,
+        "phrase": 1,
+        "firstFrames": 8,
+        "firstMs": 254,
+        "firstCpuMs": 253,
+        "totalMs": 2889,
+        "cpuMs": 2882,
+        "firstChunkSampleCount": 8192,
+        "firstChunkAbove256": 4,
+        "firstChunkPeak": 358,
+        "maxSampleDifference": 0,
+        "parts": [
+          {
+            "frames": 8,
+            "wallMs": 242
+          },
+          {
+            "frames": 150,
+            "wallMs": 1286
+          },
+          {
+            "frames": 150,
+            "wallMs": 1349
+          }
+        ]
+      },
+      {
+        "run": 0,
+        "phrase": 1,
+        "firstFrames": 12,
+        "firstMs": 289,
+        "firstCpuMs": 288,
+        "totalMs": 2759,
+        "cpuMs": 2751,
+        "firstChunkSampleCount": 12288,
+        "firstChunkAbove256": 1516,
+        "firstChunkPeak": 2099,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 12,
+            "wallMs": 277
+          },
+          {
+            "frames": 148,
+            "wallMs": 1220
+          },
+          {
+            "frames": 148,
+            "wallMs": 1249
+          }
+        ]
+      },
+      {
+        "run": 0,
+        "phrase": 2,
+        "firstFrames": 8,
+        "firstMs": 287,
+        "firstCpuMs": 287,
+        "totalMs": 1664,
+        "cpuMs": 1661,
+        "firstChunkSampleCount": 8192,
+        "firstChunkAbove256": 196,
+        "firstChunkPeak": 806,
+        "maxSampleDifference": 0,
+        "parts": [
+          {
+            "frames": 8,
+            "wallMs": 279
+          },
+          {
+            "frames": 162,
+            "wallMs": 1376
+          }
+        ]
+      },
+      {
+        "run": 0,
+        "phrase": 2,
+        "firstFrames": 12,
+        "firstMs": 286,
+        "firstCpuMs": 286,
+        "totalMs": 1602,
+        "cpuMs": 1600,
+        "firstChunkSampleCount": 12288,
+        "firstChunkAbove256": 2396,
+        "firstChunkPeak": 2838,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 12,
+            "wallMs": 278
+          },
+          {
+            "frames": 158,
+            "wallMs": 1315
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "phrase": 0,
+        "firstFrames": 12,
+        "firstMs": 294,
+        "firstCpuMs": 293,
+        "totalMs": 3071,
+        "cpuMs": 3062,
+        "firstChunkSampleCount": 12288,
+        "firstChunkAbove256": 1188,
+        "firstChunkPeak": 1802,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 12,
+            "wallMs": 279
+          },
+          {
+            "frames": 162,
+            "wallMs": 1487
+          },
+          {
+            "frames": 161,
+            "wallMs": 1291
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "phrase": 0,
+        "firstFrames": 8,
+        "firstMs": 257,
+        "firstCpuMs": 257,
+        "totalMs": 2953,
+        "cpuMs": 2935,
+        "firstChunkSampleCount": 8192,
+        "firstChunkAbove256": 68,
+        "firstChunkPeak": 708,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 8,
+            "wallMs": 244
+          },
+          {
+            "frames": 164,
+            "wallMs": 1349
+          },
+          {
+            "frames": 163,
+            "wallMs": 1346
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "phrase": 1,
+        "firstFrames": 12,
+        "firstMs": 286,
+        "firstCpuMs": 286,
+        "totalMs": 2965,
+        "cpuMs": 2959,
+        "firstChunkSampleCount": 12288,
+        "firstChunkAbove256": 1516,
+        "firstChunkPeak": 2099,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 12,
+            "wallMs": 274
+          },
+          {
+            "frames": 148,
+            "wallMs": 1301
+          },
+          {
+            "frames": 148,
+            "wallMs": 1377
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "phrase": 1,
+        "firstFrames": 8,
+        "firstMs": 264,
+        "firstCpuMs": 263,
+        "totalMs": 2998,
+        "cpuMs": 2977,
+        "firstChunkSampleCount": 8192,
+        "firstChunkAbove256": 4,
+        "firstChunkPeak": 358,
+        "maxSampleDifference": 0,
+        "parts": [
+          {
+            "frames": 8,
+            "wallMs": 251
+          },
+          {
+            "frames": 150,
+            "wallMs": 1391
+          },
+          {
+            "frames": 150,
+            "wallMs": 1343
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "phrase": 2,
+        "firstFrames": 12,
+        "firstMs": 366,
+        "firstCpuMs": 365,
+        "totalMs": 1724,
+        "cpuMs": 1719,
+        "firstChunkSampleCount": 12288,
+        "firstChunkAbove256": 2396,
+        "firstChunkPeak": 2838,
+        "maxSampleDifference": 1,
+        "parts": [
+          {
+            "frames": 12,
+            "wallMs": 358
+          },
+          {
+            "frames": 158,
+            "wallMs": 1357
+          }
+        ]
+      },
+      {
+        "run": 1,
+        "phrase": 2,
+        "firstFrames": 8,
+        "firstMs": 252,
+        "firstCpuMs": 251,
+        "totalMs": 1559,
+        "cpuMs": 1556,
+        "firstChunkSampleCount": 8192,
+        "firstChunkAbove256": 196,
+        "firstChunkPeak": 806,
+        "maxSampleDifference": 0,
+        "parts": [
+          {
+            "frames": 8,
+            "wallMs": 244
+          },
+          {
+            "frames": 162,
+            "wallMs": 1307
+          }
+        ]
+      }
+    ]
+  },
+  "rejectedPlaybackPolicies": [
+    {
+      "profile": "remainder before every large chunk, without startup guard",
+      "reason": "Rejected: normalized 53-character phrase had a longer consecutive missing-packet interval (median 1110 to 1250ms), despite lower total CPU.",
+      "samples": [
+        {
+          "run": 0,
+          "mode": "before",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 1125,
+          "finishMs": 5936,
+          "audioMs": 3573,
+          "parts": 4,
+          "maxGapMs": 1621,
+          "missingFrames": 56,
+          "missingAudioMs": 1120,
+          "maxConsecutiveMissingMs": 1100,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1807,
+            "synthesisCpuMs": 3099,
+            "firstAudioCpuMs": 287
+          },
+          "accessMs": 51,
+          "firstAudioMs": 300,
+          "playerMs": 824
+        },
+        {
+          "run": 0,
+          "mode": "before",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 306,
+          "finishMs": 5300,
+          "audioMs": 3285,
+          "parts": 4,
+          "maxGapMs": 1650,
+          "missingFrames": 79,
+          "missingAudioMs": 1580,
+          "maxConsecutiveMissingMs": 1140,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1807,
+            "synthesisCpuMs": 3099,
+            "firstAudioCpuMs": 297
+          },
+          "accessMs": 51,
+          "firstAudioMs": 299,
+          "playerMs": 7
+        },
+        {
+          "run": 0,
+          "mode": "before",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 318,
+          "finishMs": 9931,
+          "audioMs": 7989,
+          "parts": 6,
+          "maxGapMs": 1676,
+          "missingFrames": 75,
+          "missingAudioMs": 1500,
+          "maxConsecutiveMissingMs": 1100,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1807,
+            "synthesisCpuMs": 6638,
+            "firstAudioCpuMs": 309
+          },
+          "accessMs": 50,
+          "firstAudioMs": 310,
+          "playerMs": 8
+        },
+        {
+          "run": 1,
+          "mode": "after",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 310,
+          "finishMs": 5302,
+          "audioMs": 3573,
+          "parts": 3,
+          "maxGapMs": 1646,
+          "missingFrames": 65,
+          "missingAudioMs": 1300,
+          "maxConsecutiveMissingMs": 1080,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1683,
+            "synthesisCpuMs": 3002,
+            "firstAudioCpuMs": 300
+          },
+          "accessMs": 51,
+          "firstAudioMs": 302,
+          "playerMs": 8
+        },
+        {
+          "run": 1,
+          "mode": "after",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 298,
+          "finishMs": 5115,
+          "audioMs": 3285,
+          "parts": 3,
+          "maxGapMs": 1664,
+          "missingFrames": 70,
+          "missingAudioMs": 1400,
+          "maxConsecutiveMissingMs": 840,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1683,
+            "synthesisCpuMs": 2880,
+            "firstAudioCpuMs": 294
+          },
+          "accessMs": 50,
+          "firstAudioMs": 295,
+          "playerMs": 3
+        },
+        {
+          "run": 1,
+          "mode": "after",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 317,
+          "finishMs": 9730,
+          "audioMs": 7989,
+          "parts": 5,
+          "maxGapMs": 1607,
+          "missingFrames": 65,
+          "missingAudioMs": 1300,
+          "maxConsecutiveMissingMs": 1300,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1683,
+            "synthesisCpuMs": 6255,
+            "firstAudioCpuMs": 308
+          },
+          "accessMs": 50,
+          "firstAudioMs": 309,
+          "playerMs": 7
+        },
+        {
+          "run": 2,
+          "mode": "after",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 311,
+          "finishMs": 5180,
+          "audioMs": 3573,
+          "parts": 3,
+          "maxGapMs": 1591,
+          "missingFrames": 59,
+          "missingAudioMs": 1180,
+          "maxConsecutiveMissingMs": 1000,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1651,
+            "synthesisCpuMs": 2890,
+            "firstAudioCpuMs": 291
+          },
+          "accessMs": 50,
+          "firstAudioMs": 299,
+          "playerMs": 13
+        },
+        {
+          "run": 2,
+          "mode": "after",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 326,
+          "finishMs": 5060,
+          "audioMs": 3285,
+          "parts": 3,
+          "maxGapMs": 1573,
+          "missingFrames": 66,
+          "missingAudioMs": 1320,
+          "maxConsecutiveMissingMs": 860,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1651,
+            "synthesisCpuMs": 2831,
+            "firstAudioCpuMs": 318
+          },
+          "accessMs": 50,
+          "firstAudioMs": 320,
+          "playerMs": 7
+        },
+        {
+          "run": 2,
+          "mode": "after",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 328,
+          "finishMs": 9647,
+          "audioMs": 7989,
+          "parts": 5,
+          "maxGapMs": 1582,
+          "missingFrames": 60,
+          "missingAudioMs": 1200,
+          "maxConsecutiveMissingMs": 1200,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1651,
+            "synthesisCpuMs": 6187,
+            "firstAudioCpuMs": 319
+          },
+          "accessMs": 51,
+          "firstAudioMs": 321,
+          "playerMs": 8
+        },
+        {
+          "run": 3,
+          "mode": "before",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 308,
+          "finishMs": 5572,
+          "audioMs": 3573,
+          "parts": 4,
+          "maxGapMs": 1671,
+          "missingFrames": 79,
+          "missingAudioMs": 1580,
+          "maxConsecutiveMissingMs": 1140,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1923,
+            "synthesisCpuMs": 3234,
+            "firstAudioCpuMs": 290
+          },
+          "accessMs": 50,
+          "firstAudioMs": 292,
+          "playerMs": 16
+        },
+        {
+          "run": 3,
+          "mode": "before",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 315,
+          "finishMs": 5313,
+          "audioMs": 3285,
+          "parts": 4,
+          "maxGapMs": 1629,
+          "missingFrames": 79,
+          "missingAudioMs": 1580,
+          "maxConsecutiveMissingMs": 1100,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1923,
+            "synthesisCpuMs": 3118,
+            "firstAudioCpuMs": 311
+          },
+          "accessMs": 51,
+          "firstAudioMs": 313,
+          "playerMs": 3
+        },
+        {
+          "run": 3,
+          "mode": "before",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 340,
+          "finishMs": 10014,
+          "audioMs": 7989,
+          "parts": 6,
+          "maxGapMs": 1630,
+          "missingFrames": 78,
+          "missingAudioMs": 1560,
+          "maxConsecutiveMissingMs": 1120,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1923,
+            "synthesisCpuMs": 6559,
+            "firstAudioCpuMs": 332
+          },
+          "accessMs": 51,
+          "firstAudioMs": 334,
+          "playerMs": 6
+        }
+      ]
+    },
+    {
+      "profile": "startup guard plus reordering every later remainder",
+      "reason": "Rejected: normalized long-phrase CPU rose from median 6426.5 to 7092ms. Final policy retains the original later-call shapes instead.",
+      "samples": [
+        {
+          "run": 0,
+          "mode": "before",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 437,
+          "finishMs": 5541,
+          "audioMs": 3573,
+          "parts": 4,
+          "maxGapMs": 1580,
+          "missingFrames": 71,
+          "missingAudioMs": 1420,
+          "maxConsecutiveMissingMs": 1040,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1889,
+            "synthesisCpuMs": 3062,
+            "firstAudioCpuMs": 288
+          },
+          "accessMs": 50,
+          "firstAudioMs": 297,
+          "playerMs": 140
+        },
+        {
+          "run": 0,
+          "mode": "before",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 309,
+          "finishMs": 5267,
+          "audioMs": 3285,
+          "parts": 4,
+          "maxGapMs": 1635,
+          "missingFrames": 77,
+          "missingAudioMs": 1540,
+          "maxConsecutiveMissingMs": 1120,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1889,
+            "synthesisCpuMs": 3071,
+            "firstAudioCpuMs": 305
+          },
+          "accessMs": 51,
+          "firstAudioMs": 306,
+          "playerMs": 3
+        },
+        {
+          "run": 0,
+          "mode": "before",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 317,
+          "finishMs": 9832,
+          "audioMs": 7989,
+          "parts": 6,
+          "maxGapMs": 1660,
+          "missingFrames": 70,
+          "missingAudioMs": 1400,
+          "maxConsecutiveMissingMs": 1000,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1889,
+            "synthesisCpuMs": 6428,
+            "firstAudioCpuMs": 310
+          },
+          "accessMs": 50,
+          "firstAudioMs": 311,
+          "playerMs": 5
+        },
+        {
+          "run": 1,
+          "mode": "after",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 310,
+          "finishMs": 5299,
+          "audioMs": 3573,
+          "parts": 3,
+          "maxGapMs": 1650,
+          "missingFrames": 65,
+          "missingAudioMs": 1300,
+          "maxConsecutiveMissingMs": 1100,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1917,
+            "synthesisCpuMs": 3009,
+            "firstAudioCpuMs": 297
+          },
+          "accessMs": 51,
+          "firstAudioMs": 298,
+          "playerMs": 12
+        },
+        {
+          "run": 1,
+          "mode": "after",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 328,
+          "finishMs": 5301,
+          "audioMs": 3285,
+          "parts": 3,
+          "maxGapMs": 1623,
+          "missingFrames": 78,
+          "missingAudioMs": 1560,
+          "maxConsecutiveMissingMs": 1040,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1917,
+            "synthesisCpuMs": 3055,
+            "firstAudioCpuMs": 319
+          },
+          "accessMs": 50,
+          "firstAudioMs": 320,
+          "playerMs": 7
+        },
+        {
+          "run": 1,
+          "mode": "after",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 390,
+          "finishMs": 10802,
+          "audioMs": 7989,
+          "parts": 6,
+          "maxGapMs": 2094,
+          "missingFrames": 115,
+          "missingAudioMs": 2300,
+          "maxConsecutiveMissingMs": 900,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1917,
+            "synthesisCpuMs": 7856,
+            "firstAudioCpuMs": 380
+          },
+          "accessMs": 50,
+          "firstAudioMs": 382,
+          "playerMs": 8
+        },
+        {
+          "run": 2,
+          "mode": "after",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 315,
+          "finishMs": 5402,
+          "audioMs": 3573,
+          "parts": 3,
+          "maxGapMs": 1711,
+          "missingFrames": 70,
+          "missingAudioMs": 1400,
+          "maxConsecutiveMissingMs": 1120,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1770,
+            "synthesisCpuMs": 3103,
+            "firstAudioCpuMs": 294
+          },
+          "accessMs": 50,
+          "firstAudioMs": 301,
+          "playerMs": 14
+        },
+        {
+          "run": 2,
+          "mode": "after",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 306,
+          "finishMs": 5124,
+          "audioMs": 3285,
+          "parts": 3,
+          "maxGapMs": 1691,
+          "missingFrames": 70,
+          "missingAudioMs": 1400,
+          "maxConsecutiveMissingMs": 800,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1770,
+            "synthesisCpuMs": 2885,
+            "firstAudioCpuMs": 298
+          },
+          "accessMs": 50,
+          "firstAudioMs": 299,
+          "playerMs": 7
+        },
+        {
+          "run": 2,
+          "mode": "after",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 330,
+          "finishMs": 9688,
+          "audioMs": 7989,
+          "parts": 6,
+          "maxGapMs": 1556,
+          "missingFrames": 62,
+          "missingAudioMs": 1240,
+          "maxConsecutiveMissingMs": 500,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 2,
+            "warmupCpuMs": 1770,
+            "synthesisCpuMs": 6328,
+            "firstAudioCpuMs": 323
+          },
+          "accessMs": 51,
+          "firstAudioMs": 324,
+          "playerMs": 5
+        },
+        {
+          "run": 3,
+          "mode": "before",
+          "phrase": 0,
+          "characters": 22,
+          "startMs": 313,
+          "finishMs": 5665,
+          "audioMs": 3573,
+          "parts": 4,
+          "maxGapMs": 1736,
+          "missingFrames": 83,
+          "missingAudioMs": 1660,
+          "maxConsecutiveMissingMs": 1200,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1968,
+            "synthesisCpuMs": 3305,
+            "firstAudioCpuMs": 299
+          },
+          "accessMs": 51,
+          "firstAudioMs": 300,
+          "playerMs": 13
+        },
+        {
+          "run": 3,
+          "mode": "before",
+          "phrase": 1,
+          "characters": 23,
+          "startMs": 290,
+          "finishMs": 5188,
+          "audioMs": 3285,
+          "parts": 4,
+          "maxGapMs": 1575,
+          "missingFrames": 74,
+          "missingAudioMs": 1480,
+          "maxConsecutiveMissingMs": 1060,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1968,
+            "synthesisCpuMs": 2991,
+            "firstAudioCpuMs": 287
+          },
+          "accessMs": 50,
+          "firstAudioMs": 288,
+          "playerMs": 3
+        },
+        {
+          "run": 3,
+          "mode": "before",
+          "phrase": 2,
+          "characters": 53,
+          "startMs": 319,
+          "finishMs": 9837,
+          "audioMs": 7989,
+          "parts": 6,
+          "maxGapMs": 1580,
+          "missingFrames": 70,
+          "missingAudioMs": 1400,
+          "maxConsecutiveMissingMs": 1000,
+          "cpu": {
+            "protocol": 3,
+            "engine": "features",
+            "threads": 1,
+            "configuredThreads": 3,
+            "warmupParts": 3,
+            "warmupCpuMs": 1968,
+            "synthesisCpuMs": 6425,
+            "firstAudioCpuMs": 315
+          },
+          "accessMs": 50,
+          "firstAudioMs": 316,
+          "playerMs": 3
+        }
+      ]
+    }
+  ]
+}

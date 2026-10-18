@@ -7,7 +7,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parent.parent/'scripts'))
 spec=importlib.util.spec_from_file_location('backup',Path(__file__).resolve().parent.parent/'scripts/backup-synthesize.py')
 module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-from backup_render import packed_queries,FeatureRenderer,prepare_renderer,MAX_FRAMES
+from backup_render import packed_queries,FeatureRenderer,prepare_renderer,MAX_FRAMES,next_render_frames
 import io
 import wave
 
@@ -125,6 +125,36 @@ class RenderAdapters(unittest.TestCase):
         self.assertEqual(chunks[0][0]['frameEnd'],12)
         self.assertTrue(all(p['frameEnd']-p['frameStart']<=33 for p,_ in chunks[1:]))
         self.assertEqual(chunks[-1][0]['frameEnd'],400)
+
+    def test_short_remainders_are_generated_before_long_chunks_without_extra_native_calls(self):
+        for count,expected in [(335,[12,131,192]),(645,[12,57,192,192,192]),(400,[12,48,192,148]),(25,[12,13])]:
+            chunks=list(FeatureRenderer(self.synth(count),lambda:0).chunks(self.query()))
+            self.assertEqual([p['frameEnd']-p['frameStart'] for p,_ in chunks],expected)
+            self.assertEqual(chunks[-1][0]['frameEnd'],count)
+
+    def test_all_lengths_use_minimum_bounded_calls_without_a_startup_constraint_and_preserve_the_first_chunk(self):
+        for count in range(1,MAX_FRAMES+1):
+            left=count;plan=[]
+            while left:
+                size=next_render_frames(left,len(plan),0)
+                self.assertTrue(1<=size<=min(left,192));plan.append(size);left-=size
+            self.assertEqual(plan[0],min(count,12))
+            self.assertEqual(len(plan),1+(max(0,count-12)+191)//192)
+            self.assertEqual(sum(plan),count)
+            self.assertTrue(all(n>=48 for n in plan[1:-1]))
+
+    def test_startup_ramp_is_preserved_when_merging_predicts_a_longer_audible_pause(self):
+        # 8ms per input frame including Core's 28-frame context; first call is 40 frames.
+        measured_rate=.008*40/12
+        self.assertEqual(next_render_frames(737,1,measured_rate),48)
+        self.assertEqual(next_render_frames(323,1,measured_rate),131)
+        self.assertEqual(next_render_frames(633,1,measured_rate),57)
+        self.assertEqual(next_render_frames(689,2,measured_rate),192)
+        synth=self.synth(749);clock=[0.];original=synth._Synthesizer__render
+        def render(a,start,stop):clock[0]+=.008*(stop-start+28);return original(a,start,stop)
+        synth._Synthesizer__render=render
+        chunks=list(FeatureRenderer(synth,lambda:clock[0]).chunks(self.query()))
+        self.assertEqual([p['frameEnd']-p['frameStart'] for p,_ in chunks],[12,48,192,192,192,113])
 
     def test_invalid_feature_dimensions_and_incomplete_pcm_are_rejected(self):
         for count,rate in [(0,93.75),(MAX_FRAMES+1,93.75),(3.5,93.75),(24,80)]:

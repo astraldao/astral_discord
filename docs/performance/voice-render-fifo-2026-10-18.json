@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-18",
+  "scope": "Development environment, one logical CPU affinity, configured 3/native 1. Real VOICEVOX, Opus and AudioPlayer. Three synthetic posts through BackupReader FIFO, next-post prefetch and 50-character plus 以下略 truncation. Authorization simulated at 50ms; no Discord/VC/shared production host or 589MiB cap reproduced. Numeric metrics only; no user text/audio saved.",
+  "runtime": {
+    "protocol": 3,
+    "engine": "features",
+    "threads": 1,
+    "configuredThreads": 3,
+    "warmupParts": 2,
+    "warmupCpuMs": 1709,
+    "synthesisCpuMs": 2000,
+    "firstAudioCpuMs": 279
+  },
+  "normalizedCharacters": [
+    22,
+    53,
+    13
+  ],
+  "samples": [
+    {
+      "index": 0,
+      "queuedMs": 0,
+      "accessMs": 51,
+      "firstAudioMs": 341,
+      "playerMs": 138,
+      "prefetched": false,
+      "startAfterPostsMs": 479,
+      "finishAfterPostsMs": 5553
+    },
+    {
+      "index": 1,
+      "queuedMs": 5552,
+      "accessMs": 50,
+      "firstAudioMs": 0,
+      "playerMs": 8,
+      "prefetched": true,
+      "startAfterPostsMs": 5611,
+      "finishAfterPostsMs": 13724
+    },
+    {
+      "index": 2,
+      "queuedMs": 13723,
+      "accessMs": 51,
+      "firstAudioMs": 1,
+      "playerMs": 6,
+      "prefetched": true,
+      "startAfterPostsMs": 13781,
+      "finishAfterPostsMs": 16115
+    }
+  ],
+  "diagnostics": []
+}

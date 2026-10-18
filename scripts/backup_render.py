@@ -7,6 +7,34 @@ import wave
 MAX_FRAMES = 3750  # 40 seconds at the native 93.75 Hz; PCM remains below 8 MiB.
 FIRST_FRAMES = 12
 MAX_CHUNK_FRAMES = 192
+CONTEXT_FRAMES = 28  # Core 0.17 renders 14 extra frames on each side.
+FRAME_RATE = 93.75
+
+
+def next_render_frames(remaining, part, previous_rate):
+    if part == 0:
+        return min(FIRST_FRAMES, remaining)
+    cap = MAX_CHUNK_FRAMES
+    # Preserve the conservative 10s target and the existing 15s hard deadline.
+    if previous_rate and previous_rate > 0:
+        cap = min(cap, max(16, int(10 / previous_rate)))
+    if part > 1:
+        return min(remaining, cap)
+    count = (remaining + cap - 1) // cap
+    # Advance enough work into the second chunk to avoid an unnecessary final call.
+    # Later chunks retain the original maximum-size schedule and native call shapes.
+    size = min(remaining, max(min(48, cap), remaining - cap * (count - 1)))
+    if part == 1 and previous_rate and previous_rate > 0:
+        # Estimate the old ramp's longest playback starvation, accounting for context.
+        # Keep its short second chunk if merging would exceed that estimated pause.
+        rate = previous_rate * FIRST_FRAMES / (FIRST_FRAMES + CONTEXT_FRAMES)
+        short = min(48, cap)
+        pause = max(0, rate * (short + CONTEXT_FRAMES) - FIRST_FRAMES / FRAME_RATE,
+                    rate * (cap + CONTEXT_FRAMES) - short / FRAME_RATE)
+        limit = max(short, int((pause + FIRST_FRAMES / FRAME_RATE) / rate - CONTEXT_FRAMES))
+        if size > limit:
+            size = min(remaining, short)
+    return size
 
 
 def packed_queries(query):
@@ -81,14 +109,11 @@ class FeatureRenderer:
             return
         feature = self.precompute(query, 3)
         count = feature.frame_length
-        if type(count) is not int or not 1 <= count <= MAX_FRAMES or feature.frame_rate != 93.75:
+        if type(count) is not int or not 1 <= count <= MAX_FRAMES or feature.frame_rate != FRAME_RATE:
             raise ValueError('Invalid feature dimensions')
         start, part, previous_rate = 0, 0, None
         while start < count:
-            size = FIRST_FRAMES if part == 0 else 48 if part == 1 else MAX_CHUNK_FRAMES
-            # Target <10 seconds per native call on slow hosts; the Node hard deadline stays 15s.
-            if part and previous_rate and previous_rate > 0:
-                size = min(size, max(16, int(10 / previous_rate)))
+            size = next_render_frames(count - start, part, previous_rate)
             stop = min(count, start + size)
             progress = {'frameStart': start, 'frameEnd': stop, 'frames': count}
             on_progress(progress)
