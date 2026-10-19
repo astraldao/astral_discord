@@ -138,3 +138,76 @@ test('today shortcut works from another month for both admin and read-only viewe
   const f=await fixture();await add(f);await f.c.handle(click(f.s,'list'));await f.c.handle(click(f.s,'month-next'));await f.c.handle(click(f.s,'day-today'));assert.equal(f.s.date,'2026-10-14');assert.equal(f.s.month,'2026-10');assert.equal(f.store.calendar(f.id).events.length,1);
   await publish(f);const p=f.store.calendar(f.id).publications[0];await f.c.handle(i(`schedule:panel:${p.id}`,'viewer'));const s=[...f.c.sessions.sessions.values()].find(s=>s.userId==='viewer');await f.c.handle(i(`schedule:${s.id}:${s.turn}:day-today`,'viewer'));assert.equal(s.date,'2026-10-14');const controls=scheduleScreen(s,f.store).components.flatMap(r=>r.toJSON().components);assert.ok(!controls.some(b=>b.custom_id==='admin:open'));assert.ok(!controls.some(b=>b.custom_id.endsWith(':new-event')));
 });
+
+test('search spans months, preserves its page through detail and resume, and clears back to the previous date',async()=>{
+  const f=await fixture();
+  for(let n=0;n<10;n++)await f.store.putEvent(f.id,null,event({title:`星の卓${n}`,date:n<5?'2026/10/17':'2027/01/04',place:'VC3'}));
+  f.s.date='2026-10-17';await f.c.handle(click(f.s,'tools'));
+  const search=click(f.s,'search');await f.c.handle(search);await f.c.handle(form(search,{value:'星 ＶＣ３'}));
+  assert.equal(f.s.query,'星 vc3');assert.equal(f.s.month,'2026-10');assert.equal(f.s.date,'2026-10-17');
+  let screen=scheduleScreen(f.s,f.store);assert.ok(!screen.files);assert.ok(JSON.stringify(screen).includes('全期間'));
+  assert.equal(screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3).options.length,8);
+  await f.c.handle(click(f.s,'next'));screen=scheduleScreen(f.s,f.store);
+  const menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3);
+  await f.c.handle(Object.assign(click(f.s,'event'),{values:[menu.options[0].value]}));await f.c.handle(click(f.s,'list'));
+  assert.equal(f.s.page,1);await f.c.openAdmin(i());assert.equal(f.s.query,'星 vc3');assert.equal(f.s.page,1);
+  const invalid=click(f.s,'day-jump');await f.c.handle(invalid);await f.c.handle(form(invalid,{value:'2026/02/30'}));assert.equal(f.s.query,'星 vc3');
+  await f.c.handle(click(f.s,'search-clear'));assert.equal(f.s.query,undefined);assert.equal(f.s.date,'2026-10-17');assert.equal(f.s.page,0);
+  assert.equal(f.sendCount(),0);
+});
+
+test('copy is a prefilled unsaved draft, preserves overnight time and source, and saves only once',async()=>{
+  const f=await fixture(),source=await add(f,event({time:'23:00-01:00'}));
+  const copy=click(f.s,'copy-event');await f.c.handle(copy);assert.ok(copy.modal);assert.equal(f.store.calendar(f.id).events.length,1);
+  assert.equal(copy.modal.toJSON().title,'複製して予定を追加');assert.equal(copy.modal.toJSON().components[2].components[0].value,'23:00-01:00');
+  const submit=form(copy,event({title:'翌週の卓',date:'2026/10/24',time:'23:00-01:00'}));await f.c.handle(submit);await f.c.handle(submit);
+  const events=f.store.calendar(f.id).events;assert.equal(events.length,2);assert.deepEqual(events[0],source);
+  assert.notEqual(events[1].id,source.id);assert.equal(events[1].end,1500);assert.equal(events[1].date,'2026-10-24');
+});
+
+test('copy retries retain invalid input, reject changed sources and recheck permission after queued writes',async()=>{
+  const f=await fixture(),source=await add(f);
+  const copy=click(f.s,'copy-event');await f.c.handle(copy);await f.c.handle(form(copy,event({title:'下書き',date:'2026/02/30'})));
+  const retry=click(f.s,'copy-event');await f.c.handle(retry);assert.equal(retry.modal.toJSON().components[0].components[0].value,'下書き');
+  await f.store.putEvent(f.id,source.id,event({title:'元が変更'}),source.revision);
+  await f.c.handle(form(retry,event()));assert.equal(f.store.calendar(f.id).events.length,1);
+  const fresh=click(f.s,'copy-event');await f.c.handle(fresh);assert.equal(fresh.modal.toJSON().components[0].components[0].value,'元が変更');
+  let release;f.store.tail=new Promise(r=>release=r);const save=f.c.handle(form(fresh,event()));await new Promise(r=>setImmediate(r));f.admin(false);release();await save;
+  assert.equal(f.store.calendar(f.id).events.length,1);assert.equal(f.sendCount(),0);
+});
+
+test('viewers may search and export only the clicked calendar, with fresh access and session validation',async()=>{
+  const f=await fixture();await add(f);const other=await f.store.create('秘密の予定表');await f.store.putEvent(other,null,event({title:'秘密の予定'}));await publish(f);
+  const publication=f.store.calendar(f.id).publications[0];await f.c.handle(i(`schedule:panel:${publication.id}`,'viewer'));
+  const s=[...f.c.sessions.sessions.values()].find(s=>s.userId==='viewer'),a=action=>i(`schedule:${s.id}:${s.turn}:${action}`,'viewer');
+  await f.c.handle(a('tools'));const search=a('search');await f.c.handle(search);await f.c.handle(Object.assign(form(search,{value:'セッション'}),{user:{id:'viewer'}}));
+  await f.c.handle(a('tools'));const download=a('export');await f.c.handle(download);
+  const result=download.replies.at(-1);assert.equal(result.files[0].name,'astral-calendar.ics');assert.ok(result.files[0].attachment.toString().includes('セッション'));assert.ok(!result.files[0].attachment.toString().includes('秘密'));
+  assert.deepEqual(result.attachments,[]);assert.ok(!JSON.stringify(result).includes('予定を編集'));
+  const denied=a('copy-event');await f.c.handle(denied);assert.ok(!denied.modal);assert.equal(f.store.calendar(f.id).events.length,1);
+  for(const change of ['owner','channel','generation','permission','expiry']){
+    const x=a('export');if(change==='owner')x.user.id='intruder';if(change==='channel')x.channelId='567890123456789012';if(change==='generation')x.customId=x.customId.replace(`:${s.turn}:`,':-1:');if(change==='permission')f.visible(false);if(change==='expiry')s.expires=0;
+    await f.c.handle(x);assert.ok(!x.replies.some(r=>r.files?.some(file=>file.name==='astral-calendar.ics')));f.visible(true);
+  }
+});
+
+test('export covers all filtered pages, clears old files on navigation and requires a new explicit action after resume',async()=>{
+  const f=await fixture();for(let n=0;n<12;n++)await f.store.putEvent(f.id,null,event({title:`予定${n}`}));
+  await f.c.handle(click(f.s,'next'));assert.equal(f.s.page,1);await f.c.handle(click(f.s,'tools'));
+  const download=click(f.s,'export');await f.c.handle(download);assert.equal(download.replies.at(-1).files[0].attachment.toString().split('BEGIN:VEVENT').length-1,12);
+  const back=click(f.s,'list');await f.c.handle(back);assert.deepEqual(back.replies.at(-1).attachments,[]);assert.ok(back.replies.at(-1).files.every(file=>file.name!=='astral-calendar.ics'));assert.equal(f.s.page,1);
+  await f.c.handle(click(f.s,'tools'));await f.c.handle(click(f.s,'export'));const resume=i();await f.c.openAdmin(resume);assert.equal(f.s.view,'tools');assert.equal(resume.replies.at(-1).files,undefined);
+  await f.c.handle(click(f.s,'list'));await f.c.handle(click(f.s,'month-next'));await f.c.handle(click(f.s,'tools'));
+  const empty=click(f.s,'export');await f.c.handle(empty);assert.ok(!empty.replies.some(r=>r.files));assert.equal(f.s.view,'tools');assert.equal(f.sendCount(),0);
+});
+
+test('maximum search screens and tools respect Discord component and text limits for both scopes',async()=>{
+  const f=await fixture();for(let n=0;n<200;n++)await f.store.putEvent(f.id,null,event({title:'*'.repeat(80),date:`2026/10/${String(n%28+1).padStart(2,'0')}`}));
+  f.s.query='*'.repeat(80);f.s.date='2026-10-17';
+  for(const scope of ['admin','viewer'])for(const view of ['list','tools']){
+    const s={...f.s,scope,view,exportedAt:0},m=scheduleScreen(s,f.store);
+    assert.ok(m.components.length<=5);for(const row of m.components){assert.ok(row.toJSON().components.length<=5);row.toJSON();}
+    for(const embed of m.embeds)assert.ok(embed.toJSON().description.length<=4096);
+    assert.deepEqual(m.allowedMentions.parse,[]);
+  }
+});

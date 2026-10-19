@@ -175,3 +175,85 @@ test('a warm worker that exits before the first post preserves its exit cause fo
   const child=fakeChild(()=>{}),worker=createPersistentVoice({launch:()=>child});child.stdout.emit('data',frame({type:'ready'}));await worker.ready;child.emit('close',1);
   await assert.rejects(worker.stream('最初の投稿',undefined,()=>assert.fail('must not synthesize')),e=>e.code==='SYNTHESIS_EXIT');worker.close();assert.equal(child.kills,1);
 });
+
+const controlClick=(reader,action,user='owner')=>Object.assign(i('unused',user),{customId:`read:${action}:${reader.state?.id}${['pause','resume'].includes(action)?`:${reader.state?.controlRevision}`:''}`});
+test('pause retains the prepared session, accepts a bounded queue without synthesis and resumes FIFO once',async()=>{
+  const f=await fixture(),state=f.reader.state,id=state.id;
+  await f.reader.handle(controlClick(f.reader,'pause'));assert.equal(state.paused,true);
+  for(let n=0;n<10;n++)f.message(`待機${n}`);await tick();
+  assert.equal(state.queue.length,8);assert.equal(state.metrics.dropped,2);assert.equal(f.spoken.length,0);assert.equal(f.played.length,0);
+  const status=i('status');await f.reader.handle(status);assert.ok(JSON.stringify(status.replies).includes('一時停止中'));
+  f.setTime(1000);await f.reader.handle(controlClick(f.reader,'resume'));await f.reader.idle();
+  assert.equal(f.reader.state.id,id);assert.deepEqual(f.spoken,Array.from({length:8},(_,n)=>`待機${n}`));assert.equal(f.played.length,8);
+  assert.ok(state.metrics.lastMs>=1000);assert.equal(state.queue.length,0);assert.equal(f.workerClosed(),0);assert.equal(f.voiceClosed(),0);
+  await f.reader.handle(controlClick(f.reader,'resume'));await tick();assert.equal(f.played.length,8);await f.reader.close();
+});
+
+test('pausing during playback finishes the current sentence and retains already-prefetched audio for resume',async()=>{
+  let release,plays=0;const f=await fixture({speaker:async()=>({healthy:()=>true,close(){},async play(_,o){o.onStart();if(++plays===1)await new Promise(r=>release=r);}})});
+  f.message('いまの文章');await tick();f.message('先読みした文章');await tick();
+  const prepared=f.reader.state.queue[0].prepared;assert.ok(prepared.bufferedBytes>0);
+  await f.reader.handle(controlClick(f.reader,'pause'));f.message('その次の文章');await tick();assert.equal(plays,1);
+  release();await f.reader.idle();assert.equal(plays,1);assert.equal(f.reader.state.queue.length,2);assert.ok(prepared.bufferedBytes>0);
+  assert.deepEqual(f.spoken,['いまの文章','先読みした文章']);
+  await f.reader.handle(controlClick(f.reader,'resume'));await f.reader.idle();assert.equal(plays,3);
+  assert.deepEqual(f.spoken,['いまの文章','先読みした文章','その次の文章']);assert.equal(prepared.bufferedBytes,0);await f.reader.close();
+});
+
+test('pausing during first synthesis still plays that whole sentence but does not prepare the next one',async()=>{
+  let release;const spoken=[],f=await fixture({worker:()=>({ready:Promise.resolve(),close(){},async stream(text,_,chunk){spoken.push(text);if(spoken.length===1)await new Promise(r=>release=r);chunk(wave());}})});
+  f.message('準備中の文章');await tick();assert.equal(f.reader.state.phase,'processing');
+  await f.reader.handle(controlClick(f.reader,'pause'));f.message('待機する文章');release();await f.reader.idle();
+  assert.equal(f.played.length,1);assert.deepEqual(spoken,['準備中の文章']);assert.equal(f.reader.state.queue.length,1);
+  await f.reader.handle(controlClick(f.reader,'resume'));await f.reader.idle();assert.deepEqual(spoken,['準備中の文章','待機する文章']);await f.reader.close();
+});
+
+test('pause and resume require current session and controller authorization, including after delayed permission checks',async()=>{
+  const f=await fixture(),old=f.reader.state.id;
+  for(const action of ['pause','resume']){await f.reader.handle(controlClick(f.reader,action,'other'));assert.equal(f.reader.state.paused,false);}
+  await f.reader.handle(controlClick(f.reader,'pause'));await f.reader.close();await f.reader.handle(i('start'));
+  for(const action of ['pause','resume']){
+    const stale=Object.assign(i('unused'),{customId:`read:${action}:${old}`});await f.reader.handle(stale);assert.equal(f.reader.state.paused,false);
+  }
+  await f.reader.close();
+  for(const action of ['pause','resume']){
+    let allow;const g=await fixture({canControl:()=>new Promise(r=>allow=r)}),click=controlClick(g.reader,action),job=g.reader.handle(click);await tick();
+    await g.reader.close();await g.reader.handle(i('start','replacement','private-text'));const id=g.reader.state.id;
+    allow();await job;assert.equal(g.reader.state.id,id);assert.equal(g.reader.state.paused,false);assert.ok(!JSON.stringify(click.replies).includes('private-text'));await g.reader.close();
+  }
+});
+
+test('pause controls acknowledge private screens once and defaults allow only owner or administrator with source access',async()=>{
+  let visible=true;const guild={id:'guild',members:{fetch:async({user})=>({permissions:{has:()=>user==='admin'}})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>visible})})}};
+  const f=await fixture({guild,canControl:undefined});
+  await f.reader.handle(controlClick(f.reader,'pause','admin'));assert.equal(f.reader.state.paused,true);
+  visible=false;await f.reader.handle(controlClick(f.reader,'resume','admin'));assert.equal(f.reader.state.paused,true);
+  visible=true;const click=controlClick(f.reader,'resume');let updates=0;click.message={flags:{has:()=>true}};click.deferUpdate=async()=>{updates++;click.deferred=true;};
+  await f.reader.handle(click);assert.equal(updates,1);assert.equal(click.replies.length,1);assert.equal(f.reader.state.paused,false);await f.reader.close();
+});
+
+test('stop and voice departure discard a paused queue without replaying it on a replacement session',async()=>{
+  for(const action of ['stop','depart']){
+    const f=await fixture();await f.reader.handle(controlClick(f.reader,'pause'));f.message('破棄される文章');const old=f.reader.state;
+    if(action==='stop')await f.reader.handle(controlClick(f.reader,'stop'));else await f.reader.onVoiceChange({channelId:'voice'},{id:'owner',channelId:null,guild:{id:'guild'}});
+    assert.equal(f.reader.active,false);assert.equal(old.queue.length,0);assert.equal(f.workerClosed(),1);assert.equal(f.voiceClosed(),1);
+    await f.reader.handle(i('start'));assert.equal(f.reader.state.paused,false);f.message('新しい文章');await f.reader.idle();assert.deepEqual(f.spoken,['新しい文章']);await f.reader.close();
+  }
+});
+
+test('pause during warmup is disabled and forged controls cannot change preparing state',async()=>{
+  let warm;const reader=createBackupReader({guild:{id:'guild'},enabled:true,resolveTargets:async()=>({text:{send:async()=>({async edit(){}})},voice:{id:'voice'}}),authorize:async()=>{},canControl:async()=>{},worker:()=>({ready:new Promise(r=>warm=r),close(){}}),speaker:async()=>({close(){}})});
+  const start=i('start'),job=reader.handle(start);await tick();
+  const buttons=start.replies.at(-1).components.flatMap(r=>r.toJSON().components);assert.equal(buttons.find(b=>b.custom_id===`read:pause:${reader.state.id}:${reader.state.controlRevision}`).disabled,true);
+  await reader.handle(controlClick(reader,'pause'));assert.equal(reader.state.paused,false);warm();await job;assert.equal(reader.state.ready,true);await reader.close();
+});
+
+
+test('late or repeated pause controls cannot override a newer decision after asynchronous authorization',async()=>{
+  let delay=false,allow;const f=await fixture({canControl:async()=>{if(delay)await new Promise(r=>allow=r);}});
+  const oldPause=controlClick(f.reader,'pause');await f.reader.handle(oldPause);assert.equal(f.reader.state.paused,true);
+  await f.reader.handle(controlClick(f.reader,'resume'));await f.reader.handle(oldPause);assert.equal(f.reader.state.paused,false);
+  delay=true;const pending=controlClick(f.reader,'pause'),job=f.reader.handle(pending);await tick();delay=false;
+  await f.reader.handle(controlClick(f.reader,'pause'));await f.reader.handle(controlClick(f.reader,'resume'));allow();await job;
+  assert.equal(f.reader.state.paused,false);assert.ok(JSON.stringify(pending.replies).includes('更新されています'));await f.reader.close();
+});
