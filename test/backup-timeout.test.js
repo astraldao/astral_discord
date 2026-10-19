@@ -180,3 +180,12 @@ test('a late startup watchdog reports its delay instead of claiming it fired exa
   const f=cold(t),failure=assert.rejects(f.worker.ready,e=>{assert.equal(e.code,'SYNTHESIS_WARMUP_TIMEOUT');assert.equal(e.info.elapsedMs,98128);assert.equal(e.info.timerLateMs,8128);assert.equal(e.info.warmupStep,'model-load');assert.equal(e.info.warmupStepMs,38128);assert.equal(e.info.warmupCpuMs,200);return true;});
   f.timer.advance(60000);f.emit(startup(1,'model-load',200));f.setOffset(8128);f.timer.advance(30000);await failure;assert.equal(f.timer.count,0);
 });
+
+test('byte-fragmented and coalesced voice frames preserve streaming order, transfer diagnostics and timers',async t=>{
+  const f=await fixture(t),chunks=[],job=f.worker.stream('本文',undefined,bytes=>chunks.push(bytes));await tick();
+  const first=frame({id:f.writes[0].id,part:0},wave()),headerEnd=first.indexOf(10)+1;
+  for(let at=0;at<first.length-1;at++)f.child.stdout.emit('data',first.subarray(at,at+1));
+  assert.ok(headerEnd>0);assert.equal(f.worker.diagnostics.stage,'transfer');assert.equal(chunks.length,0);
+  f.child.stdout.emit('data',Buffer.concat([first.subarray(-1),frame({id:f.writes[0].id,part:1},wave()),frame({id:f.writes[0].id,end:true})]));
+  await job;assert.deepEqual(chunks,[wave(),wave()]);assert.equal(f.timer.count,0);assert.equal(f.child.kills,0);
+});

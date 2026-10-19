@@ -1,0 +1,137 @@
+{
+  "date": "2026-10-19",
+  "runtime": "v24.19.0",
+  "scope": "Isolated framing of a fixed 256KiB binary payload; no model, synthesis, WAV validation, Opus, Discord, network or Quaxly. Old decoder reproduces the previous framing algorithm. Each sample uses an independent process.",
+  "orderPerFragmentSize": [
+    "old",
+    "new",
+    "new",
+    "old",
+    "old",
+    "new"
+  ],
+  "medians": [
+    {
+      "mode": "old",
+      "fragmentBytes": 64,
+      "elapsedMs": 93.076189,
+      "cpuMs": 137.874
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 64,
+      "elapsedMs": 4.074078,
+      "cpuMs": 8.124
+    },
+    {
+      "mode": "old",
+      "fragmentBytes": 4096,
+      "elapsedMs": 3.5513779999999997,
+      "cpuMs": 4.844
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 4096,
+      "elapsedMs": 0.8909139999999987,
+      "cpuMs": 2.083
+    }
+  ],
+  "samples": [
+    {
+      "mode": "old",
+      "fragmentBytes": 64,
+      "bytes": 262144,
+      "fragments": 4097,
+      "elapsedMs": 102.83076300000002,
+      "cpuMs": 139.672
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 64,
+      "bytes": 262144,
+      "fragments": 4097,
+      "elapsedMs": 4.328651999999998,
+      "cpuMs": 8.14
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 64,
+      "bytes": 262144,
+      "fragments": 4097,
+      "elapsedMs": 4.035451000000002,
+      "cpuMs": 8.124
+    },
+    {
+      "mode": "old",
+      "fragmentBytes": 64,
+      "bytes": 262144,
+      "fragments": 4097,
+      "elapsedMs": 89.544836,
+      "cpuMs": 129.399
+    },
+    {
+      "mode": "old",
+      "fragmentBytes": 64,
+      "bytes": 262144,
+      "fragments": 4097,
+      "elapsedMs": 93.076189,
+      "cpuMs": 137.874
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 64,
+      "bytes": 262144,
+      "fragments": 4097,
+      "elapsedMs": 4.074078,
+      "cpuMs": 7.297
+    },
+    {
+      "mode": "old",
+      "fragmentBytes": 4096,
+      "bytes": 262144,
+      "fragments": 65,
+      "elapsedMs": 3.5513779999999997,
+      "cpuMs": 4.844
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 4096,
+      "bytes": 262144,
+      "fragments": 65,
+      "elapsedMs": 0.903143,
+      "cpuMs": 1.888
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 4096,
+      "bytes": 262144,
+      "fragments": 65,
+      "elapsedMs": 0.8909139999999987,
+      "cpuMs": 2.127
+    },
+    {
+      "mode": "old",
+      "fragmentBytes": 4096,
+      "bytes": 262144,
+      "fragments": 65,
+      "elapsedMs": 4.489323999999996,
+      "cpuMs": 5.478
+    },
+    {
+      "mode": "old",
+      "fragmentBytes": 4096,
+      "bytes": 262144,
+      "fragments": 65,
+      "elapsedMs": 3.097643999999999,
+      "cpuMs": 4.358
+    },
+    {
+      "mode": "new",
+      "fragmentBytes": 4096,
+      "bytes": 262144,
+      "fragments": 65,
+      "elapsedMs": 0.7428709999999974,
+      "cpuMs": 2.083
+    }
+  ]
+}
