@@ -197,3 +197,45 @@ test('recovery rejects wrong sessions, old forms, edit URLs and wrong channels w
 test('revoked administrator cannot recover or receive private results after acknowledgement',async()=>{
   let allowed=true;const guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>true})})}};const c=createDensukeController({email,guild}),s=c.sessions.create('owner');Object.assign(s,{phase:'uncertain',channelId:'channel',event:event(),recoverToken:'token',recoverPhase:'uncertain'});const replies=[];const i={customId:`densuke:${s.id}:submit-recover:token`,user:{id:'owner'},channelId:'channel',fields:{getTextInputValue:()=>result.answer},async deferReply(){this.deferred=true;allowed=false;},async editReply(p){replies.push(p);}};await c.handle(i);assert.equal(s.phase,'uncertain');assert.ok(!JSON.stringify(replies).includes('卓の日程'));assert.ok(!JSON.stringify(replies).includes('回答用URL'));assert.ok(JSON.stringify(replies).includes('管理者専用'));
 });
+
+test('pre-create check runs once after valid confirmation and refusal never becomes uncertain',async()=>{
+  for(const refuse of [false,true]){
+    const paths=[];let checks=0;
+    const client=createDensukeClient(async url=>{paths.push(new URL(url).pathname);return new Response(paths.length===1?confirm():completed);});
+    const blocked=new Error('authorization changed');
+    const pending=client.create(event(),email,{beforeCreate:async()=>{checks++;assert.deepEqual(paths,['/confirm']);if(refuse)throw blocked;}});
+    if(refuse)await assert.rejects(pending,error=>error===blocked && !(error instanceof UncertainCreation));else assert.deepEqual(await pending,result);
+    assert.equal(checks,1);assert.deepEqual(paths,refuse?['/confirm']:['/confirm','/create']);
+  }
+  let checks=0;const client=createDensukeClient(async()=>new Response('invalid confirmation'));
+  await assert.rejects(client.create(event(),email,{beforeCreate:async()=>{checks++;}}));assert.equal(checks,0);
+});
+
+for(const change of ['administrator','visibility','expiry','recipient','replacement','phase'])test(`confirmation wait rechecks ${change} before sending create`,async()=>{
+  let allowed=true,visible=true,time=0,destination=email,release,started;
+  const waiting=new Promise(resolve=>started=resolve),gate=new Promise(resolve=>release=resolve),paths=[];
+  const guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>visible})})}};
+  const client=createDensukeClient(async url=>{paths.push(new URL(url).pathname);if(paths.length===1){started();await gate;return new Response(confirm());}return new Response(completed);});
+  const controller=createDensukeController({email,guild,client,now:()=>time,settings:{get:()=>({densukeEmail:destination})}});
+  const f=fixture();await controller.open(f.interaction());const s=[...controller.sessions.sessions.values()][0];Object.assign(s,{event:event(),phase:'review'});
+  const i=f.interaction(`densuke:${s.id}:create`),pending=controller.handle(i);await waiting;
+  if(change==='administrator')allowed=false;
+  if(change==='visibility')visible=false;
+  if(change==='expiry')time=s.expires;
+  if(change==='recipient')destination='changed@example.com';
+  if(change==='replacement')controller.sessions.create('owner');
+  if(change==='phase')s.phase='closed';
+  release();await pending;assert.deepEqual(paths,['/confirm']);assert.equal(s.phase,'review');assert.equal(s.result,undefined);assert.equal(s.busy,false);
+  const rendered=JSON.stringify(i.result);assert.ok(!rendered.includes(result.edit));assert.ok(!rendered.includes(event().password));
+  if(['administrator','visibility','expiry','replacement'].includes(change))assert.ok(!rendered.includes(event().name));
+  if(change==='recipient')assert.ok(rendered.includes('固定メールが変更'));
+});
+
+test('network failure after permission loss cannot redisplay private event details',async()=>{
+  let allowed=true;
+  const guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>true})})}};
+  const f=fixture(),controller=createDensukeController({email,guild,client:{create:async()=>{allowed=false;throw new Error('network failure');}}});
+  await controller.open(f.interaction());const s=[...controller.sessions.sessions.values()][0];Object.assign(s,{event:event(),phase:'review'});
+  const i=f.interaction(`densuke:${s.id}:create`);await controller.handle(i);
+  const rendered=JSON.stringify(i.result);assert.ok(rendered.includes('管理者専用'));assert.ok(!rendered.includes(event().name));assert.ok(!rendered.includes('network failure'));assert.equal(s.busy,false);
+});

@@ -36,9 +36,12 @@ export function createDensukeClient(fetcher=fetch,{parsePage=parseDensukePage}={
     catch(error){if(error?.code==='RESPONSE_LIMIT')throw new Error('伝助の応答が大きすぎます。');throw error;}
     finally {bytes.dispose();await reader.cancel().catch(()=>{});reader.releaseLock();}
   }
-  return {async create(input,email){
+  return {async create(input,email,{beforeCreate=async()=>{}}={}){
     const event=eventData(input),fields=fieldsFor(event,email);
     await parsePage('confirmation',await request('/confirm',fields),{event,email});
+    // Confirmation may await remote I/O and parsing. Recheck the caller's authority
+    // before the irreversible POST; refusal here is a known non-creation.
+    await beforeCreate();
     const confirmed=fields;
     try {const result=await parsePage('result',await request('/create',confirmed));return eventLinks(result.answer,result.edit);}
     catch(error){console.error('伝助の作成結果:',error.code??'DENSUKE_RESPONSE');throw new UncertainCreation('作成結果を確認できません。控えメールを確認してください。自動再送はしません。');}

@@ -50,15 +50,19 @@ export function createDensukeController({email,settings,client=createDensukeClie
   const sessions=new AdminSessions(now),attempts=new Map();let nextGlobal=0;
   const currentEmail=()=>settings?.get().densukeEmail??email;
   async function authorize(i){const member=guild?await guild.members.fetch({user:i.user.id,force:true}):null;if(!canConfigure(member?.permissions??i.memberPermissions))throw new Error('日程調整の操作は管理者専用です。');if(guild){const channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルの閲覧権限がありません。');}}
+  async function authorizeSession(i,s){
+    await authorize(i);
+    if(sessions.get(s.id,i.user.id)!==s || i.channelId!==s.channelId)throw new Error('元の有効な画面から操作してください。');
+  }
   return {sessions,async open(i){
     await acknowledgePrivate(i);await authorize(i);
     const previous=sessions.resume(i.user.id,i.channelId);if(previous){await i.editReply(densukeScreen(previous,'前の操作を再開しました。'));return;}
     const s=sessions.create(i.user.id);s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};s.channelId=i.channelId;s.reviewEmail=currentEmail();
     await i.editReply(densukeScreen(s,currentEmail()?'':'「控えメールの宛先」で宛先を設定してください。'));
   },async handle(i){
-    let s,locked=false,authorized=false;
+    let s,locked=false;
     try {
-      await authorize(i);const [,id,action,token]=i.customId.split(':');s=sessions.get(id,i.user.id);if(i.channelId!==s.channelId)throw new Error('元のチャンネルから操作してください。');authorized=true;
+      await authorize(i);const [,id,action,token]=i.customId.split(':');s=sessions.get(id,i.user.id);if(i.channelId!==s.channelId)throw new Error('元のチャンネルから操作してください。');
       if(s.busy)throw new Error('処理中です。少しお待ちください。');s.busy=true;locked=true;
       if(action==='form-recover' && ['draft','review','uncertain'].includes(s.phase)){
         s.recoverToken=randomUUID().slice(0,12);s.recoverPhase=s.phase;const modal=new ModalBuilder().setCustomId(`densuke:${s.id}:submit-recover:${s.recoverToken}`).setTitle('作成済みの伝助を復旧');
@@ -68,7 +72,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
       if(action==='form-email' && ['draft','review'].includes(s.phase)){s.emailEditBase=currentEmail();await i.showModal(densukeEmailModal(s,s.emailEditBase));return;}
       if(action==='form' && ['draft','review'].includes(s.phase)){await i.showModal(densukeModal(s));return;}
       if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});
-      authorized=false;await authorize(i);sessions.get(s.id,s.userId);authorized=true;let note='';
+      await authorizeSession(i,s);let note='';
       if(action==='submit-recover' && ['draft','review','uncertain'].includes(s.phase)){
         if(!s.recoverToken || token!==s.recoverToken || s.phase!==s.recoverPhase)throw new Error('最新のURL登録フォームから操作してください。');s.recoverDraft=i.fields.getTextInputValue('answer').trim().slice(0,1000);const answer=answerUrl(s.recoverDraft);if(!answer)throw new Error('回答用URLを入力してください。');s.result={answer,recovered:true};delete s.recoverDraft;delete s.recoverToken;delete s.recoverPhase;s.phase='done';s.event.name||='作成済みイベント';s.event.password='';delete s.inputDraft;note='✓ 作成済みイベントのURLを登録しました。再作成はしていません。';
       } else if(action==='share' && s.phase==='done') {
@@ -109,12 +113,19 @@ export function createDensukeController({email,settings,client=createDensukeClie
         if(wait>0)throw new Error(`作成は${wait}秒後にお試しください。`);
         attempts.set(i.user.id,now()+300000);nextGlobal=now()+60000;
         s.phase='creating';await i.editReply(payload('✧  伝助を作成中','処理を確認しています。続けて作成を押さずにお待ちください。'));
-        try{s.result=await client.create(s.event,destination);s.phase='done';s.event.password='';note='✓ 作成しました。URLはこの画面だけに表示しています。';}
+        try{s.result=await client.create(s.event,destination,{beforeCreate:async()=>{
+          await authorizeSession(i,s);
+          if(s.phase!=='creating')throw new Error('この作成操作は終了しています。');
+          if(currentEmail()!==destination || s.reviewEmail!==destination)throw new Error('別の操作で固定メールが変更されました。「内容を修正」から再確認してください。');
+        }});s.phase='done';s.event.password='';note='✓ 作成しました。URLはこの画面だけに表示しています。';}
         catch(error){s.phase=error instanceof UncertainCreation?'uncertain':'review';throw error;}
       } else throw new Error('不明な操作です。');
-      authorized=false;await authorize(i);sessions.get(s.id,s.userId);authorized=true;await i.editReply(densukeScreen(s,note));
+      await authorizeSession(i,s);await i.editReply(densukeScreen(s,note));
     } catch(error) {
-      const message=s && authorized?densukeScreen(s,error instanceof UncertainCreation?'':`操作できませんでした：${safe(error.message,250)}`):{...payload('✧  日程調整',safe(error.message,250),{components:[row(adminFeatureButton('open-densuke'),adminSectionButton('schedule'),adminHomeButton())]}),attachments:[]};
+      // A previous successful check cannot authorize a private error preview after I/O.
+      let privatePreview=false;
+      if(s){try{await authorizeSession(i,s);privatePreview=true;}catch(accessError){error=accessError;}}
+      const message=privatePreview?densukeScreen(s,error instanceof UncertainCreation?'':`操作できませんでした：${safe(error.message,250)}`):{...payload('✧  日程調整',safe(error.message,250),{components:[row(adminFeatureButton('open-densuke'),adminSectionButton('schedule'),adminHomeButton())]}),attachments:[]};
       if(i.deferred || i.replied)await i.editReply(message);else await i.reply({...message,flags:MessageFlags.Ephemeral});
     } finally {if(locked)s.busy=false;}
   }};
