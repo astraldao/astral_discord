@@ -12,7 +12,7 @@ function i(customId='unused',user='owner',channelId=CHANNEL){return {customId,us
 const click=(s,a)=>i(`schedule:${s.id}:${s.turn}:${a}`);
 const form=(x,values)=>Object.assign(i(x.modal.toJSON().custom_id),{fields:{getTextInputValue:k=>values[k]??''}});
 async function fixture(){let admin=true,visible=true,botPermission=true,sendError=false,editError=false,sendCount=0;const store=new ScheduleStore(),id=await store.create('卓サーバー'),calendar=store.calendar(id);let posted;
-  const channel={id:CHANNEL,guildId:GUILD,type:ChannelType.GuildText,permissionsFor:()=>({has:()=>botPermission}),messages:{fetch:async messageId=>{if(messageId!==POST||!posted)throw new Error('Unknown Message');return posted;}},send:async p=>{sendCount++;posted={id:POST,author:{id:BOT},components:p.components.map(r=>({components:r.components.map(b=>({customId:b.toJSON().custom_id}))})),payload:p,async edit(next){if(editError)throw new Error('edit');this.payload=next;}};if(sendError)throw new Error('network');return posted;}};
+  const channel={id:CHANNEL,guildId:GUILD,type:ChannelType.GuildText,permissionsFor:()=>({has:()=>botPermission}),messages:{fetch:async value=>{const messageId=typeof value==='string'?value:value.message;if(messageId!==POST||!posted)throw new Error('Unknown Message');return posted;}},send:async p=>{sendCount++;posted={id:POST,author:{id:BOT},components:p.components.map(r=>({components:r.components.map(b=>({customId:b.toJSON().custom_id}))})),payload:p,async edit(next){if(editError)throw new Error('edit');this.payload=next;}};if(sendError)throw new Error('network');return posted;}};
   const guild={id:GUILD,members:{me:{id:BOT},async fetchMe(){return this.me;}},channels:{fetch:async id=>{if(id!==CHANNEL)throw new Error('Unknown Channel');return channel;}}},c=createScheduleController({store,guild,now:()=>Date.parse('2026-10-14T12:00:00Z'),access:async(x,power)=>{if(!visible||power&&!admin)throw new Error('permission');}});await c.openAdmin(i());const s=[...c.sessions.sessions.values()][0];await c.handle(Object.assign(click(s,'calendar'),{values:[id]}));return {store,c,s,id,channel,guild,posted:()=>posted,sendCount:()=>sendCount,admin:x=>admin=x,visible:x=>visible=x,bot:x=>botPermission=x,sendError:x=>sendError=x,editError:x=>editError=x};
 }
 async function add(f,input=event()){const x=click(f.s,'new-event');await f.c.handle(x);assert.ok(x.modal);await f.c.handle(form(x,input));return f.store.calendar(f.id).events.at(-1);}
@@ -210,4 +210,67 @@ test('maximum search screens and tools respect Discord component and text limits
     for(const embed of m.embeds)assert.ok(embed.toJSON().description.length<=4096);
     assert.deepEqual(m.allowedMentions.parse,[]);
   }
+});
+
+test('unpublish is revision checked and durable, preserves all events and other publications, and rejects pending records',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'schedule-unpublish-'));
+  try{
+    const path=join(dir,'schedules.json'),store=await new ScheduleStore(path).load(),id=await store.create('予定表');
+    await store.putEvent(id,null,event());const first=await store.reserve(id,CHANNEL,'2026-10'),other=await store.reserve(id,CHANNEL,'2026-11');await store.complete(first,POST);
+    const stage=store.publication(first),before=store.calendar(id).events;
+    await assert.rejects(store.unpublish(other,JSON.stringify(store.publication(other))));
+    await assert.rejects(store.unpublish(first,JSON.stringify({...stage,month:'2026-12'})));
+    await store.unpublish(first,JSON.stringify(stage));assert.deepEqual(store.calendar(id).events,before);assert.equal(store.publication(other).status,'pending');
+    const loaded=await new ScheduleStore(path).load();assert.throws(()=>loaded.publication(first));assert.deepEqual(loaded.calendar(id).events,before);assert.equal(loaded.publication(other).status,'pending');
+    await assert.rejects(store.unpublish(first,JSON.stringify(stage)));
+  }finally{await rm(dir,{recursive:true,force:true});}
+});
+test('confirmed unpublish revokes access before deleting only the matching bot post and cannot run twice',async()=>{
+  const f=await fixture();await add(f);await publish(f);const publication=f.store.calendar(f.id).publications[0];let deleted=0;
+  f.posted().delete=async()=>{assert.throws(()=>f.store.publication(publication.id));deleted++;};
+  await f.c.handle(click(f.s,'unpublish'));assert.equal(f.s.view,'unpublish-confirm');assert.equal(deleted,0);assert.equal(f.store.publication(publication.id).status,'ready');
+  const confirm=click(f.s,'confirm-unpublish');await f.c.handle(confirm);await f.c.handle(confirm);
+  assert.equal(deleted,1);assert.equal(f.store.calendar(f.id).events.length,1);assert.equal(f.store.calendar(f.id).publications.length,0);assert.equal(f.s.view,'publications');assert.equal(f.sendCount(),1);
+});
+test('unpublish cancellation and reopening preserve sharing and invalidate the old confirmation',async()=>{
+  const f=await fixture();await publish(f);const id=f.s.publicationId;let deleted=0;f.posted().delete=async()=>deleted++;
+  await f.c.handle(click(f.s,'unpublish'));await f.c.handle(click(f.s,'publication-back'));assert.equal(f.s.unpublishStage,undefined);assert.equal(f.store.publication(id).status,'ready');
+  await f.c.handle(click(f.s,'unpublish'));const old=click(f.s,'confirm-unpublish');await f.c.openAdmin(i());assert.equal(f.s.view,'publication');assert.equal(f.s.unpublishStage,undefined);await f.c.handle(old);
+  assert.equal(f.store.publication(id).status,'ready');assert.equal(deleted,0);
+});
+test('unpublish refuses foreign ownership, wrong channel, stale confirmation and queued permission loss',async()=>{
+  const f=await fixture();await publish(f);const id=f.s.publicationId;let deleted=0;f.posted().delete=async()=>deleted++;
+  await f.c.handle(click(f.s,'unpublish'));
+  for(const extra of [{user:{id:'other'}},{channelId:'567890123456789012'}])await f.c.handle(Object.assign(click(f.s,'confirm-unpublish'),extra));
+  assert.equal(f.store.publication(id).status,'ready');
+  let release;f.store.tail=new Promise(r=>release=r);const job=f.c.handle(click(f.s,'confirm-unpublish'));await new Promise(r=>setImmediate(r));f.admin(false);release();await job;f.admin(true);
+  assert.equal(f.store.publication(id).status,'ready');assert.equal(deleted,0);
+  await f.store.changeMonth(id,'2026-11',JSON.stringify(f.store.publication(id)));await f.c.handle(click(f.s,'confirm-unpublish'));assert.equal(f.store.publication(id).month,'2026-11');assert.equal(deleted,0);
+});
+test('public-message deletion failures leave sharing revoked, do not resend, and explain manual cleanup without raw errors',async()=>{
+  for(const kind of ['permission','author','buttons','missing']){
+    const f=await fixture();await add(f);await publish(f);let deleted=0;
+    f.posted().delete=async()=>{deleted++;throw new Error('PRIVATE_NATIVE_ERROR');};
+    if(kind==='author')f.posted().author.id='567890123456789012';if(kind==='buttons')f.posted().components=[];
+    if(kind==='missing')f.channel.messages.fetch=async()=>{throw Object.assign(new Error('PRIVATE_NATIVE_ERROR'),{code:10008});};
+    await f.c.handle(click(f.s,'unpublish'));const confirm=click(f.s,'confirm-unpublish');await f.c.handle(confirm);
+    assert.equal(f.store.calendar(f.id).publications.length,0);assert.equal(f.store.calendar(f.id).events.length,1);assert.equal(f.sendCount(),1);assert.ok(!JSON.stringify(confirm.replies).includes('PRIVATE_NATIVE_ERROR'));
+    assert.ok(JSON.stringify(confirm.replies).includes(kind==='missing'?'見つかりませんでした':'削除は確認できません'));assert.equal(deleted,kind==='permission'?1:0);
+  }
+});
+test('unpublish immediately invalidates old public sessions and exports but retains another explicitly shared publication',async()=>{
+  const f=await fixture(),e=await add(f);await publish(f);const publication=f.store.calendar(f.id).publications[0];
+  await f.c.handle(i(`schedule:panel:${publication.id}`,'viewer'));const viewer=[...f.c.sessions.sessions.values()].find(s=>s.userId==='viewer');
+  await f.c.handle(i(`schedule:${viewer.id}:${viewer.turn}:tools`,'viewer'));
+  f.posted().delete=async()=>{};await f.c.handle(click(f.s,'unpublish'));await f.c.handle(click(f.s,'confirm-unpublish'));
+  for(const action of ['export','event','search','list']){const x=i(`schedule:${viewer.id}:${viewer.turn}:${action}`,'viewer');x.values=[e.id];await f.c.handle(x);assert.ok(!x.replies.some(r=>r.files));assert.ok(!JSON.stringify(x.replies).includes('みんなで遊ぶ'));}
+  const old=i(`schedule:panel:${publication.id}`,'another');await f.c.handle(old);assert.ok(!JSON.stringify(old.replies).includes('みんなで遊ぶ'));
+  const next=await f.store.reserve(f.id,CHANNEL,'2026-11');await f.store.complete(next,POST);const opened=i(`schedule:panel:${next}`,'fresh');await f.c.handle(opened);assert.ok(JSON.stringify(opened.replies).includes('卓サーバー'));
+});
+test('failed unpublish persistence never deletes the post and read-only viewers cannot invoke unpublish',async()=>{
+  const f=await fixture();await publish(f);const publication=f.store.calendar(f.id).publications[0];let deleted=0;f.posted().delete=async()=>deleted++;
+  await f.c.handle(i(`schedule:panel:${publication.id}`,'viewer'));const viewer=[...f.c.sessions.sessions.values()].find(s=>s.userId==='viewer');
+  for(const action of ['unpublish','confirm-unpublish'])await f.c.handle(i(`schedule:${viewer.id}:${viewer.turn}:${action}`,'viewer'));
+  await f.c.handle(click(f.s,'unpublish'));f.store.save=async()=>{throw new Error('disk');};await f.c.handle(click(f.s,'confirm-unpublish'));
+  assert.equal(f.store.publication(publication.id).status,'ready');assert.equal(f.s.view,'unpublish-confirm');assert.equal(deleted,0);
 });

@@ -4,10 +4,10 @@ import {MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {mainMenuScreen,createMainMenu} from '../src/main-menu.js';
 const controls=m=>m.components.flatMap(r=>r.toJSON().components);
 function interaction(action,privateScreen=false){return {customId:action?.startsWith('menu:')?action:undefined,user:{id:'owner'},channelId:'text',options:{getString:name=>{assert.equal(name,'操作');return action?.startsWith('menu:')?null:action;}},message:privateScreen?{flags:{has:flag=>flag===MessageFlags.Ephemeral}}:undefined,acks:[],async deferReply(p){this.deferred=true;this.acks.push(['reply',p]);},async deferUpdate(){this.deferred=true;this.acks.push(['update']);},async editReply(p){this.result=p;},async reply(p){this.result=p;}};}
-test('hub exposes three purposes and personal shortcuts, with admin controls only for administrators',()=>{
+test('hub exposes four purposes and personal shortcuts, with admin controls only for administrators',()=>{
   for(const admin of [false,true]){
     const m=mainMenuScreen({admin}),b=controls(m);
-    assert.deepEqual(b.slice(0,3).map(c=>c.custom_id),['menu:vc','menu:read','menu:game']);
+    assert.deepEqual(b.slice(0,4).map(c=>c.custom_id),['menu:vc','menu:read','menu:game','menu:calendar']);
     for(const id of ['profile:open','wallet:open'])assert.ok(b.some(c=>c.custom_id===id));
     assert.equal(b.some(c=>c.custom_id==='admin:open'),admin);
     assert.equal(b.filter(c=>c.style===1).length,1);
@@ -36,4 +36,11 @@ test('fresh member and channel permissions control access and admin visibility o
 test('unknown actions and failed access do not reach feature controllers',async()=>{
   const c=createMainMenu({access:async()=>false,openVc:()=>assert.fail(),openGame:()=>assert.fail(),openRead:()=>assert.fail()});
   for(const action of ['menu:unknown','invalid','stop']){const i=interaction(action);await c.handle(i);assert.ok(controls(i.result).some(b=>b.custom_id==='menu:open'));assert.deepEqual(i.result.attachments,[]);}
+});
+
+test('calendar has one menu button and delegates its direct shortcut without opening administration',async()=>{
+  const calls=[],c=createMainMenu({access:async()=>({admin:false}),openCalendar:async i=>calls.push(i.deferred)});
+  assert.equal(controls(mainMenuScreen()).filter(b=>b.custom_id==='menu:calendar').length,1);
+  for(const action of ['calendar','menu:calendar']){const i=interaction(action,true);await c.handle(i);assert.equal(i.acks.length,1);}
+  assert.deepEqual(calls,[true,true]);
 });

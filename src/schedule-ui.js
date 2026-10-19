@@ -1,6 +1,7 @@
 import {calendarImage,calendarAlt} from './calendar-image.js';
 import {scheduleQuery,selectedScheduleEvents} from './schedule-query.js';
 import {scheduleExport} from './schedule-export.js';
+import {sharedScheduleAccess,sharedScheduleMessage} from './shared-schedule-ui.js';
 import {randomUUID} from 'node:crypto';
 import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P,escapeMarkdown} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
@@ -50,7 +51,9 @@ export function scheduleScreen(s,store,note=''){
     }else if(s.view==='publications'){
       m=payload('📅  送信済みの予定表',`${intro}${c.publications.length?'投稿を選ぶと、表示月の変更や復旧ができます。':'まだ投稿していません。'}`,{components:[...(c.publications.length?[row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:publication`).setPlaceholder('投稿を選ぶ').addOptions(...c.publications.map(p=>({label:`${monthName(p.month)} · ${p.status==='ready'?'送信済み':'結果未確認'}`,value:p.id,description:`チャンネル ${p.channelId}`}))))]:[]),row(button(s,'refresh-posts','投稿を更新',ButtonStyle.Primary),button(s,'list','予定の一覧へ'))]});
     }else if(s.view==='publication'){
-      if(!p)throw new Error('投稿情報が変わりました。選び直してください。');m=payload('📅  投稿の管理',`${intro}<#${p.channelId}> · **${monthName(p.month)}**\n${p.status==='ready'?`[投稿を開く](https://discord.com/channels/${s.guildId}/${p.channelId}/${p.messageId})`:'送信結果を確認できていません。実際の投稿があればURLで復旧してください。自動再送はしません。'}`,{components:[row(...(p.status==='ready'?[button(s,'edit-month','表示月を変更',ButtonStyle.Primary)]:[button(s,'recover','投稿URLで復旧',ButtonStyle.Primary),button(s,'cancel-pending','未送信の予約を解除')])),row(button(s,'publications','投稿一覧へ'))]});
+      if(!p)throw new Error('投稿情報が変わりました。選び直してください。');m=payload('📅  投稿の管理',`${intro}<#${p.channelId}> · **${monthName(p.month)}**\n${p.status==='ready'?`[投稿を開く](https://discord.com/channels/${s.guildId}/${p.channelId}/${p.messageId})`:'送信結果を確認できていません。実際の投稿があればURLで復旧してください。自動再送はしません。'}`,{components:[row(...(p.status==='ready'?[button(s,'edit-month','表示月を変更',ButtonStyle.Primary),button(s,'unpublish','この投稿の共有を停止')]:[button(s,'recover','投稿URLで復旧',ButtonStyle.Primary),button(s,'cancel-pending','未送信の予約を解除')])),row(button(s,'publications','投稿一覧へ'))]});
+    }else if(s.view==='unpublish-confirm'){
+      m=payload('📅  この投稿の共有を停止',`${intro}<#${p.channelId}> · **${monthName(p.month)}**\nこの投稿からの閲覧・検索・取り出しと、開いている閲覧画面を停止します。\n\n予定表・予定データと、ほかの共有投稿は残します。停止後に元の投稿の削除も試みます。削除できない場合、投稿に表示済みの内容は管理者が削除してください。\n取り出し済みのファイルやコピーは消せません。`,{components:[row(button(s,'confirm-unpublish','この投稿の共有を停止',ButtonStyle.Danger),button(s,'publication-back','停止せず戻る'))]});
     }else if(s.view==='cancel-confirm'){
       m=payload('📅  未送信の予約を解除',`<#${p.channelId}> の実際の投稿を確認してください。\n投稿済みなら解除せず、URLで復旧してください。未送信の予約を解除すると、もう一度送信できるようになります。`,{components:[row(button(s,'confirm-cancel','未送信として解除',ButtonStyle.Danger),button(s,'publication-back','解除せず戻る'))]});
     }else{
@@ -64,7 +67,7 @@ export function scheduleScreen(s,store,note=''){
         ...(s.query?[row(button(s,'search','検索語を変える'),button(s,'search-clear','検索を解除'))]:[row(button(s,'month-prev','前の月').setDisabled(s.month==='2000-01'),button(s,'month-current','今月'),button(s,'month-next','次の月').setDisabled(s.month==='2099-12'),button(s,'month-jump','月を指定'),button(s,'display',s.display==='list'?'カレンダー表示':'一覧表示'))]),
         ...(p.count>1?[row(button(s,'prev','前のページ').setDisabled(s.page===0),button(s,'next','次のページ').setDisabled(s.page===p.count-1))]:[]),
         ...(admin?[row(button(s,'new-event',s.date&&!s.query?'この日に予定を追加':'予定を追加',ButtonStyle.Primary),button(s,'publish','チャンネルに送る'),button(s,'publications','投稿を管理'))]:[]),
-        row(button(s,'day-today','今日の予定'),button(s,'day-jump','日付を選ぶ'),...(s.date&&!s.query?[button(s,'day-clear','月全体に戻る')]:[]),button(s,'tools','検索・取り出し'),...(admin?[button(s,'home','予定表の管理へ')]:[])),
+        row(button(s,'day-today','今日の予定'),button(s,'day-jump','日付を選ぶ'),...(s.date&&!s.query?[button(s,'day-clear','月全体に戻る')]:[]),button(s,'tools','検索・取り出し'),...(s.viaMenu?[new ButtonBuilder().setCustomId('menu:calendar').setLabel('予定表を選ぶ').setStyle(ButtonStyle.Secondary)]:[]),...(admin?[button(s,'home','予定表の管理へ')]:[])),
       ]});
     }
   }if(s.view==='list'&&!s.query&&s.display!=='list')m=calendarMessage(m,store.calendar(s.calendarId),s.month,s.today,note,s.date);return {...m,attachments:[]};
@@ -81,8 +84,9 @@ function modal(s,kind,store,today){
   else if(kind==='month')m.addComponents(input('value','表示月（YYYY/MM）',7,c.publications.find(p=>p.id===s.publicationId).month));
   else m.addComponents(input('value','予定表の名前',60,kind==='rename'?c.title:''));return m;
 }
-export function createScheduleController({guild,store,now=()=>Date.now(),access=async(i,admin)=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel)||admin&&!member.permissions.has(P.Administrator))throw new Error(admin?'管理者権限がありません。':'このチャンネルでは予定表を閲覧できません。');}}){
+export function createScheduleController({guild,store,now=()=>Date.now(),sharedAccess=i=>sharedScheduleAccess(guild,i),access=async(i,admin)=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel)||admin&&!member.permissions.has(P.Administrator))throw new Error(admin?'管理者権限がありません。':'このチャンネルでは予定表を閲覧できません。');}}){
   const sessions=new GameSessions(now);let refreshTail=Promise.resolve();
+  const menuAccess=async(i,s)=>{if(s?.viaMenu)await sharedAccess(i);};
   const get=(id,i)=>{let s;try{s=sessions.get(id,i.user.id);}catch{throw new Error('この画面は終了しています。閲覧用は元の予定表の「カレンダーを開く」から、管理用は予定表を開き直してください。');}if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');if(s.scope==='viewer'){const p=store.publication(s.publicationId);if(p.status!=='ready'||p.channelId!==i.channelId||p.calendarId!==s.calendarId)throw new Error('この予定表は公開されていません。');}return s;};
   const channelFor=async id=>{const c=await guild.channels.fetch(id,{force:true}),me=await guild.members.fetchMe({force:true});if((c?.guildId??c?.guild?.id)!==guild.id||c?.type!==ChannelType.GuildText||!c.permissionsFor(me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks,P.ReadMessageHistory,P.AttachFiles]))throw new Error('送信先とBotの閲覧・送信・埋め込み・履歴・ファイル添付権限を確認してください。');return c;};
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
@@ -96,18 +100,21 @@ export function createScheduleController({guild,store,now=()=>Date.now(),access=
     else if(c){
       const calendar=store.calendar(s.calendarId);
       if(['event','delete-confirm'].includes(s.view)&&!calendar.events.some(e=>e.id===s.eventId)){s.view='list';note='前の予定が見つからないため、予定の一覧に戻りました。';}
-      if(['publication','cancel-confirm'].includes(s.view)&&!calendar.publications.some(p=>p.id===s.publicationId))s.view='publications';
-      s.view=({'delete-confirm':'event','publish-confirm':'list','cancel-confirm':'publication'})[s.view]??s.view;
+      if(['publication','cancel-confirm','unpublish-confirm'].includes(s.view)&&!calendar.publications.some(p=>p.id===s.publicationId))s.view='publications';
+      s.view=({'delete-confirm':'event','publish-confirm':'list','cancel-confirm':'publication','unpublish-confirm':'publication'})[s.view]??s.view;
     }
-    delete s.form;delete s.deleteStage;delete s.publishStage;delete s.cancelRevision;s.turn++;
+    delete s.form;delete s.deleteStage;delete s.publishStage;delete s.cancelRevision;delete s.unpublishStage;s.turn++;
     s.today=new Date(now()+9*3600000).toISOString().slice(0,10);return scheduleScreen(s,store,note);
   }
-  async function open(i,admin=true,pubId){try{await ack(i);await access(i,admin);if([...sessions.sessions.values()].some(s=>s.userId===i.user.id&&s.busy))throw new Error('前の操作を処理中です。');const previous=admin?sessions.resume(i.user.id,i.channelId,s=>s.scope==='admin'):null;if(previous){await i.editReply(resumedScreen(previous));return;}let p;if(!admin){p=store.publication(pubId);if(p.status!=='ready'||p.channelId!==i.channelId||i.message?.id!==p.messageId)throw new Error('このチャンネルの予定表から開いてください。');}const s=sessions.create(i.user.id);Object.assign(s,{scope:admin?'admin':'viewer',channelId:i.channelId,guildId:guild.id,turn:0,today:new Date(now()+9*3600000).toISOString().slice(0,10),month:p?.month??currentScheduleMonth(now()),view:admin?'home':'list',...(p?{calendarId:p.calendarId,publicationId:p.id}:{})});await i.editReply(scheduleScreen(s,store));}catch(e){await error(i,e);}}
+  async function open(i,admin=true,pubId,viaMenu=false){try{await ack(i);await access(i,admin);if([...sessions.sessions.values()].some(s=>s.userId===i.user.id&&s.busy))throw new Error('前の操作を処理中です。');const previous=admin?sessions.resume(i.user.id,i.channelId,s=>s.scope==='admin'):null;if(previous){await i.editReply(resumedScreen(previous));return;}let p;if(!admin){
+      p=store.publication(pubId);if(p.status!=='ready'||p.channelId!==i.channelId||!viaMenu&&i.message?.id!==p.messageId)throw new Error('このチャンネルの予定表から開いてください。');
+      if(viaMenu){const {channel,bot}=await sharedAccess(i);await sharedScheduleMessage(channel,bot,p);await sharedAccess(i);const latest=store.publication(pubId);if(latest.status!=='ready'||latest.channelId!==i.channelId||latest.calendarId!==p.calendarId||latest.messageId!==p.messageId)throw new Error('共有の状態が変わりました。メニューから開き直してください。');p=latest;}
+    }const s=sessions.create(i.user.id);Object.assign(s,{scope:admin?'admin':'viewer',viaMenu,channelId:i.channelId,guildId:guild.id,turn:0,today:new Date(now()+9*3600000).toISOString().slice(0,10),month:p?.month??currentScheduleMonth(now()),view:admin?'home':'list',...(p?{calendarId:p.calendarId,publicationId:p.id}:{})});await i.editReply(scheduleScreen(s,store));}catch(e){await error(i,e);}}
   async function handle(i){if(i.customId.startsWith('schedule:panel:')){await open(i,false,i.customId.slice(15));return;}let s,locked=false;try{
     const [,id,turn,action,token]=i.customId.split(':');s=get(id,i);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
-    const forms=['new-calendar','rename','new-event','edit-event','edit-month','recover','month-jump','day-jump','search','copy-event'];if(!forms.includes(action))await ack(i);await access(i,s.scope==='admin');get(id,i);if(String(s.turn)!==turn)throw new Error('古い画面です。元のメニューから開き直してください。');
+    const forms=['new-calendar','rename','new-event','edit-event','edit-month','recover','month-jump','day-jump','search','copy-event'];if(!forms.includes(action))await ack(i);await access(i,s.scope==='admin');await menuAccess(i,s);get(id,i);if(String(s.turn)!==turn)throw new Error('古い画面です。元のメニューから開き直してください。');
     const admin=s.scope==='admin',readonly=['list','event','month-prev','month-next','month-current','month-jump','day-jump','day-today','day-clear','display','prev','next','tools','export','search','search-clear'];if(!admin&&!readonly.includes(action)&&!(action==='form'&&['navigate','day','search'].includes(s.form?.kind)))throw new Error('予定表の編集は管理者専用です。');
-    const check=async()=>{await access(i,admin);get(id,i);};let note='',download=false;
+    const check=async()=>{await access(i,admin);await menuAccess(i,s);get(id,i);};let note='',download=false;
     if(forms.includes(action)){
       let kind=action==='search'?'search':action==='day-jump'?'day':action==='month-jump'?'navigate':action==='new-calendar'?'calendar':action==='rename'?'rename':['new-event','edit-event','copy-event'].includes(action)?'event':action==='edit-month'?'month':'recover';
       if(['month-jump','day-jump'].includes(action)&&s.view!=='list'||action==='new-calendar'&&s.view!=='home'||action==='new-event'&&s.view!=='list'||action==='rename'&&!['list','tools'].includes(s.view)||action==='search'&&!['list','tools'].includes(s.view)||['edit-event','copy-event'].includes(action)&&s.view!=='event'||['edit-month','recover'].includes(action)&&s.view!=='publication')throw new Error('元の画面から操作してください。');
@@ -167,7 +174,27 @@ export function createScheduleController({guild,store,now=()=>Date.now(),access=
     else if(action==='refresh-posts'){note=await refreshed(s.calendarId);s.view='publications';}
     else if(action==='cancel-pending'){const p=store.publication(s.publicationId);if(s.view!=='publication'||p.status!=='pending')throw new Error('未確認の投稿から操作してください。');s.cancelRevision=JSON.stringify(p);s.view='cancel-confirm';}
     else if(action==='confirm-cancel'){if(s.view!=='cancel-confirm')throw new Error('解除の確認から操作してください。');await store.cancelPending(s.publicationId,s.cancelRevision,check);delete s.cancelRevision;s.view='publications';}
-    else if(action==='publication-back'){s.view='publication';delete s.cancelRevision;}
+    else if(action==='publication-back'){s.view='publication';delete s.cancelRevision;delete s.unpublishStage;}
+    else if(action==='unpublish'){
+      if(s.view!=='publication')throw new Error('投稿の管理から操作してください。');
+      const publication=store.publication(s.publicationId);
+      if(publication.status!=='ready'||publication.calendarId!==s.calendarId)throw new Error('共有の状態が変わりました。開き直してください。');
+      s.unpublishStage=publication;s.view='unpublish-confirm';
+    }
+    else if(action==='confirm-unpublish'){
+      const stage=s.unpublishStage;if(s.view!=='unpublish-confirm'||!stage)throw new Error('共有停止の確認から操作してください。');
+      await store.unpublish(stage.id,JSON.stringify(stage),check);delete s.unpublishStage;s.view='publications';
+      let cleanup='unknown';
+      try{
+        await check();
+        const channel=await guild.channels.fetch(stage.channelId,{force:true});
+        if(channel?.type!==ChannelType.GuildText||(channel.guildId??channel.guild?.id)!==guild.id)throw new Error('invalid source');
+        const message=await channel.messages.fetch({message:stage.messageId,force:true,cache:false});
+        if(message.author?.id!==guild.members.me.id||!message.components.some(r=>r.components.some(b=>b.customId===`schedule:panel:${stage.id}`)))throw new Error('invalid message');
+        await check();await message.delete();cleanup='deleted';
+      }catch(error){if(error.code===10008)cleanup='missing';}
+      note=cleanup==='deleted'?'✓ この投稿の共有を停止し、元の投稿も削除しました。予定データは保持しています。':cleanup==='missing'?'✓ この投稿の共有を停止しました。元の投稿は見つかりませんでした。予定データは保持しています。':`✓ この投稿の共有を停止しました。元の投稿の削除は確認できません。[投稿を確認](https://discord.com/channels/${guild.id}/${stage.channelId}/${stage.messageId})し、残っている表示内容を管理者が削除してください。予定データは保持しています。`;
+    }
     else throw new Error('操作を確認してください。');
     s.turn++;await check();const message=scheduleScreen(s,store,note);
     if(download){
@@ -175,6 +202,6 @@ export function createScheduleController({guild,store,now=()=>Date.now(),access=
       message.files=[new AttachmentBuilder(scheduleExport(calendar,selectedScheduleEvents(calendar,s),{now:now()}),{name:'astral-calendar.ics'})];
     }
     await i.editReply(message);
-  }catch(e){let recover=false;if(s){try{await access(i,s.scope==='admin');get(s.id,i);recover=true;}catch{}}if(recover){try{await ack(i);const m=scheduleScreen(s,store);m.embeds[0].setDescription(`確認してください：${safe(e.message)}\n\n${m.embeds[0].toJSON().description??''}`);await i.editReply(m);}catch{await error(i,e);}}else await error(i,e);}finally{if(locked)s.busy=false;}}
-  return {sessions,openAdmin:i=>open(i),handle,refresh};
+  }catch(e){let recover=false;if(s){try{await access(i,s.scope==='admin');await menuAccess(i,s);get(s.id,i);recover=true;}catch{}}if(recover){try{await ack(i);const m=scheduleScreen(s,store);m.embeds[0].setDescription(`確認してください：${safe(e.message)}\n\n${m.embeds[0].toJSON().description??''}`);await i.editReply(m);}catch{await error(i,e);}}else await error(i,e);}finally{if(locked)s.busy=false;}}
+  return {sessions,openAdmin:i=>open(i),openShared:(i,id)=>open(i,false,id,true),handle,refresh};
 }
