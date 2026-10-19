@@ -24,8 +24,10 @@ export class SettingsStore {
     return this.get();
   }
   get() {return structuredClone(this.value);}
-  update(change) {
+  update(change,check=()=>{}) {
     const run=this.tail.then(async () => {
+      // Permission checks performed before joining the queue may already be stale.
+      await check();
       const next=this.get();change(next);validateSettings(next);
       await mkdir(dirname(this.path),{recursive:true});
       await writeFile(`${this.path}.tmp`,JSON.stringify(next,null,2)+'\n',{mode:0o600});

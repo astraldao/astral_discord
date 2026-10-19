@@ -94,6 +94,9 @@ export function createDensukeController({email,settings,client=createDensukeClie
         await settings.update(c=>{
           if((c.densukeEmail??email)!==s.emailEditBase)throw new Error('別の操作で固定メールが変更されました。設定画面を開き直してください。');
           c.densukeEmail=value;
+        },async()=>{
+          await authorizeSession(i,s);
+          if(!['draft','review'].includes(s.phase))throw new Error('メール設定画面を開き直してください。');
         });
         delete s.emailEditBase;
         if(s.phase==='review')s.reviewEmail=value;

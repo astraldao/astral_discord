@@ -1,6 +1,6 @@
 {
   "name": "astral-voice-lobby",
-  "version": "3.41.3",
+  "version": "3.41.4",
   "private": true,
   "type": "module",
   "engines": {

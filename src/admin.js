@@ -147,13 +147,16 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
     if(!channel.permissionsFor(guild.members.me)?.has(bits))throw new Error('Botの閲覧・接続・移動・送信・埋め込み権限を確認してください。ロビーでは履歴を読む権限も必要です。');
     if(action==='add' && settings.get().voice && !channel.permissionsFor(guild.members.me)?.has(P.Speak))throw new Error('音声告知がONのため、Botの発言権限も必要です。');
   }
-  async function save(s,confirmed=false) {
+  async function save(s,interaction,confirmed=false) {
     const stage=s.stage;if(!stage)throw new Error('保存する変更がありません。');
     await validateChannel(stage.action,stage.value);
     await settings.update(c=>{
       if(!confirmed && pendingCount())throw new Error('入室予約が増えました。確認画面で保存を確定してください。');
       if(JSON.stringify(c)!==stage.base)throw new Error('別の操作で設定が変わりました。画面を戻り、変更を選び直してください。');
       changeSettings(c,stage.action,stage.value);
+    },async()=>{
+      if(!await access(interaction))throw new Error('管理者権限がありません。');
+      if(sessions.get(s.id,interaction.user.id)!==s || (s.originChannelId && s.originChannelId!==interaction.channelId) || s.stage!==stage)throw new Error('元の有効な確認画面から操作してください。');
     });
     s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;changed();
     let note='✓ 設定を保存しました。再起動は不要です。';
@@ -207,7 +210,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}
-      else if(action==='save')note=await save(s,true);
+      else if(action==='save')note=await save(s,interaction,true);
       else {
         const c=settings.get();let operation=action,value,description;
         if(['lobby','add','remove'].includes(action)) {value=interaction.values[0];description=`**${{lobby:'ロビー変更',add:'行き先追加',remove:'行き先削除'}[action]}**\n<#${value}>`;s.view='vc';}
@@ -223,7 +226,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         } else throw new Error('不明な操作です。 /admin で開き直してください。');
         await validateChannel(operation,value);changeSettings(structuredClone(c),operation,value);
         s.stage={action:operation,value,base:JSON.stringify(c),description};
-        if(pendingCount() || ['lobby','remove','word-remove'].includes(operation))s.stage.description+=`\n\n現在の入室予約：${pendingCount()}件`;else note=await save(s);
+        if(pendingCount() || ['lobby','remove','word-remove'].includes(operation))s.stage.description+=`\n\n現在の入室予約：${pendingCount()}件`;else note=await save(s,interaction);
       }
       await interaction.editReply(screen(s,note));
     } catch(error) {
