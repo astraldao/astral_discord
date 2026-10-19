@@ -1,4 +1,5 @@
 import {crc32} from 'node:zlib';
+import {BoundedBytes} from './bounded-bytes.js';
 export const MAX_BANNER_BYTES=4*1024*1024;
 const imageError=()=>new Error('PNGまたはJPEGの画像を選んでください。壊れた画像は再保存してアップロードしてください。');
 function dimensions(width,height,extension){
@@ -49,9 +50,9 @@ export async function readBannerAttachment(attachment,{fetcher=fetch,signal}={})
   if(!response.ok||!response.body){if(response.body)await response.body.cancel().catch(()=>{});throw new Error('画像を取得できませんでした。もう一度アップロードしてください。');}
   const advertised=Number(response.headers.get('content-length'));
   if(advertised>MAX_BANNER_BYTES){await response.body.cancel().catch(()=>{});throw new Error('画像は4MiB以内でアップロードしてください。');}
-  const reader=response.body.getReader(),chunks=[];let size=0;
-  try{while(true){abort.throwIfAborted();const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>MAX_BANNER_BYTES)throw new Error('画像は4MiB以内でアップロードしてください。');chunks.push(Buffer.from(value));}}
-  catch{throw new Error(size>MAX_BANNER_BYTES?'画像は4MiB以内でアップロードしてください。':'画像を最後まで取得できませんでした。もう一度アップロードしてください。');}
-  finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
-  const buffer=Buffer.concat(chunks);return {buffer,...bannerImageInfo(buffer)};
+  const reader=response.body.getReader(),bytes=new BoundedBytes(MAX_BANNER_BYTES);let buffer;
+  try{while(true){abort.throwIfAborted();const {done,value}=await reader.read();abort.throwIfAborted();if(done)break;bytes.append(value);}buffer=bytes.finish();}
+  catch(error){throw new Error(error?.code==='RESPONSE_LIMIT'?'画像は4MiB以内でアップロードしてください。':'画像を最後まで取得できませんでした。もう一度アップロードしてください。');}
+  finally{bytes.dispose();await reader.cancel().catch(()=>{});reader.releaseLock();}
+  return {buffer,...bannerImageInfo(buffer)};
 }

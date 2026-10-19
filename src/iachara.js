@@ -1,4 +1,5 @@
 import {iacharaUrl,MAX_TXT} from './trpg-store.js';
+import {BoundedBytes} from './bounded-bytes.js';
 
 // The public site's guest flow; no member credentials or editing requests.
 const API='https://apiv3.iachara.com';
@@ -32,13 +33,18 @@ export function createIacharaClient({fetchImpl=fetch,now=()=>Date.now(),timeoutS
   let token,expires=0,authJob,busy=false,last=-Infinity;
   async function json(url,options={},operation) {
     operation.signal.throwIfAborted();
+    if(operation.remaining<=0)throw new Error('取得データの合計が256KBを超えています。');
     const signal=AbortSignal.any([operation.signal,AbortSignal.timeout(20000)]);
     const r=await fetchImpl(url,{...options,redirect:'error',signal});
     if(!r.ok){if(r.status===401){token=null;expires=0;}await r.body?.cancel().catch(()=>{});throw new Error('いあきゃらから取得できませんでした。公開設定や稼働状況を確認してください。');}
     if(num(r.headers.get('content-length'))>operation.remaining){await r.body?.cancel().catch(()=>{});throw new Error('取得データの合計が256KBを超えています。');}
-    const reader=r.body.getReader();const chunks=[];try{while(true){signal.throwIfAborted();const {done,value}=await reader.read();if(done)break;operation.remaining-=value.length;if(operation.remaining<0)throw new Error('取得データの合計が256KBを超えています。');chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}
+    if(!r.body)throw new Error('取得データの形式を確認できませんでした。');
+    const reader=r.body.getReader(),bytes=new BoundedBytes(operation.remaining);let raw;
+    try{while(true){signal.throwIfAborted();const {done,value}=await reader.read();signal.throwIfAborted();if(done)break;bytes.append(value);operation.remaining-=value.byteLength;}raw=bytes.finish();}
+    catch(error){if(error?.code==='RESPONSE_LIMIT')throw new Error('取得データの合計が256KBを超えています。');throw error;}
+    finally{bytes.dispose();await reader.cancel().catch(()=>{});reader.releaseLock();}
     signal.throwIfAborted();
-    try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw new Error('取得データの形式を確認できませんでした。');}
+    try{return JSON.parse(raw.toString('utf8'));}catch{throw new Error('取得データの形式を確認できませんでした。');}
   }
   async function auth(operation){if(token && now()<expires)return token;if(!authJob)authJob=(async()=>{const guest=await json(`${API}/v3/auth/guestToken`,{method:'POST',headers:{'Content-Type':'application/json'}},operation);const t=await json(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${PUBLIC_WEB_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:guest.token,returnSecureToken:true})},operation);if(typeof t.idToken!=='string')throw new Error('ゲスト接続を確認できませんでした。');token=t.idToken;expires=now()+Math.max(0,Math.min(num(t.expiresIn)-60,3300))*1000;return token;})().finally(()=>{authJob=null;});return authJob;}
   return {async fetchCharacter(url){url=iacharaUrl(url);if(busy || now()-last<5000)throw new Error('キャラ取得が続いています。少し待って更新してください。');busy=true;last=now();const operation={signal:timeoutSignal(),remaining:MAX_TXT};try{const bearer=await auth(operation);const r=await json(`${API}/v3/charasheet/${url.split('/').pop()}`,{headers:{Authorization:`Bearer ${bearer}`}},operation);const d=r.data?.data;if(!r.success || !d)throw new Error('共有キャラを読み込めませんでした。');if((d.additionalMemoIds??[]).length>20)throw new Error('追加メモが多すぎます。');const additionalMemo=[];for(const id of d.additionalMemoIds??[]){if(typeof id!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id))throw new Error('追加メモの形式を確認できません。');const m=await json(`${API}/v3/memo/${id}?password=undefined`,{headers:{Authorization:`Bearer ${bearer}`}},operation);if(!m.memo)throw new Error('追加メモを取得できませんでした。以前の控えを保持します。');additionalMemo.push(m.memo);}operation.signal.throwIfAborted();const full={...d,additionalMemo};return {name:full.profile?.name,txt:characterText(full)};}finally{busy=false;}}};

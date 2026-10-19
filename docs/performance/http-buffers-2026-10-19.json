@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-19",
+  "node": "v24.19.0",
+  "method": "Separate Node processes with --expose-gc, 262144 one-byte fragments (256 KiB), three runs per implementation. Memory deltas are sampled after collection and GC before assembling the final buffer. They are not peak memory or whole-process limits. No HTTP, Discord, models or real user data.",
+  "scope": "The old implementation copies each fragment into a Buffer and retains all fragments in an array. Results demonstrate an extreme fragmentation case, not typical HTTP chunk sizes or production latency.",
+  "reproduction": "node --expose-gc docs/performance/http-buffers-benchmark-2026-10-19.mjs old (or new)",
+  "runs": [
+    {
+      "mode": "old",
+      "bytes": 262144,
+      "fragments": 262144,
+      "collectionMs": 57.052645,
+      "heldHeapDelta": 30490432,
+      "externalDelta": 2157870,
+      "rssDelta": 55554048
+    },
+    {
+      "mode": "new",
+      "bytes": 262144,
+      "fragments": 262144,
+      "collectionMs": 11.326574,
+      "heldHeapDelta": 127048,
+      "externalDelta": 568622,
+      "rssDelta": 6742016
+    },
+    {
+      "mode": "new",
+      "bytes": 262144,
+      "fragments": 262144,
+      "collectionMs": 10.328358999999999,
+      "heldHeapDelta": 126080,
+      "externalDelta": 568622,
+      "rssDelta": 6815744
+    },
+    {
+      "mode": "old",
+      "bytes": 262144,
+      "fragments": 262144,
+      "collectionMs": 54.902992,
+      "heldHeapDelta": 30489840,
+      "externalDelta": 2157870,
+      "rssDelta": 56012800
+    },
+    {
+      "mode": "old",
+      "bytes": 262144,
+      "fragments": 262144,
+      "collectionMs": 70.80010999999999,
+      "heldHeapDelta": 30490432,
+      "externalDelta": 2157870,
+      "rssDelta": 55832576
+    },
+    {
+      "mode": "new",
+      "bytes": 262144,
+      "fragments": 262144,
+      "collectionMs": 9.536583999999998,
+      "heldHeapDelta": 127416,
+      "externalDelta": 568622,
+      "rssDelta": 6352896
+    }
+  ],
+  "medians": {
+    "old": {
+      "collectionMs": 57.052645,
+      "heldHeapDelta": 30490432,
+      "externalDelta": 2157870,
+      "rssDelta": 55832576
+    },
+    "new": {
+      "collectionMs": 10.328358999999999,
+      "heldHeapDelta": 127048,
+      "externalDelta": 568622,
+      "rssDelta": 6742016
+    }
+  }
+}

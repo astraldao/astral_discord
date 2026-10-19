@@ -1,5 +1,6 @@
 import {fieldsFor,eventLinks} from './densuke-html.js';
 import {parseDensukePage} from './densuke-parser.js';
+import {BoundedBytes} from './bounded-bytes.js';
 export {densukeUrl,eventLinks,confirmationFields,resultLinks} from './densuke-html.js';
 const origin='https://www.densuke.biz';
 export const choices={'1':'○△×','2':'○×','3':'◎○△×'};
@@ -30,10 +31,10 @@ export function createDensukeClient(fetcher=fetch,{parsePage=parseDensukePage}={
     if(!response.ok||!response.body){await response.body?.cancel().catch(()=>{});throw Object.assign(new Error('伝助との通信に失敗しました。'),{code:'DENSUKE_HTTP'});}
     const advertised=response.headers.get('content-length');
     if(advertised!==null&&(!/^\d+$/.test(advertised)||!Number.isSafeInteger(Number(advertised))||Number(advertised)>1024*1024)){await response.body.cancel().catch(()=>{});throw new Error('伝助の応答が大きすぎるか形式が不正です。');}
-    const reader=response.body.getReader();let size=0;const chunks=[];
-    try {while(true){signal.throwIfAborted();const {done,value}=await reader.read();signal.throwIfAborted();if(done)break;size+=value.length;if(size>1024*1024)throw new Error('伝助の応答が大きすぎます。');chunks.push(Buffer.from(value));}}
-    finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
-    return Buffer.concat(chunks).toString('utf8');
+    const reader=response.body.getReader(),bytes=new BoundedBytes(1024*1024);
+    try {while(true){signal.throwIfAborted();const {done,value}=await reader.read();signal.throwIfAborted();if(done)break;bytes.append(value);}return bytes.finish().toString('utf8');}
+    catch(error){if(error?.code==='RESPONSE_LIMIT')throw new Error('伝助の応答が大きすぎます。');throw error;}
+    finally {bytes.dispose();await reader.cancel().catch(()=>{});reader.releaseLock();}
   }
   return {async create(input,email){
     const event=eventData(input),fields=fieldsFor(event,email);

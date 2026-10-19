@@ -1,3 +1,4 @@
+import {BoundedBytes} from '../src/bounded-bytes.js';
 // Limit decoded response bytes while streaming, before allocating the full text.
 // Fetch enforces the same signal while headers and body are being received.
 export async function boundedResponseText(response,{signal,maxBytes=65536}={}){
@@ -8,15 +9,14 @@ export async function boundedResponseText(response,{signal,maxBytes=65536}={}){
   if(length!==null&&(!/^\d+$/.test(length)||!Number.isSafeInteger(Number(length))||Number(length)>maxBytes)){
     await response.body.cancel().catch(()=>{});throw reject();
   }
-  const reader=response.body.getReader(),chunks=[];let bytes=0;
+  const reader=response.body.getReader(),bytes=new BoundedBytes(maxBytes);
   try{
     while(true){
       signal?.throwIfAborted();
       const {done,value}=await reader.read();signal?.throwIfAborted();if(done)break;
-      if(!(value instanceof Uint8Array)||(bytes+=value.byteLength)>maxBytes)throw reject();
-      chunks.push(Buffer.from(value));
+      bytes.append(value);
     }
-    return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
+    return new TextDecoder('utf-8',{fatal:true}).decode(bytes.finish());
   }catch{throw reject();}
-  finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+  finally{bytes.dispose();await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
