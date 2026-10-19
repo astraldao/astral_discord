@@ -18,10 +18,10 @@ async function fixture(root){
   await writeFile(join(root,'src','index.js'),'export {};');
 }
 test('fixed repository head is validated and polling interval cannot flood GitHub',async()=>{
-  assert.equal(await githubHead({fetcher:async(url,options)=>{assert.match(url,/astraldao\/astral_discord\/git\/ref\/heads\/main$/);assert.equal(options.redirect,'error');return {ok:true,text:async()=>JSON.stringify({object:{sha:fresh}})};}}),fresh);
+  assert.equal(await githubHead({fetcher:async(url,options)=>{assert.match(url,/astraldao\/astral_discord\/git\/ref\/heads\/main$/);assert.equal(options.redirect,'error');return new Response(JSON.stringify({object:{sha:fresh}}));}}),fresh);
   for(const value of ['../main','x'.repeat(40),null,'A'.repeat(40)])assert.equal(validSha(value),false);
-  await assert.rejects(githubHead({fetcher:async()=>({ok:true,text:async()=>JSON.stringify({object:{sha:'main'}})})}));
-  await assert.rejects(githubHead({fetcher:async()=>({ok:false})}));
+  await assert.rejects(githubHead({fetcher:async()=>new Response(JSON.stringify({object:{sha:'main'}}))}));
+  await assert.rejects(githubHead({fetcher:async()=>new Response(null,{status:500})}));
   assert.equal(intervalMs('60'),60000);assert.equal(intervalMs('3600'),3600000);for(const v of ['1','3601','NaN','-1','60;evil',undefined])assert.equal(intervalMs(v),300000);
 });
 test('archive traversal, symlinks, special files, mismatched listings and expansion are rejected',()=>{

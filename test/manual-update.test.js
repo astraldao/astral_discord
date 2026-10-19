@@ -11,10 +11,10 @@ function fixture({prepare=async()=>'/release/'+fresh,apply=async()=>({rolledBack
   return {updater,presence,checks:()=>checks,advance:ms=>time+=ms,current:v=>current=v,async run(){job();for(let n=0;n<100;n++){await new Promise(r=>setImmediate(r));if(!['preparing','switching'].includes((await updater.status()).phase))return;}throw new Error('update did not settle');}};
 }
 test('version check pins the package to the validated main SHA and rejects malformed responses',async()=>{
-  const urls=[];const fetcher=async(url,options)=>{urls.push(url);assert.equal(options.redirect,'error');return {ok:true,text:async()=>urls.length===1?JSON.stringify({object:{sha:fresh}}):JSON.stringify({version:'2.1.0'})};};
+  const urls=[];const fetcher=async(url,options)=>{urls.push(url);assert.equal(options.redirect,'error');return new Response(urls.length===1?JSON.stringify({object:{sha:fresh}}):JSON.stringify({version:'2.1.0'}));};
   assert.deepEqual(await githubRelease({fetcher}),{sha:fresh,version:'2.1.0'});assert.ok(urls[1].endsWith(`/${fresh}/package.json`));
   for(const body of ['{}','{"version":"bad"}','x'.repeat(65537)]){
-    let count=0;await assert.rejects(githubRelease({fetcher:async()=>({ok:true,text:async()=>++count===1?JSON.stringify({object:{sha:fresh}}):body})}));
+    let count=0;await assert.rejects(githubRelease({fetcher:async()=>new Response(++count===1?JSON.stringify({object:{sha:fresh}}):body)}));
   }
 });
 test('idle/status never polls GitHub, checks are bounded and only a confirmed SHA starts an update',async()=>{

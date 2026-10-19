@@ -2,6 +2,7 @@ import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFile,writeFile,mkdir,rename,rm,readdir,lstat,symlink,realpath,statfs,cp} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
+import {boundedResponseText} from './bounded-response.js';
 export const REPOSITORY='astraldao/astral_discord';
 export const validSha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 export const intervalMs=value=>/^\d+$/.test(value??'')&&Number(value)>=60&&Number(value)<=3600?Number(value)*1000:300000;
@@ -24,9 +25,9 @@ export function runFile(command,args,{cwd,timeout=300000,capture=false,signal}={
   });
 }
 export async function githubHead({fetcher=fetch}={}){
-  const response=await fetcher(`https://api.github.com/repos/${REPOSITORY}/git/ref/heads/main`,{headers:{Accept:'application/vnd.github+json','User-Agent':'astral-auto-update'},redirect:'error',signal:AbortSignal.timeout(15000)});
-  if(!response.ok)throw new Error('GitHubの更新確認に失敗しました。');
-  const body=await response.text();if(body.length>65536)throw new Error('更新情報が大きすぎます。');
+  const signal=AbortSignal.timeout(15000);
+  const response=await fetcher(`https://api.github.com/repos/${REPOSITORY}/git/ref/heads/main`,{headers:{Accept:'application/vnd.github+json','User-Agent':'astral-auto-update'},redirect:'error',signal});
+  const body=await boundedResponseText(response,{signal});
   const sha=JSON.parse(body)?.object?.sha;if(!validSha(sha))throw new Error('コミットIDを確認できません。');return sha;
 }
 export function validateArchive(names,types){

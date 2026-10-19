@@ -1,10 +1,11 @@
 import {githubHead,validSha} from './auto-update.js';
+import {boundedResponseText} from './bounded-response.js';
 export const UPDATER_PROTOCOL='2';
 export async function githubRelease({fetcher=fetch}={}){
   const sha=await githubHead({fetcher});
-  const response=await fetcher(`https://raw.githubusercontent.com/astraldao/astral_discord/${sha}/package.json`,{redirect:'error',signal:AbortSignal.timeout(15000)});
-  if(!response.ok)throw new Error('バージョン情報を取得できません。');
-  const text=await response.text();if(text.length>65536)throw new Error('バージョン情報が大きすぎます。');
+  const signal=AbortSignal.timeout(15000);
+  const response=await fetcher(`https://raw.githubusercontent.com/astraldao/astral_discord/${sha}/package.json`,{redirect:'error',signal});
+  const text=await boundedResponseText(response,{signal});
   const version=JSON.parse(text).version;if(!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version))throw new Error('バージョン情報が不正です。');
   return {sha,version};
 }

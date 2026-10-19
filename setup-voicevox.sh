@@ -19,26 +19,28 @@ vv_version=0.17.0
 mkdir -p voicevox/onnxruntime voicevox/dict voicevox/models/vvms voicevox/.downloads
 fetch() {
   echo "取得中: $1"
-  if ! curl -fL --retry 2 --retry-delay 2 --connect-timeout 15 --max-time 300 --speed-time 45 --speed-limit 1024 "$2" -o "$3.part"; then
+  vv_max_bytes=$(python3 scripts/voice_assets.py size "$4")
+  if ! curl -fL --proto "=https" --proto-redir "=https" --max-filesize "$vv_max_bytes" --retry 2 --retry-delay 2 --connect-timeout 15 --max-time 300 --speed-time 45 --speed-limit 1024 "$2" -o "$3.part"; then
     echo "ダウンロード失敗: $1。HTTPS接続と上のエラーを確認してください。" >&2
     exit 1
   fi
+  python3 scripts/voice_assets.py verify "$4" "$3.part"
   mv "$3.part" "$3"
 }
 echo 'VOICEVOX Core・音声モデルの利用条件: https://github.com/VOICEVOX/voicevox_core/blob/0.17.0/docs/guide/user/usage.md'
 echo 'ここでは入力を待ちません。公式配布ファイルを直接取得します。'
 if [ ! -f voicevox/onnxruntime/.installed-1.23.2 ]; then
-  fetch 'CPUランタイム 1.23.2' "https://github.com/VOICEVOX/onnxruntime-builder/releases/download/voicevox_onnxruntime-1.23.2/voicevox_onnxruntime-linux-$vv_arch-1.23.2.tgz" voicevox/.downloads/runtime.tgz
+  fetch 'CPUランタイム 1.23.2' "https://github.com/VOICEVOX/onnxruntime-builder/releases/download/voicevox_onnxruntime-1.23.2/voicevox_onnxruntime-linux-$vv_arch-1.23.2.tgz" voicevox/.downloads/runtime.tgz "runtime-$vv_arch"
   tar --no-same-owner -xzf voicevox/.downloads/runtime.tgz -C voicevox/onnxruntime --strip-components=1
   touch voicevox/onnxruntime/.installed-1.23.2
 fi
 if [ ! -f voicevox/dict/.installed-1.11 ]; then
-  fetch '日本語辞書 1.11' 'https://downloads.sourceforge.net/open-jtalk/open_jtalk_dic_utf_8-1.11.tar.gz' voicevox/.downloads/dict.tgz
+  fetch '日本語辞書 1.11' 'https://downloads.sourceforge.net/open-jtalk/open_jtalk_dic_utf_8-1.11.tar.gz' voicevox/.downloads/dict.tgz dictionary
   tar --no-same-owner -xzf voicevox/.downloads/dict.tgz -C voicevox/dict
   touch voicevox/dict/.installed-1.11
 fi
 if [ ! -f voicevox/models/.installed-0.17.0 ]; then
-  fetch 'ずんだもん音声モデル 0.17.0' "https://github.com/VOICEVOX/voicevox_vvm/releases/download/$vv_version/0.vvm" voicevox/models/vvms/0.vvm
+  fetch 'ずんだもん音声モデル 0.17.0' "https://github.com/VOICEVOX/voicevox_vvm/releases/download/$vv_version/0.vvm" voicevox/models/vvms/0.vvm model
   python3 -c 'import zipfile; zipfile.ZipFile("voicevox/models/vvms/0.vvm").testzip() is None or exit(1)'
   touch voicevox/models/.installed-0.17.0
 fi
@@ -51,7 +53,7 @@ if [ ! -x .voicevox-venv/bin/python ]; then
 fi
 if ! .voicevox-venv/bin/python -c 'import voicevox_core; from importlib.metadata import version; assert version("voicevox_core")=="0.17.0"' 2>/dev/null; then
   vv_filename="voicevox_core-$vv_version-cp310-abi3-$vv_wheel.whl"
-  fetch 'Python音声ライブラリ 0.17.0' "https://github.com/VOICEVOX/voicevox_core/releases/download/$vv_version/$vv_filename" "voicevox/.downloads/$vv_filename"
+  fetch 'Python音声ライブラリ 0.17.0' "https://github.com/VOICEVOX/voicevox_core/releases/download/$vv_version/$vv_filename" "voicevox/.downloads/$vv_filename" "core-$vv_arch"
   # This pinned wheel has no third-party Python dependencies or .data files.
   # Unpack it into this private venv with Python's standard library; pip is not needed.
   .voicevox-venv/bin/python - "voicevox/.downloads/$vv_filename" <<'PY'
