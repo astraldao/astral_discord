@@ -33,6 +33,7 @@ import {GameWalletStore} from './game-wallets.js';
 import {ScheduleStore} from './schedule-store.js';
 import {createScheduleController} from './schedule-ui.js';
 import {createSharedScheduleController} from './shared-schedule-ui.js';
+import {interactionRoute,createInteractionHandlers} from './interaction-routing.js';
 import {createFourController} from './four-ui.js';
 import {createChipAccountController} from './chip-account-ui.js';
 import {createRpsController} from './rps-ui.js';
@@ -62,7 +63,7 @@ const updateClient=createUpdateClient({version:botVersion});
 const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(voiceProbe?.busy)throw new EntryError('処理速度を測定中です。中断または完了後に更新してください。');if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,interactionHandlers,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -202,6 +203,7 @@ client.once('clientReady', async () => {
     restarts=createRestartController({guild,store:runtimeEnv,rpc:updateClient,supported:env.ASTRAL_RESTART_PROTOCOL==='1'&&process.connected,beforeStart:()=>{if(updateBusy({active:Math.max(0,resourcePresence.activeCount-1)+(backupReader?.active?1:0),pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}))throw new EntryError('読み上げ・VC入室・ゲームなどが進行中です。終了後に再起動してください。');}});
     runtimeSettings=createRuntimeEnvController({guild,store:runtimeEnv});
     admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),openRuntime:i=>runtimeSettings.open(i),openRestart:i=>restarts.open(i),openPerformance:i=>speedMeasurements.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active,lastFailure:backupReader.lastFailure})})});
+    interactionHandlers=createInteractionHandlers({mainMenu,backupReader,speedMeasurements,restarts,runtimeSettings,banner,versions,admin,densuke,trpg,profile,forumTags,sharedSchedules,schedule,blackjack,casino,rps,four,chipAccount,chipTools});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = process.env.ASTRAL_SUPERVISED!=='1'; console.log(`準備完了: ${client.user.tag} / v${botVersion} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
@@ -215,13 +217,12 @@ client.once('clientReady', async () => {
 });
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
-  const command = interaction.isChatInputCommand() && ['menu','vc','game','read','admin'].includes(interaction.commandName);
-  const menuComponent=interaction.isButton()&&interaction.customId.startsWith('menu:');
-  const component = (interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith('vc:');
-  const adminComponent=(interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()) && /^(perf|restart|runtime|banner|read|updates|admin|densuke|trpg|profile|forum|calendars|schedule|bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId);
-  if (!command && !component && !adminComponent && !menuComponent) return;
+  const route=interactionRoute(interaction);if(!route)return;
+  const command=route.kind==='command',component=route.kind==='component'&&route.target==='vc';
+  const menuComponent=route.kind==='component'&&route.target==='menu';
+  const featureComponent=route.kind==='component'&&!['vc','menu'].includes(route.target);
   // Acknowledge performance buttons before presence updates and other bookkeeping.
-  if(adminComponent&&interaction.customId.startsWith('perf:')&&!await speedMeasurements.acknowledge(interaction))return;
+  if(featureComponent&&route.target==='perf'&&!await speedMeasurements.acknowledge(interaction))return;
   let finishActivity=()=>{};
   try {
     const cancellation=interaction.isButton() && interaction.customId.startsWith('vc:cancel:');
@@ -235,12 +236,9 @@ client.on('interactionCreate', async interaction => {
     }
     finishActivity=resourcePresence.activity();
     speedMeasurements?.leave(interaction);
-    if((command&&interaction.commandName==='menu')||menuComponent){if(stopping)throw new EntryError('Botを終了しています。');await mainMenu.handle(interaction);return;}
-    if((command&&interaction.commandName==='read')||(adminComponent&&interaction.customId.startsWith('read:'))){if(stopping)throw new EntryError('Botを終了しています。');await backupReader.handle(interaction);return;}
-    if((command && interaction.commandName==='game') || (adminComponent && /^(bj|casino|rps|four|wallet|chips|work|game):/.test(interaction.customId))){if(stopping)throw new EntryError('Botを終了しています。');if(command)await blackjack.lobby(interaction);else if(/^(chips|work):/.test(interaction.customId))await chipTools.handle(interaction);else if(interaction.customId==='wallet:open')await chipAccount.openSelf(interaction);else if(interaction.customId.startsWith('wallet:'))await chipAccount.handle(interaction);else if(interaction.customId.startsWith('four:'))await four.handle(interaction);else if(interaction.customId.startsWith('rps:'))await rps.handle(interaction);else if(interaction.customId.startsWith('casino:'))await casino.handle(interaction);else await blackjack.handle(interaction);return;}
-    if(adminComponent || (command && interaction.commandName==='admin')) {
+    if(route.target!=='vc'){
       if(stopping)throw new EntryError('Botを終了しています。');
-      if(adminComponent && interaction.customId.startsWith('perf:'))await speedMeasurements.handle(interaction);else if(adminComponent && interaction.customId.startsWith('restart:'))await restarts.handle(interaction);else if(adminComponent && interaction.customId.startsWith('runtime:'))await runtimeSettings.handle(interaction);else if(adminComponent && interaction.customId.startsWith('banner:'))await banner.handle(interaction);else if(adminComponent && interaction.customId.startsWith('updates:'))await versions.handle(interaction);else if(adminComponent && interaction.customId.startsWith('calendars:'))await sharedSchedules.handle(interaction);else if(adminComponent && interaction.customId.startsWith('schedule:'))await schedule.handle(interaction);else if(adminComponent && interaction.customId.startsWith('forum:'))await forumTags.handle(interaction);else if(adminComponent && interaction.customId.startsWith('profile:'))await profile.handle(interaction);else if(adminComponent && interaction.customId.startsWith('trpg:'))await trpg.handle(interaction);else if(adminComponent && interaction.customId.startsWith('densuke:'))await densuke.handle(interaction);else await admin.handle(interaction);return;
+      await interactionHandlers.get(route.target)(interaction);return;
     }
     if (interaction.isButton() && interaction.customId.startsWith('vc:cancel:')) {
       const job = pending.get(interaction.user.id);
@@ -269,10 +267,10 @@ client.on('interactionCreate', async interaction => {
       .finally(()=>{if(pending.get(job.userId)===job)pending.delete(job.userId);});
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
-    const components=menuComponent||(command&&interaction.commandName==='menu')?[new ActionRowBuilder().addComponents(menuHomeButton())]:adminComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton().addComponents(menuHomeButton())];
+    const components=menuComponent||(command&&interaction.commandName==='menu')?[new ActionRowBuilder().addComponents(menuHomeButton())]:featureComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton().addComponents(menuHomeButton())];
     if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
     else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
-    const source=command?interaction.commandName:interaction.customId?.split(':')[0];
+    const source=route.namespace;
     console.error('操作:',error.code ?? error.name,'機能:',source);
   }finally{finishActivity();}
 });
