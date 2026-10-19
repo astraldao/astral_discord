@@ -18,11 +18,11 @@ export function createTrpgRepair({store,guild,render}){
       await check();checkStage(stage);
       if(existing){if(stage.channelId!==p.channelId)throw new Error('元のパネルは残っています。元の設置先で更新してください。');await existing.edit(render(p));return 'updated';}
       const attempt={id:randomUUID(),channelId:stage.channelId,startedAt:Date.now()};
-      await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(JSON.stringify(current)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');current.repairPending=attempt;});
+      await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(JSON.stringify(current)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');current.repairPending=attempt;},check);
       let message,sending=false;
       try{
         await check();sending=true;message=await channel.send(render(p));await check();
-        await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(current?.repairPending?.id!==attempt.id || current.mode!==p.mode)throw new Error('パネル情報が変わりました。');current.channelId=stage.channelId;current.messageId=message.id;delete current.repairPending;});
+        await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(current?.repairPending?.id!==attempt.id || current.mode!==p.mode)throw new Error('パネル情報が変わりました。');current.channelId=stage.channelId;current.messageId=message.id;delete current.repairPending;},check);
         return 'created';
       }catch(e){
         let clear=!sending;
@@ -36,7 +36,7 @@ export function createTrpgRepair({store,guild,render}){
     });},
     clearPending(stage,check){return serialize(async()=>{
       await check();const p=checkStage(stage);if(!p.repairPending || Date.now()-p.repairPending.startedAt<60000)throw new Error('送信結果を確認するため、1分以上待ってから操作してください。');
-      await check();await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(JSON.stringify(current)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');delete current.repairPending;});
+      await check();await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(JSON.stringify(current)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');delete current.repairPending;},check);
     });},
     adopt(stage,messageId,check){return serialize(async()=>{
       if(!/^\d{17,20}$/.test(messageId))throw new Error('DiscordメッセージのIDを入力してください。');
@@ -45,7 +45,7 @@ export function createTrpgRepair({store,guild,render}){
       const controls=m=>(m.components??[]).flatMap(r=>(typeof r.toJSON==='function'?r.toJSON():r).components??[]).map(c=>c.custom_id??c.customId);
       const description=m=>(typeof m.embeds?.[0]?.toJSON==='function'?m.embeds[0].toJSON():m.embeds?.[0])?.description;
       if(message.author?.id!==guild.members.me.id || JSON.stringify(controls(message))!==JSON.stringify(controls(expected)) || description(message)!==description(expected))throw new Error('指定されたメッセージは、この公開範囲のBotパネルと一致しません。');
-      await check();await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(JSON.stringify(current)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');current.channelId=pending.channelId;current.messageId=messageId;delete current.repairPending;});
+      await check();await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(JSON.stringify(current)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');current.channelId=pending.channelId;current.messageId=messageId;delete current.repairPending;},check);
       return 'adopted';
     });}
   };

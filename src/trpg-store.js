@@ -45,37 +45,37 @@ export class TrpgStore {
     if(panelId && !this.data.panels.some(p=>p.id===panelId))throw new Error('パネルが見つかりません。');
     return this.data.characters.filter(c=>(!panelId || c.panelId===panelId) && (c.ownerId===userId || isAdmin)).map(c=>({...c}));
   }
-  removeCharacter(id,userId,panelId,isAdmin,revision){return this.update(d=>{
+  removeCharacter(id,userId,panelId,isAdmin,revision,check){return this.update(d=>{
     const c=ownCharacter(d,id,userId,panelId,isAdmin);
     if(!revision || characterRevision(c)!==revision)throw new Error('控えが更新されました。PCを開き直して確認してください。');
     d.characters=d.characters.filter(x=>x.id!==c.id);
     for(const t of d.tables??[])t.characterIds=t.characterIds.filter(x=>x!==c.id);
-  });}
+  },check);}
   table(id){const t=this.data.tables.find(x=>x.id===id);if(!t)throw new Error('卓セットが見つかりません。');return structuredClone(t);}
-  saveTable(id,name,url,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');url=answerUrl(url);return this.update(d=>{
+  saveTable(id,name,url,revision,check){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');url=answerUrl(url);return this.update(d=>{
     let t=id?d.tables.find(x=>x.id===id):null;if(id && !t)throw new Error('卓セットが見つかりません。');if(id && revision!==undefined && JSON.stringify(t)!==revision)throw new Error('卓セットが変更されました。開き直して編集してください。');
     if(!t){if(d.tables.length>=100)throw new Error('卓セットは100件までです。');t={id:randomUUID(),scenarioId:null,characterIds:[],pinned:false,completed:false};d.tables.push(t);}
     Object.assign(t,{name,answerUrl:url});return t.id;
-  });}
-  setTableState(id,key,value,revision){if(!['pinned','completed'].includes(key) || typeof value!=='boolean')throw new Error('卓の操作が不正です。');return this.update(d=>{
+  },check);}
+  setTableState(id,key,value,revision,check){if(!['pinned','completed'].includes(key) || typeof value!=='boolean')throw new Error('卓の操作が不正です。');return this.update(d=>{
     const t=d.tables.find(x=>x.id===id);if(!t || JSON.stringify(t)!==revision)throw new Error('卓が変更されました。開き直してください。');
     if(key==='pinned' && value && !t.pinned && d.tables.filter(x=>x.pinned).length>=5)throw new Error('固定できる卓は5件までです。他の卓の固定を解除してください。');t[key]=value;
-  });}
-  setTableScenario(id,scenarioId){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !d.scenarios.some(x=>x.id===scenarioId))throw new Error('卓またはシナリオが見つかりません。');t.scenarioId=scenarioId;});}
-  changeTableCharacters(id,ids,remove=false){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !Array.isArray(ids) || !ids.length || ids.length>25 || ids.some(id=>!d.characters.some(c=>c.id===id)))throw new Error('参加PCを選び直してください。');t.characterIds=remove?t.characterIds.filter(id=>!ids.includes(id)):[...new Set([...t.characterIds,...ids])];});}
-  removeTable(id,revision){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || JSON.stringify(t)!==revision)throw new Error('卓セットが変更されました。開き直してください。');d.tables=d.tables.filter(x=>x.id!==id);});}
-  cloneTable(id,name,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');return this.update(d=>{
+  },check);}
+  setTableScenario(id,scenarioId,check){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !d.scenarios.some(x=>x.id===scenarioId))throw new Error('卓またはシナリオが見つかりません。');t.scenarioId=scenarioId;},check);}
+  changeTableCharacters(id,ids,remove=false,check){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || !Array.isArray(ids) || !ids.length || ids.length>25 || ids.some(id=>!d.characters.some(c=>c.id===id)))throw new Error('参加PCを選び直してください。');t.characterIds=remove?t.characterIds.filter(id=>!ids.includes(id)):[...new Set([...t.characterIds,...ids])];},check);}
+  removeTable(id,revision,check){return this.update(d=>{const t=d.tables.find(x=>x.id===id);if(!t || JSON.stringify(t)!==revision)throw new Error('卓セットが変更されました。開き直してください。');d.tables=d.tables.filter(x=>x.id!==id);},check);}
+  cloneTable(id,name,revision,check){name=String(name).trim();if(!name || name.length>100)throw new Error('卓名は100文字以内で入力してください。');return this.update(d=>{
     const source=d.tables.find(x=>x.id===id);if(!source || JSON.stringify(source)!==revision)throw new Error('元の卓が変更されました。開き直して複製してください。');
     if(d.tables.length>=100)throw new Error('卓セットは100件までです。');
     const copy={id:randomUUID(),name,scenarioId:source.scenarioId,answerUrl:'',characterIds:[],pinned:false,completed:false};d.tables.push(copy);return copy.id;
-  });}
-  update(fn){const job=this.tail.then(async()=>{const d=this.get();const result=fn(d);const raw=JSON.stringify(d);if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの合計容量は32MBまでです。');await mkdir(dirname(this.path),{recursive:true});const temp=`${this.path}.tmp`;await writeFile(temp,raw,{mode:0o600});await rename(temp,this.path);this.data=d;return result;});this.tail=job.catch(()=>{});return job;}
-  async scenario(name,url){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{const old=d.scenarios.find(x=>key(x.name)===key(name));if(old){old.name=name;old.url=url;return old.id;}if(d.scenarios.length>=200)throw new Error('シナリオは200件まで登録できます。');const id=randomUUID();d.scenarios.push({id,name,url});return id;});}
-  editScenario(id,name,url,revision){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{
+  },check);}
+  update(fn,check=()=>{}){const job=this.tail.then(async()=>{await check();const d=this.get();const result=fn(d);const raw=JSON.stringify(d);if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの合計容量は32MBまでです。');await mkdir(dirname(this.path),{recursive:true});const temp=`${this.path}.tmp`;await writeFile(temp,raw,{mode:0o600});await rename(temp,this.path);this.data=d;return result;});this.tail=job.catch(()=>{});return job;}
+  async scenario(name,url,check){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{const old=d.scenarios.find(x=>key(x.name)===key(name));if(old){old.name=name;old.url=url;return old.id;}if(d.scenarios.length>=200)throw new Error('シナリオは200件まで登録できます。');const id=randomUUID();d.scenarios.push({id,name,url});return id;},check);}
+  editScenario(id,name,url,revision,check){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{
     const old=d.scenarios.find(x=>x.id===id);if(!old || JSON.stringify(old)!==revision)throw new Error('ベース卓が変更されました。選び直して編集してください。');
     if(d.scenarios.some(x=>x.id!==id && key(x.name)===key(name)))throw new Error('同じシナリオ名が別の登録で使われています。別の名前にしてください。');
     Object.assign(old,{name,url});return id;
-  });}
-  async addPanel(channelId,mode){if(!['secret','shared'].includes(mode))throw new Error('秘匿または共有を選んでください。');return this.update(d=>{if(d.panels.length>=30)throw new Error('パネルは30件まで設置できます。');const id=randomUUID();d.panels.push({id,channelId,messageId:null,mode});return id;});}
-  async saveCharacter(panelId,ownerId,url,result,expectedId){url=iacharaUrl(url);if(!result.name?.trim() || result.name.length>100 || typeof result.txt!=='string' || !result.txt.trim() || Buffer.byteLength(result.txt)>MAX_TXT)throw new Error('キャラ名・TXTの形式やサイズを確認できませんでした。');return this.update(d=>{if(!d.panels.some(p=>p.id===panelId))throw new Error('パネルが見つかりません。');let c=d.characters.find(x=>x.panelId===panelId && x.ownerId===ownerId && x.url===url);if(expectedId && c?.id!==expectedId)throw new Error('PC登録が解除されました。更新を中止しました。');if(!c){if(d.characters.length>=100 || d.characters.filter(x=>x.ownerId===ownerId).length>=10)throw new Error('登録上限は本人10件・サーバー100件です。');c={id:randomUUID(),panelId,ownerId,url};d.characters.push(c);}Object.assign(c,{name:result.name.trim(),txt:result.txt,updatedAt:Date.now()});return c.id;});}
+  },check);}
+  async addPanel(channelId,mode,check){if(!['secret','shared'].includes(mode))throw new Error('秘匿または共有を選んでください。');return this.update(d=>{if(d.panels.length>=30)throw new Error('パネルは30件まで設置できます。');const id=randomUUID();d.panels.push({id,channelId,messageId:null,mode});return id;},check);}
+  async saveCharacter(panelId,ownerId,url,result,expectedId,check){url=iacharaUrl(url);if(!result.name?.trim() || result.name.length>100 || typeof result.txt!=='string' || !result.txt.trim() || Buffer.byteLength(result.txt)>MAX_TXT)throw new Error('キャラ名・TXTの形式やサイズを確認できませんでした。');return this.update(d=>{if(!d.panels.some(p=>p.id===panelId))throw new Error('パネルが見つかりません。');let c=d.characters.find(x=>x.panelId===panelId && x.ownerId===ownerId && x.url===url);if(expectedId && c?.id!==expectedId)throw new Error('PC登録が解除されました。更新を中止しました。');if(!c){if(d.characters.length>=100 || d.characters.filter(x=>x.ownerId===ownerId).length>=10)throw new Error('登録上限は本人10件・サーバー100件です。');c={id:randomUUID(),panelId,ownerId,url};d.characters.push(c);}Object.assign(c,{name:result.name.trim(),txt:result.txt,updatedAt:Date.now()});return c.id;},check);}
 }
