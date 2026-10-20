@@ -13,7 +13,7 @@ async function queuedChange(flow,change){
     const store=await new TrpgStore(join(dir,'trpg.json')).load(),panel=await store.addPanel('channel','secret');
     const foreign=await store.saveCharacter(panel,'owner','https://iachara.com/view/1',{name:'PRIVATE PC',txt:'PRIVATE BACKUP'}),own=await store.saveCharacter(panel,'actor','https://iachara.com/view/2',{name:'OWN PC',txt:'OWN BACKUP'}),scenario=await store.scenario('base','https://ccfolia.com/rooms/base'),table=await store.saveTable(null,'original','');
     if(flow==='table-remove-pc')await store.changeTableCharacters(table,[foreign]);
-    const ownerFlow=flow.startsWith('own-'),controller=createTrpgController({store,access:async()=>{if(!allowed&&ownerFlow)throw new Error('閲覧権限がありません。');return allowed&&!ownerFlow;},guild:{members:{me:{}},channels:{cache:new Map(),fetch:async()=>({id:'destination',type:0,permissionsFor:()=>({has:()=>true}),send:async()=>{posts++;return {id:'posted',delete:async()=>{}};}})}},iachara:{fetchCharacter:async()=>({name:'updated',txt:'updated backup'})}}),s=controller.sessions.create('actor');
+    const ownerFlow=flow.startsWith('own-'),controller=createTrpgController({store,access:async()=>{if(!allowed&&ownerFlow)throw new Error('閲覧権限がありません。');return allowed&&!ownerFlow;},guild:{members:{me:{},fetchMe:async()=>({})},channels:{cache:new Map(),fetch:async()=>({id:'destination',type:0,permissionsFor:()=>({has:()=>true}),send:async()=>{posts++;return {id:'posted',delete:async()=>{}};}})}},iachara:{fetchCharacter:async()=>({name:'updated',txt:'updated backup'})}}),s=controller.sessions.create('actor');
     Object.assign(s,{entry:ownerFlow?'panel':'admin',originChannelId:'channel',view:'table',panelId:panel,tableId:table,characterId:flow==='own-delete'?own:foreign,isAdmin:!ownerFlow});
     const revision=JSON.stringify(store.table(table));let action;
     if(flow.startsWith('scenario-')){action='submit-scenario:token';s.scenarioModal={token:'token',id:flow.endsWith('edit')?scenario:null,revision:flow.endsWith('edit')?JSON.stringify(store.metadata().scenarios[0]):undefined};}
@@ -27,7 +27,7 @@ async function queuedChange(flow,change){
     if(flow==='foreign-update'){action='refresh';s.view='detail';}
     if(flow==='own-register'){action='submit-register';s.view='characters';}
     if(flow.endsWith('-delete')&&flow!=='table-delete'){action='confirm-delete-character';s.view='delete-character';s.deleteCharacter={id:s.characterId,revision:characterRevision(store.character(s.characterId,'actor',panel,true))};}
-    if(flow==='panel-place'){action='place';s.view='install';s.channelId='destination';s.mode='secret';}
+    if(flow==='panel-place'){action='place:token';s.installToken='token';s.view='install';s.channelId='destination';s.mode='secret';}
     const i={customId:`trpg:${s.id}:${action}`,user:{id:'actor'},channelId:'channel',message:{flags:{has:()=>false}},values:[flow==='table-scenario'?scenario:foreign],fields:{getTextInputValue:key=>({name:'changed',url:flow==='own-register'?'https://iachara.com/view/3':'https://ccfolia.com/rooms/changed',answer:''})[key]},async deferReply(){this.deferred=true;},async editReply(value){this.result=value;},async reply(value){this.result=value;this.replied=true;}};
     const before=await readFile(store.path,'utf8'),gate=new Promise(resolve=>release=resolve),queued=new Promise(resolve=>entered=resolve),update=store.update.bind(store);
     store.tail=gate;store.update=(...args)=>{entered();return update(...args);};

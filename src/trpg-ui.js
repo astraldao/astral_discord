@@ -4,7 +4,7 @@ import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
 import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {visibleCharacters,searchScenarios,iacharaUrl,characterRevision} from './trpg-store.js';
-import {createTrpgRepair} from './trpg-repair.js';
+import {createTrpgRepair,trpgPanelTarget} from './trpg-repair.js';
 import {tableScreen} from './tables-ui.js';
 import {backupBundles} from './backups.js';
 import {createIacharaClient} from './iachara.js';
@@ -57,9 +57,9 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       body='**卓セット**\nシナリオ・伝助・参加PCを卓ごとにまとめます。\n\n**ベース卓**\nシナリオ名から、ココフォリアの卓を探せます。URLは管理者だけに表示します。\n\n**キャラシ**\nメンバー用の登録パネルを設置し、PCの控えを確認できます。';
       components=[row(button(s,'tables','卓セット',ButtonStyle.Primary)),row(button(s,'scenarios','ベース卓を探す'),button(s,'form-scenario','ベース卓を登録')),row(button(s,'archives','PCの控えを確認'),button(s,'install','キャラシパネルを設置'),button(s,'repairs','キャラシパネルを復旧')),row(adminSectionButton('schedule'),adminHomeButton())];
     } else if(s.view==='install'){
-      title='✦  キャラシパネルを設置';
+      title='✦  キャラシパネルを設置';s.installToken??=randomUUID().slice(0,12);
       body=`**公開範囲** ${s.mode==='shared'?'共有':'秘匿'}\n**設置先** ${s.channelId?`<#${s.channelId}>`:'チャンネルを選んでください'}\n\n**秘匿** · PC名・URLは本人と管理者だけ\n**共有** · PC名・URLをメンバーに表示\nTXTはどちらも本人と管理者だけに表示します。\n既存パネルの公開範囲は変更しません。`;
-      components=[row(menu(s,'mode','PC名・URLの公開範囲',[{label:'秘匿 · 本人と管理者だけ',value:'secret',default:s.mode!=='shared'},{label:'共有 · メンバーに表示',value:'shared',default:s.mode==='shared'}])),row(new ChannelSelectMenuBuilder().setCustomId(`trpg:${s.id}:channel`).setPlaceholder('パネルを設置するチャンネル').addChannelTypes(ChannelType.GuildText)),row(button(s,'place','この内容で設置',ButtonStyle.Primary).setDisabled(!s.channelId)),back()];
+      components=[row(menu(s,'mode','PC名・URLの公開範囲',[{label:'秘匿 · 本人と管理者だけ',value:'secret',default:s.mode!=='shared'},{label:'共有 · メンバーに表示',value:'shared',default:s.mode==='shared'}])),row(new ChannelSelectMenuBuilder().setCustomId(`trpg:${s.id}:channel`).setPlaceholder('パネルを設置するチャンネル').addChannelTypes(ChannelType.GuildText)),row(button(s,`place:${s.installToken}`,'この内容で設置',ButtonStyle.Primary).setDisabled(!s.channelId)),back()];
     } else if(s.view==='scenarios'){
       title='✦  ベース卓';if(s.scenario)s.scenario=d.scenarios.find(x=>x.id===s.scenario.id)??null;const items=searchScenarios(d.scenarios,s.query??'');const pages=Math.max(1,Math.ceil(items.length/20));s.page=Math.max(0,Math.min(s.page,pages-1));
       body=`${items.length}件 · ${s.page+1}/${pages}ページ${s.query?`\n検索：**${text(s.query)}**`:''}\n\n${s.scenario?`**${text(s.scenario.name)}**\n${s.scenario.url}`:items.length?'シナリオを選ぶと、ベース卓のURLが表示されます。':s.query?'該当するシナリオがありません。検索を解除するか、別の名前で検索してください。':'ベース卓は未登録です。「ベース卓を登録」から追加できます。'}`;
@@ -84,7 +84,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
     } else if(s.view==='repair'){
       const p=d.panels.find(x=>x.id===s.repairId);if(!p)throw new Error('パネルが見つかりません。');title='✦  復旧内容を確認';
       body=`**公開範囲** ${p.mode==='secret'?'秘匿':'共有'}（変更しません）\n**登録PC** ${d.characters.filter(c=>c.panelId===p.id).length}件（保持します）\n**設置先** <#${p.repairPending?.channelId??s.repairChannelId}>\n\n`;
-      if(p.repairPending){body+='前回の復旧結果が未確認です。設置先でBotのパネルを探し、メッセージIDを登録してください。結果を登録するまで再送しません。';components.push(row(button(s,'form-repair-result','復旧結果を登録',ButtonStyle.Primary),button(s,'repair-clear','設置先にパネルがない')));}
+      if(p.repairPending){body+='前回の投稿結果が未確認です。設置先でBotのパネルを探し、メッセージIDを登録してください。結果を登録するまで再送しません。';components.push(row(button(s,'form-repair-result','復旧結果を登録',ButtonStyle.Primary),button(s,'repair-clear','設置先にパネルがない')));}
       else{body+='元のパネルが残っている場合は同じメッセージを更新します。失われた場合だけ再設置します。';components.push(row(new ChannelSelectMenuBuilder().setCustomId(`trpg:${s.id}:repair-channel`).setPlaceholder('復旧先のチャンネル').addChannelTypes(ChannelType.GuildText)),row(button(s,'confirm-repair','この内容で復旧',ButtonStyle.Primary)));}
       components.push(row(button(s,'repairs','復旧対象の一覧へ')));
     } else if(['tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table'].includes(s.view)){
@@ -164,10 +164,20 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       if(action.startsWith('form-')){s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(s.entry==='admin'||s.tableReturn)requireAdmin(s);const kind=action.slice(5);if(!['register','pc-search'].includes(kind))requireAdmin(s);if(['register','pc-search'].includes(kind) && !s.panelId)throw new Error('パネルから開いてください。');if(kind==='repair-result'){const p=store.metadata().panels.find(x=>x.id===s.repairId);if(!p?.repairPending)throw new Error('未確認の復旧処理はありません。');s.repairStage={id:p.id,channelId:p.repairPending.channelId,revision:JSON.stringify(p)};}if(kind==='scenario'){s.view='scenarios';if(s.scenarioDraftId)delete s.scenarioDraft;s.scenarioDraftId=null;}if(kind==='scenario-edit'){const id=s.scenario?.id;if(s.scenarioDraftId!==id)delete s.scenarioDraft;s.scenario=store.metadata().scenarios.find(x=>x.id===id);if(!s.scenario)throw new Error('ベース卓を選んでください。');s.scenarioDraftId=id;}if(kind==='table'){if(s.tableEditId)delete s.tableDraft;s.tableForm=null;s.tableEditId=null;}if(kind==='table-copy'){const source=store.table(s.tableId);if(s.copySource?.id!==source.id)delete s.copyName;s.copySource=source;}if(kind==='table-edit'){s.tableForm=store.table(s.tableId);s.tableEditId=s.tableId;}await i.showModal(form(s,kind));return;}
       // Always create a private response, including forged/public component requests.
       if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(s.entry==='admin'||s.tableReturn)requireAdmin(s);let note='';const checkAdmin=()=>authorizeSave(i,s,{admin:true});
-      if(['home','scenarios','archives','install','tables','repairs'].includes(action)){requireAdmin(s);s.view=action;s.page=action==='tables'?(s.tableListPage??0):0;s.mode??='secret';delete s.deleteCharacter;delete s.deleteTable;delete s.tableReturn;}
+      if(['home','scenarios','archives','install','tables','repairs'].includes(action)){requireAdmin(s);s.view=action;s.page=action==='tables'?(s.tableListPage??0):0;s.mode??='secret';if(action==='install')s.installToken=randomUUID().slice(0,12);delete s.deleteCharacter;delete s.deleteTable;delete s.tableReturn;}
       else if(action==='mode'){requireAdmin(s);if(!['secret','shared'].includes(i.values[0]))throw new Error('公開範囲を選択してください。');s.mode=i.values[0];}
       else if(action==='channel'){requireAdmin(s);s.channelId=i.values[0];}
-      else if(action==='place'){requireAdmin(s);const channel=await guild.channels.fetch(s.channelId);if(channel?.type!==ChannelType.GuildText || !channel.permissionsFor(guild.members.me)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks]))throw new Error('設置先とBotの閲覧・送信・埋め込み権限を確認してください。');const id=await store.addPanel(channel.id,s.mode,checkAdmin);const p=store.metadata().panels.find(x=>x.id===id);let message;try{await checkAdmin();message=await channel.send(trpgPanel(p));await store.update(d=>{d.panels.find(x=>x.id===id).messageId=message.id;},checkAdmin);}catch(e){if(message)await message.delete().catch(()=>{});await store.update(d=>{d.panels=d.panels.filter(x=>x.id!==id);});throw e;}note='✓ キャラシパネルを設置しました。';s.view='home';}
+      else if(action==='place'){
+        requireAdmin(s);
+        if(s.view!=='install' || !s.installToken || parts[3]!==s.installToken)throw new Error('最新の設置画面から内容を確認してください。');
+        const channel=await trpgPanelTarget(guild,s.channelId);
+        const id=await store.addPanel(channel.id,s.mode,checkAdmin),p=store.metadata().panels.find(x=>x.id===id);
+        // Keep the panel identity before any send. Unknown outcomes use the same
+        // durable reservation and adoption flow as repairing an existing panel.
+        delete s.installToken;s.repairId=id;s.repairChannelId=channel.id;s.repairStage={id,revision:JSON.stringify(p)};s.view='repair';
+        await repair.repair({...s.repairStage,channelId:channel.id},checkAdmin);
+        s.repairStage=null;s.view='home';note='✓ キャラシパネルを設置しました。';
+      }
       else if(action==='repair-select'){requireAdmin(s);const p=store.metadata().panels.find(x=>x.id===i.values[0]);if(!p)throw new Error('パネルを選び直してください。');s.repairId=p.id;s.repairChannelId=p.channelId;s.repairStage={id:p.id,revision:JSON.stringify(p)};s.view='repair';delete s.repairMessageDraft;}
       else if(action==='repair-channel'){requireAdmin(s);if(s.view!=='repair' || !s.repairStage)throw new Error('復旧対象を選んでください。');s.repairChannelId=i.values[0];}
       else if(action==='repair-clear'){requireAdmin(s);if(s.view!=='repair')throw new Error('復旧画面から操作してください。');const p=store.metadata().panels.find(x=>x.id===s.repairId);if(!p?.repairPending)throw new Error('未確認の復旧処理はありません。');s.repairStage={id:p.id,revision:JSON.stringify(p)};s.view='repair-clear';}

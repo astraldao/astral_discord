@@ -1,18 +1,20 @@
 import {randomUUID} from 'node:crypto';
 import {ChannelType,PermissionFlagsBits as P} from 'discord.js';
 
+export async function trpgPanelTarget(guild,id){
+  const channel=await guild.channels.fetch(id,{force:true}),bot=await guild.members.fetchMe({force:true});
+  if(channel?.type!==ChannelType.GuildText || !channel.permissionsFor(bot)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks,P.ReadMessageHistory]))throw new Error('設置先とBotの閲覧・送信・埋め込み・履歴権限を確認してください。');return channel;
+}
+
 export function createTrpgRepair({store,guild,render}){
   let tail=Promise.resolve();
   const panel=id=>{const p=store.metadata().panels.find(x=>x.id===id);if(!p)throw new Error('パネルが見つかりません。');return p;};
   const serialize=fn=>{const run=tail.then(fn);tail=run.catch(()=>{});return run;};
-  const target=async id=>{
-    const channel=await guild.channels.fetch(id,{force:true}),bot=await guild.members.fetchMe();
-    if(channel?.type!==ChannelType.GuildText || !channel.permissionsFor(bot)?.has([P.ViewChannel,P.SendMessages,P.EmbedLinks,P.ReadMessageHistory]))throw new Error('設置先とBotの閲覧・送信・埋め込み・履歴権限を確認してください。');return channel;
-  };
+  const target=id=>trpgPanelTarget(guild,id);
   const checkStage=stage=>{const p=panel(stage.id);if(JSON.stringify(p)!==stage.revision)throw new Error('パネル情報が変わりました。選び直してください。');return p;};
   return {
     repair(stage,check){return serialize(async()=>{
-      await check();const p=checkStage(stage);if(p.repairPending)throw new Error('前回の復旧結果が未確認です。設置先でBotのメッセージを確認し、そのIDを登録してください。');
+      await check();const p=checkStage(stage);if(p.repairPending)throw new Error('前回の投稿結果が未確認です。設置先でBotのメッセージを確認し、そのIDを登録してください。');
       const channel=await target(stage.channelId);let existing;
       if(p.messageId){try{const original=await guild.channels.fetch(p.channelId,{force:true});if(original)existing=await original.messages.fetch(p.messageId);}catch(e){if(![10003,10008].includes(e.code))throw e;}}
       await check();checkStage(stage);
@@ -30,7 +32,7 @@ export function createTrpgRepair({store,guild,render}){
         else if([10003,50001,50013,50035].includes(e.code))clear=true;
         // Unknown send outcomes remain persisted; reopening or restart must not resend.
         if(clear)await store.update(d=>{const current=d.panels.find(x=>x.id===p.id);if(current?.repairPending?.id===attempt.id)delete current.repairPending;});
-        if(panel(p.id).repairPending)throw new Error('復旧結果を確認できません。自動再送はしません。設置先のBotメッセージIDを「復旧結果を登録」から登録してください。');
+        if(panel(p.id).repairPending)throw new Error('投稿結果を確認できません。自動再送はしません。設置先のBotメッセージIDを「復旧結果を登録」から登録してください。');
         throw e;
       }
     });},
