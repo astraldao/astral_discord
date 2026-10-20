@@ -10,7 +10,7 @@ import {validDensukeEmail} from './settings.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const screenActions=new Set(['choice','form','cancel','share','restart','form-email','form-recover']);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`densuke:${s.id}:${action}${action.includes(':')?'':':'+s.controlToken}`).setLabel(label).setStyle(style);
-const invalidateEventControls=s=>{for(const key of ['controlToken','reviewToken','eventToken','recoverToken','recoverPhase','recoverDraft'])delete s[key];};
+const invalidateEventControls=s=>{for(const key of ['controlToken','reviewToken','eventToken','emailToken','emailEditBase','recoverToken','recoverPhase','recoverDraft'])delete s[key];};
 const safe=(value,max)=>{const escaped=escapeMarkdown(String(value)).replace(/@/g,'＠');return escaped.length>max?escaped.slice(0,max-1)+'…':escaped;};
 export function densukeScreen(s,note='') {
   s.controlToken??=randomUUID().slice(0,12);
@@ -47,9 +47,10 @@ export function densukeModal(s) {
   return modal;
 }
 export function densukeEmailModal(s,email) {
+  s.emailToken=randomUUID().slice(0,12);
   const input=new TextInputBuilder().setCustomId('email').setLabel('控えメールの固定宛先').setStyle(TextInputStyle.Short).setMaxLength(254).setRequired(true);
   if(email)input.setValue(email);
-  return new ModalBuilder().setCustomId(`densuke:${s.id}:submit-email`).setTitle('控えメールの宛先を保存').addComponents(row(input));
+  return new ModalBuilder().setCustomId(`densuke:${s.id}:submit-email:${s.emailToken}`).setTitle('控えメールの宛先を保存').addComponents(row(input));
 }
 export function createDensukeController({email,settings,client=createDensukeClient(),now=()=>Date.now(),guild}) {
   const sessions=new AdminSessions(now),attempts=new Map();let nextGlobal=0;
@@ -101,18 +102,21 @@ export function createDensukeController({email,settings,client=createDensukeClie
       else if(action==='cancel'){s.phase='closed';invalidateEventControls(s);s.event.password='';delete s.inputDraft;}
       else if(action==='choice'){if(!Object.hasOwn(choices,i.values[0]))throw new Error('回答の選択肢が不正です。');if(s.event.choice!==i.values[0]){invalidateEventControls(s);s.event.choice=i.values[0];if(s.inputDraft)s.inputDraft.choice=i.values[0];}}
       else if(action==='submit-email') {
+        if(!s.emailToken || token!==s.emailToken)throw new Error('最新のメール設定フォームから操作してください。');
         const value=i.fields.getTextInputValue('email').trim();
         if(!validDensukeEmail(value))throw new Error('254文字以内の半角メールアドレスを入力してください。');
         if(!settings)throw new Error('メール設定を保存できません。');
         if(!Object.hasOwn(s,'emailEditBase'))throw new Error('「控えメールの宛先」を開き直してください。');
+        const base=s.emailEditBase;
         await settings.update(c=>{
-          if((c.densukeEmail??email)!==s.emailEditBase)throw new Error('別の操作で固定メールが変更されました。設定画面を開き直してください。');
+          if((c.densukeEmail??email)!==base)throw new Error('別の操作で固定メールが変更されました。設定画面を開き直してください。');
           c.densukeEmail=value;
         },async()=>{
           await authorizeSession(i,s);
+          if(s.emailToken!==token || s.emailEditBase!==base)throw new Error('メール設定フォームが変更されました。最新のフォームから操作してください。');
           if(!['draft','review'].includes(s.phase))throw new Error('メール設定画面を開き直してください。');
         });
-        delete s.emailEditBase;
+        delete s.emailEditBase;delete s.emailToken;
         if(s.reviewEmail!==value)invalidateEventControls(s);s.reviewEmail=value;
         note='✓ 固定メールを保存しました。再起動後も引き継ぎます。';
       }

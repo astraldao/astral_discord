@@ -91,3 +91,36 @@ test('unsigned and forged screen controls do not open forms, alter choices or ca
     await f.handle(createId(card));assert.equal(f.calls.length,1);
   }
 });
+
+const emailInput=value=>({fields:{getTextInputValue:()=>value}});
+const emailForm=async f=>(await f.act('form-email')).modal.toJSON().custom_id;
+test('an old email form cannot borrow the base recipient of a newer form',async()=>{
+  const f=await fixture();await f.review();const old=await emailForm(f);
+  await f.settings.update(c=>c.densukeEmail='other-admin@example.com');const latest=await emailForm(f);
+  await f.handle(old,emailInput('stale@example.com'));assert.equal(f.settings.get().densukeEmail,'other-admin@example.com');
+  await f.handle(latest,emailInput('current@example.com'));assert.equal(f.settings.get().densukeEmail,'current@example.com');assert.equal(f.calls.length,0);
+});
+test('opening a second email form invalidates the first even if the recipient is unchanged',async()=>{
+  const f=await fixture();await f.review();const old=await emailForm(f),latest=await emailForm(f);
+  await f.handle(old,emailInput('stale@example.com'));assert.equal(f.settings.get().densukeEmail,'owner@example.com');
+  await f.handle(latest,emailInput('current@example.com'));assert.equal(f.settings.get().densukeEmail,'current@example.com');
+});
+for(const change of ['content','choice','restart','recovery'])test(`an email form opened before ${change} cannot change the recipient of the current event`,async()=>{
+  const f=await fixture();await f.review();const old=await emailForm(f);
+  if(change==='content')await f.review('Changed event');
+  if(change==='choice')await f.act('choice',{values:['2']});
+  if(change==='restart'){await f.act('cancel');await f.act('restart');await f.review('Next event');}
+  if(change==='recovery'){const recovery=(await f.act('form-recover')).modal.toJSON().custom_id;await f.handle(recovery,{fields:{getTextInputValue:()=> 'https://densuke.biz/list?cd=Saved'}});await f.act('restart');await f.review('Next event');}
+  await f.handle(old,emailInput('stale@example.com'));assert.equal(f.settings.get().densukeEmail,'owner@example.com');assert.equal(f.calls.length,0);
+  const latest=await emailForm(f);await f.handle(latest,emailInput('current@example.com'));assert.equal(f.settings.get().densukeEmail,'current@example.com');
+});
+test('missing and forged email form identifiers cannot save or consume the latest valid form',async()=>{
+  const f=await fixture();await f.review();const latest=await emailForm(f);
+  for(const action of ['submit-email','submit-email:forged'])await f.handle(`densuke:${f.s.id}:${action}`,emailInput('forged@example.com'));
+  assert.equal(f.settings.get().densukeEmail,'owner@example.com');await f.handle(latest,emailInput('current@example.com'));assert.equal(f.settings.get().densukeEmail,'current@example.com');
+});
+test('invalid email input preserves a valid form and a saved form cannot be replayed',async()=>{
+  const f=await fixture();await f.review();const form=await emailForm(f);
+  await f.handle(form,emailInput('invalid'));assert.equal(f.settings.get().densukeEmail,'owner@example.com');await f.handle(form,emailInput('saved@example.com'));assert.equal(f.settings.get().densukeEmail,'saved@example.com');
+  await f.handle(form,emailInput('replay@example.com'));assert.equal(f.settings.get().densukeEmail,'saved@example.com');
+});

@@ -69,12 +69,13 @@ function actionId(s,action){
     return `densuke:${s.id}:create:closed`;
   }
   if(action==='submit'){if(!s.eventToken)densukeModal(s);return `densuke:${s.id}:submit:${s.eventToken}`;}
+  if(action==='submit-email')return `densuke:${s.id}:submit-email:${s.emailToken??'closed'}`;
   if(['choice','form','cancel','share','restart','form-email','form-recover'].includes(action))return densukeScreen(s).components.flatMap(row=>row.toJSON().components).find(c=>c.custom_id?.split(':')[2]===action)?.custom_id??`densuke:${s.id}:${action}:closed`;
   return `densuke:${s.id}:${action}`;
 }
 function fixture(fail=false){
   let now=0,calls=0,c={densukeEmail:null};const posts=[],mails=[];
-  const settings={get:()=>structuredClone(c),async update(fn){const next=structuredClone(c);fn(next);c=next;}};
+  const settings={get:()=>structuredClone(c),async update(fn,check=()=>{}){await check();const next=structuredClone(c);fn(next);c=next;}};
   const controller=createDensukeController({email,settings,now:()=>now,client:{async create(e,destination){calls++;mails.push(destination);if(fail)throw new UncertainCreation('uncertain');return result;}}});
   const interaction=(id,extra={})=>({customId:id,user:{id:'owner'},memberPermissions:new PermissionsBitField(P.Administrator),channelId:'channel',channel:{async send(m){posts.push(m);}},message:{},deferred:false,replied:false,
     isModalSubmit:()=>id?.includes(':submit')??false,async deferReply(){this.deferred=true;},async deferUpdate(){this.deferred=true;},async reply(m){this.replied=true;this.result=m;},async editReply(m){this.result=m;},async showModal(m){this.modal=m;},...extra});
@@ -128,7 +129,7 @@ test('email settings use a private modal, retain the event draft and override th
   const f=fixture(),s=await f.open();s.event=event();s.phase='review';
   const form=f.interaction(actionId(s,'form-email'));await f.controller.handle(form);
   assert.ok(form.modal);assert.equal(form.deferred,false);
-  const submit=f.interaction(`densuke:${s.id}:submit-email`,{fields:{getTextInputValue:()=> 'new@example.com'}});
+  const submit=f.interaction(form.modal.toJSON().custom_id,{fields:{getTextInputValue:()=> 'new@example.com'}});
   await f.controller.handle(submit);assert.equal(f.settings.get().densukeEmail,'new@example.com');
   assert.equal(s.event.name,event().name);assert.equal(s.phase,'review');assert.equal(f.calls(),0);
   assert.ok(!JSON.stringify(submit.result).includes('new@example.com'));
