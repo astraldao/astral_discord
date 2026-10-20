@@ -54,6 +54,11 @@ export function createDensukeController({email,settings,client=createDensukeClie
     await authorize(i);
     if(sessions.get(s.id,i.user.id)!==s || i.channelId!==s.channelId)throw new Error('元の有効な画面から操作してください。');
   }
+  function checkCreationRate(userId){
+    const time=now();for(const [id,until] of attempts)if(until<=time)attempts.delete(id);
+    const wait=Math.ceil((Math.max(nextGlobal,attempts.get(userId)??0)-time)/1000);
+    if(wait>0)throw new Error(`作成は${wait}秒後にお試しください。`);
+  }
   return {sessions,async open(i){
     await acknowledgePrivate(i);await authorize(i);
     const previous=sessions.resume(i.user.id,i.channelId);if(previous){await i.editReply(densukeScreen(previous,'前の操作を再開しました。'));return;}
@@ -111,17 +116,21 @@ export function createDensukeController({email,settings,client=createDensukeClie
         const destination=currentEmail();
         if(!validDensukeEmail(destination))throw new Error('「控えメールの宛先」で宛先を設定してください。');
         if(s.reviewEmail!==destination)throw new Error('別の操作で固定メールが変更されました。「内容を修正」から再確認してください。');
-        for(const [id,until] of attempts)if(until<=now())attempts.delete(id);
-        const wait=Math.ceil((Math.max(nextGlobal,attempts.get(i.user.id)??0)-now())/1000);
-        if(wait>0)throw new Error(`作成は${wait}秒後にお試しください。`);
-        attempts.set(i.user.id,now()+300000);nextGlobal=now()+60000;
-        s.phase='creating';await i.editReply(payload('✧  伝助を作成中','処理を確認しています。続けて作成を押さずにお待ちください。'));
-        try{s.result=await client.create(s.event,destination,{beforeCreate:async()=>{
+        checkCreationRate(i.user.id);
+        const beforeCreate=async()=>{
           await authorizeSession(i,s);
           if(s.phase!=='creating')throw new Error('この作成操作は終了しています。');
           if(currentEmail()!==destination || s.reviewEmail!==destination)throw new Error('別の操作で固定メールが変更されました。「内容を修正」から再確認してください。');
-        }});s.phase='done';s.event.password='';note='✓ 作成しました。URLはこの画面だけに表示しています。';}
-        catch(error){s.phase=error instanceof UncertainCreation?'uncertain':'review';throw error;}
+        };
+        s.phase='creating';let requested=false;
+        try{
+          await i.editReply(payload('✧  伝助を作成中','処理を確認しています。続けて作成を押さずにお待ちください。'));
+          await beforeCreate();
+          // UI/permission requests can overlap another administrator's attempt.
+          // Reserve synchronously after their last await, before calling Densuke.
+          checkCreationRate(i.user.id);const time=now();attempts.set(i.user.id,time+300000);nextGlobal=time+60000;
+          requested=true;s.result=await client.create(s.event,destination,{beforeCreate});s.phase='done';s.event.password='';note='✓ 作成しました。URLはこの画面だけに表示しています。';
+        }catch(error){s.phase=requested&&error instanceof UncertainCreation?'uncertain':'review';throw error;}
       } else throw new Error('不明な操作です。');
       await authorizeSession(i,s);await i.editReply(densukeScreen(s,note));
     } catch(error) {

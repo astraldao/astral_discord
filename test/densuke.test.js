@@ -239,3 +239,64 @@ test('network failure after permission loss cannot redisplay private event detai
   const i=f.interaction(`densuke:${s.id}:create`);await controller.handle(i);
   const rendered=JSON.stringify(i.result);assert.ok(rendered.includes('管理者専用'));assert.ok(!rendered.includes(event().name));assert.ok(!rendered.includes('network failure'));assert.equal(s.busy,false);
 });
+
+function delayedCreationNotice(f,s,user='owner'){
+  let enter,release,reject,first=true;const entered=new Promise(resolve=>enter=resolve),gate=new Promise((resolve,fail)=>{release=resolve;reject=fail;});
+  const i=f.interaction(`densuke:${s.id}:create`,{user:{id:user},async editReply(message){this.result=message;if(first){first=false;enter();await gate;}}});
+  return {i,entered,release,reject};
+}
+test('failed pre-send notice restores review without consuming creation cooldown and allows explicit retry',async()=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{event:event(),phase:'review'});let updates=0;
+  const i=f.interaction(`densuke:${s.id}:create`,{async editReply(message){this.result=message;if(++updates===1)throw new Error('simulated notice failure');}});
+  await f.controller.handle(i);assert.equal(s.phase,'review');assert.equal(s.busy,false);assert.equal(f.calls(),0);
+  await f.controller.handle(f.interaction(`densuke:${s.id}:create`));assert.equal(f.calls(),1);assert.equal(s.phase,'done');
+});
+test('expired response tokens still restore a pre-send draft when even the error reply fails',async()=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{event:event(),phase:'review'});
+  await assert.rejects(f.controller.handle(f.interaction(`densuke:${s.id}:create`,{async editReply(){throw Object.assign(new Error('expired response'),{code:10062});}})));
+  assert.equal(s.phase,'review');assert.equal(s.busy,false);assert.equal(f.calls(),0);
+  assert.equal(await f.open(),s);await f.controller.handle(f.interaction(`densuke:${s.id}:create`));assert.equal(f.calls(),1);
+});
+test('two administrators awaiting notices recheck the global limit before either starts the client',{timeout:5000},async t=>{
+  const f=fixture(),a=await f.open(),b=f.controller.sessions.create('second');for(const s of [a,b])Object.assign(s,{channelId:'channel',event:event(),phase:'review',reviewEmail:email});
+  const first=delayedCreationNotice(f,a),second=delayedCreationNotice(f,b,'second');t.after(()=>{first.release();second.release();});
+  const pendingA=f.controller.handle(first.i);await first.entered;const pendingB=f.controller.handle(second.i);
+  const stage=await Promise.race([second.entered.then(()=> 'notice'),pendingB.then(()=> 'finished')]);assert.equal(stage,'notice');
+  first.release();second.release();await Promise.all([pendingA,pendingB]);assert.equal(f.calls(),1);assert.deepEqual([a.phase,b.phase].sort(),['done','review']);
+});
+test('a failing delayed notice cannot erase another administrator creation reservation',{timeout:5000},async t=>{
+  const f=fixture(),a=await f.open(),b=f.controller.sessions.create('second');for(const s of [a,b])Object.assign(s,{channelId:'channel',event:event(),phase:'review',reviewEmail:email});
+  const first=delayedCreationNotice(f,a);t.after(()=>first.release());const pendingA=f.controller.handle(first.i);await first.entered;
+  await f.controller.handle(f.interaction(`densuke:${b.id}:create`,{user:{id:'second'}}));assert.equal(f.calls(),1);
+  first.reject(new Error('simulated notice failure'));await pendingA;assert.equal(a.phase,'review');
+  await f.controller.handle(f.interaction(`densuke:${a.id}:create`));assert.equal(f.calls(),1);
+  f.setTime(61000);await f.controller.handle(f.interaction(`densuke:${a.id}:create`));assert.equal(f.calls(),2);assert.equal(a.phase,'done');
+});
+for(const change of ['administrator','visibility','expiry','recipient','replacement','phase'])test(`pre-send notice wait rechecks ${change} before even confirming with Densuke`,{timeout:5000},async t=>{
+  let allowed=true,visible=true,time=0,destination=email;const paths=[];
+  const guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>visible})})}};
+  const client=createDensukeClient(async url=>{paths.push(new URL(url).pathname);return new Response(paths.length===1?confirm():completed);});
+  const controller=createDensukeController({email,guild,client,now:()=>time,settings:{get:()=>({densukeEmail:destination})}}),f=fixture();
+  await controller.open(f.interaction());const s=[...controller.sessions.sessions.values()][0];Object.assign(s,{event:event(),phase:'review'});
+  const notice=delayedCreationNotice(f,s);t.after(()=>notice.release());const pending=controller.handle(notice.i);await notice.entered;
+  if(change==='administrator')allowed=false;if(change==='visibility')visible=false;if(change==='expiry')time=s.expires;if(change==='recipient')destination='changed@example.com';if(change==='replacement')controller.sessions.create('owner');if(change==='phase')s.phase='closed';
+  notice.release();await pending;assert.deepEqual(paths,[]);assert.equal(s.phase,'review');assert.equal(s.busy,false);
+  const rendered=JSON.stringify(notice.i.result);assert.ok(!rendered.includes(event().password));assert.ok(!rendered.includes(result.edit));
+  if(['administrator','visibility','expiry','replacement'].includes(change))assert.ok(!rendered.includes(event().name));
+});
+
+test('confirmation traffic still consumes creation limits when the later pre-create permission check refuses',{timeout:5000},async t=>{
+  let allowed=true,time=0,release,enter,first=true;const entered=new Promise(resolve=>enter=resolve),gate=new Promise(resolve=>release=resolve),paths=[];t.after(()=>release());
+  const guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>true})})}};
+  const client=createDensukeClient(async url=>{const path=new URL(url).pathname;paths.push(path);if(path==='/confirm'){if(first){first=false;enter();await gate;}return new Response(confirm());}return new Response(completed);});
+  const controller=createDensukeController({email,guild,client,now:()=>time}),f=fixture();await controller.open(f.interaction());const s=[...controller.sessions.sessions.values()][0];Object.assign(s,{event:event(),phase:'review'});
+  const act=()=>controller.handle(f.interaction(`densuke:${s.id}:create`)),pending=act();await entered;allowed=false;release();await pending;assert.deepEqual(paths,['/confirm']);assert.equal(s.phase,'review');
+  allowed=true;await act();time=61000;await act();assert.deepEqual(paths,['/confirm']);time=300001;await act();assert.deepEqual(paths,['/confirm','/confirm','/create']);assert.equal(s.phase,'done');
+});
+test('failure to display a successful creation keeps the completed result and never offers to create it again',async()=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{event:event(),phase:'review'});let updates=0;
+  const i=f.interaction(`densuke:${s.id}:create`,{async editReply(message){this.result=message;if(++updates>1)throw Object.assign(new Error('expired response'),{code:10062});}});
+  await assert.rejects(f.controller.handle(i));assert.equal(s.phase,'done');assert.equal(s.busy,false);assert.equal(f.calls(),1);assert.deepEqual(s.result,result);
+  const reopened=f.interaction();await f.controller.open(reopened);assert.ok(JSON.stringify(reopened.result).includes(result.answer));
+  await f.controller.handle(f.interaction(`densuke:${s.id}:create`));assert.equal(f.calls(),1);assert.equal(s.phase,'done');
+});
