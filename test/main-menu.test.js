@@ -1,18 +1,99 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {MessageFlags,PermissionFlagsBits as P} from 'discord.js';
-import {mainMenuScreen,createMainMenu} from '../src/main-menu.js';
+import {mainMenuScreen,mainMenuGuideScreen,createMainMenu} from '../src/main-menu.js';
 const controls=m=>m.components.flatMap(r=>r.toJSON().components);
 function interaction(action,privateScreen=false){return {customId:action?.startsWith('menu:')?action:undefined,user:{id:'owner'},channelId:'text',options:{getString:name=>{assert.equal(name,'操作');return action?.startsWith('menu:')?null:action;}},message:privateScreen?{flags:{has:flag=>flag===MessageFlags.Ephemeral}}:undefined,acks:[],async deferReply(p){this.deferred=true;this.acks.push(['reply',p]);},async deferUpdate(){this.deferred=true;this.acks.push(['update']);},async editReply(p){this.result=p;},async reply(p){this.result=p;}};}
 test('hub exposes four purposes and personal shortcuts, with admin controls only for administrators',()=>{
   for(const admin of [false,true]){
     const m=mainMenuScreen({admin}),b=controls(m);
     assert.deepEqual(b.slice(0,4).map(c=>c.custom_id),['menu:vc','menu:read','menu:game','menu:calendar']);
-    for(const id of ['profile:open','wallet:open'])assert.ok(b.some(c=>c.custom_id===id));
+    for(const id of ['menu:profile','menu:wallet','menu:help'])assert.ok(b.some(c=>c.custom_id===id));
     assert.equal(b.some(c=>c.custom_id==='admin:open'),admin);
     assert.equal(b.filter(c=>c.style===1).length,1);
     assert.deepEqual(m.attachments,[]);assert.deepEqual(m.allowedMentions.parse,[]);
     assert.ok(m.components.length<=5);for(const r of m.components)assert.ok(r.toJSON().components.length<=5);
+  }
+});
+
+const recentOptions=i=>controls(i.result).find(c=>c.custom_id==='menu:recent')?.options??[];
+function fixture(){
+  let stamp=1000,allowed=true;const calls=[],c=createMainMenu({now:()=>stamp,access:async()=>allowed?{admin:false}:false,
+    ...Object.fromEntries(['Vc','Game','Profile','Wallet','Calendar'].map(name=>[`open${name}`,async()=>calls.push(name.toLowerCase())])),
+    openRead:async(i,action)=>calls.push(action),
+  });
+  const run=async(action='menu:open',extra={})=>{const i=Object.assign(interaction(action,true),{user:{id:'PRIVATE_USER_SENTINEL'},channelId:'PRIVATE_CHANNEL_SENTINEL'},extra);await c.handle(i);return i;};
+  return {c,run,calls,time:value=>stamp=value,allow:value=>allowed=value};
+}
+test('recent destinations are unique, newest first, at most three, and stop never enters history',async()=>{
+  const f=fixture();for(const action of ['vc','read','game','calendar','game','stop'])await f.run(`menu:${action}`);
+  const i=await f.run();assert.deepEqual(recentOptions(i).map(o=>o.value),['game','calendar','read']);
+  assert.ok(!JSON.stringify(i.result).includes('PRIVATE_USER_SENTINEL'));assert.ok(!JSON.stringify(i.result).includes('PRIVATE_CHANNEL_SENTINEL'));
+  assert.deepEqual(f.calls,['vc','status','game','calendar','game','stop']);
+});
+test('recent selection opens the current feature screen, with reading remaining a status operation',async()=>{
+  const f=fixture();await f.run('menu:read');f.calls.length=0;
+  const i=await f.run('menu:recent',{values:['read']});assert.deepEqual(f.calls,['status']);assert.equal(i.acks.length,1);
+});
+test('history belongs to the user and channel, and expires ten minutes after the last successful feature opening',async()=>{
+  const f=fixture();await f.run('menu:calendar');
+  for(const extra of [{user:{id:'other'}},{channelId:'elsewhere'}]){
+    assert.equal(recentOptions(await f.run('menu:open',extra)).length,0);
+    await f.run('menu:recent',{...extra,values:['calendar']});
+  }
+  assert.deepEqual(f.calls,['calendar']);
+  f.time(600999);assert.equal(recentOptions(await f.run()).length,1);
+  // Merely reopening the menu does not extend the retention period.
+  f.time(601000);assert.equal(recentOptions(await f.run()).length,0);
+  await f.run('menu:recent',{values:['calendar']});assert.deepEqual(f.calls,['calendar']);
+});
+test('stale or crafted recent values cannot delegate missing, removed or destructive destinations',async()=>{
+  const f=fixture();for(const action of ['vc','read','game','calendar'])await f.run(`menu:${action}`);f.calls.length=0;
+  for(const values of [undefined,[],['vc'],['stop'],['admin'],['game','calendar'],['__proto__']]){
+    const i=await f.run('menu:recent',{values});assert.match(i.result.embeds[0].toJSON().description,/開き直して/);
+  }
+  assert.deepEqual(f.calls,[]);
+});
+test('lost visibility suppresses history and prevents recent and guide actions from opening features',async()=>{
+  const f=fixture();await f.run('menu:wallet');f.calls.length=0;f.allow(false);
+  for(const [action,extra] of [['menu:open',{}],['menu:recent',{values:['wallet']}],['menu:help-topic',{values:['wallet']}],['menu:wallet',{}]]){
+    const i=await f.run(action,extra);assert.equal(recentOptions(i).length,0);assert.match(i.result.embeds[0].toJSON().description,/閲覧権限/);
+  }
+  assert.deepEqual(f.calls,[]);
+});
+test('history retains only the two hundred most recently opened user-channel destinations',async()=>{
+  const f=fixture();for(let n=0;n<200;n++)await f.run('menu:vc',{user:{id:`user${n}`}});
+  // Refreshing a destination moves it to the retained end of the bounded map.
+  await f.run('menu:read',{user:{id:'user0'}});
+  await f.run('menu:game',{user:{id:'user200'}});
+  assert.equal(recentOptions(await f.run('menu:open',{user:{id:'user1'}})).length,0);
+  assert.deepEqual(recentOptions(await f.run('menu:open',{user:{id:'user0'}})).map(o=>o.value),['read','vc']);
+  assert.deepEqual(recentOptions(await f.run('menu:open',{user:{id:'user200'}})).map(o=>o.value),['game']);
+});
+test('failed feature calls are not remembered and arbitrary permission or controller errors remain private',async()=>{
+  for(const failure of ['access','feature']){
+    let fail=true;const c=createMainMenu({access:async()=>{if(failure==='access'&&fail)throw new Error('PRIVATE_NATIVE_ACCESS');return {admin:false};},openCalendar:async()=>{if(fail)throw new Error('PRIVATE_NATIVE_FEATURE');}});
+    const i=interaction('menu:calendar',true);await c.handle(i);assert.ok(!JSON.stringify(i.result).includes('PRIVATE_NATIVE'));assert.match(i.result.embeds[0].toJSON().description,/開き直して/);
+    fail=false;const menu=interaction('menu:open',true);await c.handle(menu);assert.equal(recentOptions(menu).length,0);
+  }
+});
+test('guide topics explain the next step and open existing screens without starting a feature',async()=>{
+  const f=fixture(),first=await f.run('menu:help');assert.deepEqual(f.calls,[]);assert.match(first.result.embeds[0].toJSON().description,/普段は/);
+  const choices=controls(first.result).find(c=>c.custom_id==='menu:help-topic').options;assert.equal(choices.length,6);
+  for(const {value} of choices){
+    const i=await f.run('menu:help-topic',{values:[value]}),buttons=controls(i.result);assert.ok(buttons.some(b=>b.custom_id===`menu:${value}`));assert.ok(buttons.some(b=>b.custom_id==='menu:open'));
+    assert.deepEqual(f.calls,[]);assert.deepEqual(i.result.attachments,[]);assert.deepEqual(i.result.allowedMentions.parse,[]);
+  }
+  const read=await f.run('menu:help-topic',{values:['read']});assert.match(read.result.embeds[0].toJSON().description,/画面を開くだけでは開始しません/);
+  await f.run('menu:read');assert.deepEqual(f.calls,['status']);
+});
+test('guide rejects unknown or multiple topics and every menu variant meets native component limits',async()=>{
+  const f=fixture();for(const values of [[],['stop'],['__proto__'],['read','vc']]){const i=await f.run('menu:help-topic',{values});assert.match(i.result.embeds[0].toJSON().description,/選び直して/);}
+  assert.deepEqual(f.calls,[]);
+  for(const m of [mainMenuScreen({admin:true,recent:['read','read','stop','game','vc','calendar']}),mainMenuGuideScreen(),...['vc','read','game','calendar','profile','wallet'].map(mainMenuGuideScreen)]){
+    assert.ok(m.components.length<=5);for(const r of m.components)assert.ok(r.toJSON().components.length<=5);
+    for(const control of controls(m)){assert.ok(control.custom_id.length<=100);if(control.options)assert.ok(control.options.length<=25);}
+    assert.ok(m.embeds[0].toJSON().description.length<=4096);
   }
 });
 test('opening hub has no side effects, public entries reply privately, private buttons reuse their screen',async()=>{

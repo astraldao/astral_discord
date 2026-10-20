@@ -1,3 +1,4 @@
+import {ScheduleError} from './schedule-errors.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,FileUploadBuilder,LabelBuilder,ModalBuilder,StringSelectMenuBuilder,escapeMarkdown} from 'discord.js';
 import {payload} from './ui.js';
 import {scheduleInputDate} from './schedule-store.js';
@@ -12,10 +13,10 @@ export function scheduleImportModal(s){
       new FileUploadBuilder().setCustomId('calendar-file').setMinValues(1).setMaxValues(1).setRequired(true)));
 }
 export function scheduleImportScreen(s,calendar,note=''){
-  const stage=s.importStage;if(!stage)throw new Error('取り込むファイルを選び直してください。');
+  const stage=s.importStage;if(!stage)throw new ScheduleError('取り込むファイルを選び直してください。');
   const intro=note?`${note}\n\n`:'';
   if(s.view==='import-detail'){
-    const event=stage.events[s.importIndex];if(!event)throw new Error('取り込む予定を選び直してください。');
+    const event=stage.events[s.importIndex];if(!event)throw new ScheduleError('取り込む予定を選び直してください。');
     return {...payload('📅  取り込む予定の詳細',`${intro}**${safe(event.title)}**\n${scheduleInputDate(event)} · ${eventTime(event)} · 日本時間\n\n場所：${event.place?safe(event.place):'なし'}\n\n説明：${event.description?safe(event.description):'なし'}\n\nまだ保存していません。`,{components:[row(button(s,'import-preview','取り込み内容へ戻る')),row(button(s,'import-cancel','取り込まず戻る'))]}),attachments:[]};
   }
   const count=Math.max(1,Math.ceil(stage.events.length/8));s.importPage=Math.min(count-1,Math.max(0,s.importPage??0));

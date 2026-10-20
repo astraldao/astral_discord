@@ -101,7 +101,7 @@ test('day navigation filters details, prefills new events and resets when changi
   const f=await fixture();await add(f);await f.c.handle(click(f.s,'list'));await add(f,event({title:'別の日',date:'2026/10/18'}));await f.c.handle(click(f.s,'list'));
   const day=click(f.s,'day-jump');await f.c.handle(day);await f.c.handle(form(day,{value:'2026/10/17'}));
   assert.equal(f.s.date,'2026-10-17');assert.equal(f.s.month,'2026-10');
-  const screen=scheduleScreen(f.s,f.store),menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3);
+  const screen=scheduleScreen(f.s,f.store),menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3&&c.custom_id.endsWith(':event'));
   assert.equal(menu.options.length,1);assert.equal(menu.options[0].label,'セッション');
   const addHere=click(f.s,'new-event');await f.c.handle(addHere);assert.equal(addHere.modal.toJSON().components[1].components[0].value,'2026-10-17');
   await f.c.handle(click(f.s,'day-clear'));assert.equal(f.s.date,undefined);
@@ -128,7 +128,7 @@ test('filtered dense month screens stay within five action rows and returning fr
   await f.c.handle(click(f.s,'list'));const jump=click(f.s,'day-jump');await f.c.handle(jump);await f.c.handle(form(jump,{value:'2026/10/17'}));
   await f.c.handle(click(f.s,'next'));assert.equal(f.s.page,1);
   const screen=scheduleScreen(f.s,f.store);assert.equal(screen.components.length,5);
-  const menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3);
+  const menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3&&c.custom_id.endsWith(':event'));
   await f.c.handle(Object.assign(click(f.s,'event'),{values:[menu.options[0].value]}));
   await f.c.handle(click(f.s,'list'));assert.equal(f.s.page,1);assert.equal(f.s.date,'2026-10-17');
   for(const row of scheduleScreen(f.s,f.store).components)assert.ok(row.toJSON().components.length<=5);
@@ -146,9 +146,9 @@ test('search spans months, preserves its page through detail and resume, and cle
   const search=click(f.s,'search');await f.c.handle(search);await f.c.handle(form(search,{value:'星 ＶＣ３'}));
   assert.equal(f.s.query,'星 vc3');assert.equal(f.s.month,'2026-10');assert.equal(f.s.date,'2026-10-17');
   let screen=scheduleScreen(f.s,f.store);assert.ok(!screen.files);assert.ok(JSON.stringify(screen).includes('全期間'));
-  assert.equal(screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3).options.length,8);
+  assert.equal(screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3&&c.custom_id.endsWith(':event')).options.length,8);
   await f.c.handle(click(f.s,'next'));screen=scheduleScreen(f.s,f.store);
-  const menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3);
+  const menu=screen.components.flatMap(r=>r.toJSON().components).find(c=>c.type===3&&c.custom_id.endsWith(':event'));
   await f.c.handle(Object.assign(click(f.s,'event'),{values:[menu.options[0].value]}));await f.c.handle(click(f.s,'list'));
   assert.equal(f.s.page,1);await f.c.openAdmin(i());assert.equal(f.s.query,'星 vc3');assert.equal(f.s.page,1);
   const invalid=click(f.s,'day-jump');await f.c.handle(invalid);await f.c.handle(form(invalid,{value:'2026/02/30'}));assert.equal(f.s.query,'星 vc3');

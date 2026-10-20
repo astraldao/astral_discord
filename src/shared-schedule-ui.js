@@ -1,8 +1,9 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,MessageFlags,ChannelType,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
 import {payload,menuHomeButton} from './ui.js';
+import {ScheduleError} from './schedule-errors.js';
 
-const failure=message=>Object.assign(new Error(message),{sharedSchedule:true});
+const failure=message=>new ScheduleError(message);
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label)=>new ButtonBuilder().setCustomId(`calendars:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(ButtonStyle.Secondary);
 export async function sharedScheduleAccess(guild,i){
@@ -38,7 +39,7 @@ export function createSharedScheduleController({guild,store,openCalendar,now=()=
   }
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
   async function error(i,error){
-    const m={...payload('📅  共有予定表',error?.sharedSchedule?error.message:'予定表を開けませんでした。閲覧権限を確認してメニューから開き直してください。',{state:'warning',components:[row(menuHomeButton())]}),attachments:[]};
+    const m={...payload('📅  共有予定表',error instanceof ScheduleError?error.message:'予定表を開けませんでした。閲覧権限を確認してメニューから開き直してください。',{state:'warning',components:[row(menuHomeButton())]}),attachments:[]};
     if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});
   }
   function scan(channel,bot){

@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-20 更新。現行のコマンド構成はv4.1.0。過去の調査・検証記録は各版の節を参照。
+2026-10-20 更新。現行のコマンド構成はv4.2.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -28,7 +28,7 @@
 | ゲーム・チップ台帳 | `src/blackjack*.js`、`src/casino*.js`、`src/game-wallets.js`、`src/chip-*.js` |
 | 手動更新・再起動・プロセス監督 | `scripts/auto-update.js`、`scripts/manual-update.js`、`scripts/manual-restart.js`、`scripts/supervisor.js`、`src/update-lifecycle.js`、`src/restart-ui.js` |
 
-現行コマンドは `/menu`（入室・読み上げ・ゲーム・本人設定）、管理者専用の `/admin`。操作早見表は [docs/COMMANDS.md](docs/COMMANDS.md)。
+現行コマンドは `/menu`（入室・読み上げ・ゲーム・共有予定表・本人設定）、管理者専用の `/admin`。操作早見表は [docs/COMMANDS.md](docs/COMMANDS.md)。
 v3.24.1で `/chips` を `/game → 自分のチップ` に統合した。
 単一のDiscordサーバーを `GUILD_ID` で指定する。外部DBは使わずJSONへ保存する。
 
@@ -484,3 +484,14 @@ backupText(value,{mode})は既定rawを互換維持、chatだけURL/コード/�
 SettingsStore/TrpgStoreも、キュー待ち後だけでなくファイル書込後/rename直前に同じcheckを再実行。固有0600/wx一時ファイルをfinallyで片付け、失効/書込/rename失敗時に既存disk/memoryを維持し後続queueを継続。旧固定.tmpには触れず、I/Oの生例外/pathは固定案内へ置換する。既存controllerのcheckが照合のみで、状態消費がstore完了後であることを監査した。最後の権限取得とDiscord側の変更を分散トランザクションにするものではない。
 
 追加78件、全909件のNodeテスト・Python内19件と構文/実行ポリシー検査に成功。独立レビューのSTATUS末尾空白による取消漏れと、escaped spoilerの後半読み上げを再現して修正。既存形式/日時/重複/上限/全拒否/最新権限/古い画面/保存失敗/待機消去/先読み境界を検証する。2026-10-20のnpm auditは開発依存を含め既知アドバイザリ0件。依存ロックの全依存エントリは前版と一致し、隔離したnpm ci --ignore-scriptsによる新規導入も成功。利用ガイドはdocs/V4_1.md、CALENDAR/BACKUP_VOICE/COMMANDS/READMEも更新。300ms保証や本番ホスト性能の改善を示す計測ではない。
+
+
+## v4.2.0 週間・30日分の予定とメニュー導線
+
+予定表の表示選択を月カレンダー/月一覧/週間/今日から30日に統一。週間は日曜〜土曜、30日分はJSTの今日..29日後で、2000..2099年の境界をクリップする。schedule-range.jsで日付演算をUTCの暦日に限定し、schedule-query.jsは非空の検索を全期間、それ以外は明示的rangeを月/日より優先する。範囲では複数日の終日予定とend>1440の前日開始を1件だけ含め、midnight終了は翌日へ含めない。旧月/日の扱いは維持。
+
+表示は最大8件/ページで、範囲の元日付と継続を明示。週移動/日付/月への切替、検索解除、詳細から戻るページを揃えた。再開時の30日範囲は現在JSTへ更新するが検索語/検索ページを保持。ICSは範囲全ページで元の開始/終了を維持する。共有・投稿管理は管理者の検索/取り出し画面へ集約し、チャンネルへ送る内容は月カレンダーの確認付きのまま。追加/編集/繰り返し/取り込み、共有の権限・元投稿・owner/channel/turn/期限/保存直前guardを維持。
+
+メニューに6項目の使い方と、同じ本人/チャンネルで最近開いた3機能を追加。履歴は機能名だけを10分、全体最大200組でメモリ保持し、再起動で消去する。メニュー/使い方だけの表示でTTLを延長しない。読み上げはstatus画面のみ開き、stop等を履歴から実行しない。StringSelectはmenu:recent/help-topicの完全一致だけルーターへ追加。既存のprofile:open/wallet:open、2コマンド/14管理ショートカットを維持。
+
+予定表は内部ScheduleErrorの固定文だけを表示し、未信頼のpermission/fetch/native例外は固定案内へ置換する。sharedScheduleの任意タグを信用せずクラスを照合。メニューも同様にローカル固定エラーへ限定。追加47件、全956件のNodeテスト・Python内19件、構文/実行ポリシー検査、開発依存を含むnpm audit既知アドバイザリ0件。依存lockの差分はルート版だけ。新しい依存/ENV/永続形式/音声/親プロセスの変更はなく、通常の手動更新で反映。実機Discord/ホスト/実音声の試験は含まない。操作は[docs/V4_2.md](docs/V4_2.md)。

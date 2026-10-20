@@ -21,6 +21,13 @@ test('names must match exactly and unrecognized interactions or missing IDs are 
   for(const id of ['menu','vc','schedule','menu-other:open','xmenu:open','x:admin:open','__proto__:open','constructor:open',':admin','Menu:open','menu\n:open','ａｄｍｉｎ:open',null,undefined])assert.equal(interactionRoute(interaction('button',id)),null,id);
   assert.equal(interactionRoute(interaction('context','admin:open')),null);
 });
+test('only the two native menu string selectors enter the menu controller',()=>{
+  for(const id of ['menu:recent','menu:help-topic']){
+    assert.deepEqual(interactionRoute(interaction('string',id)),{kind:'component',namespace:'menu',target:'menu'});
+    for(const kind of ['user','role','channel','modal','context'])assert.equal(interactionRoute(interaction(kind,id)),null);
+  }
+  for(const id of ['menu:open','menu:vc','menu:help','menu:recent:extra','menu:help-topic:extra','menu:unknown'])assert.equal(interactionRoute(interaction('string',id)),null);
+});
 test('handler table preserves special entry methods and passes the original interaction exactly once',async()=>{
   const calls=[],controllers={};
   for(const name of ['mainMenu','backupReader','speedMeasurements','restarts','runtimeSettings','banner','versions','admin','densuke','trpg','profile','forumTags','sharedSchedules','schedule','blackjack','casino','rps','four','chipAccount','chipTools']){
@@ -33,6 +40,7 @@ test('handler table preserves special entry methods and passes the original inte
     ['button','work:id:answer','chipTools','handle'],['modal','chips:id:confirm','chipTools','handle'],
     ['string','calendars:id:select','sharedSchedules','handle'],['modal','schedule:id:form','schedule','handle'],
     ['button','perf:id:cancel','speedMeasurements','handle'],['command','admin','admin','handle'],['button','menu:calendar','mainMenu','handle'],
+    ['string','menu:recent','mainMenu','handle'],['string','menu:help-topic','mainMenu','handle'],
   ]){
     const i=interaction(kind,id);i.values=['opaque-value'];i.deferred=true;const route=interactionRoute(i),before=calls.length;
     await handlers.get(route.target)(i);assert.equal(calls.length,before+1);assert.deepEqual(calls.at(-1),{name,method,i});assert.deepEqual(i.values,['opaque-value']);assert.equal(i.deferred,true);

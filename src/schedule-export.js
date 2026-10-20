@@ -1,3 +1,4 @@
+import {ScheduleError} from './schedule-errors.js';
 const text=value=>String(value??'').replace(/\\/g,'\\\\').replace(/\r\n|\r|\n/g,'\\n').replace(/;/g,'\\;').replace(/,/g,'\\,');
 const stamp=date=>date.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
 const utc=(date,minutes)=>new Date(Date.parse(`${date}T00:00:00+09:00`)+minutes*60000);
@@ -23,6 +24,6 @@ export function scheduleExport(calendar,events,{now=Date.now()}={}){
   }
   lines.push('END:VCALENDAR');
   const buffer=Buffer.from(`${lines.map(foldCalendarLine).join('\r\n')}\r\n`,'utf8');
-  if(buffer.length>2*1024*1024)throw new Error('カレンダーファイルが容量上限を超えています。');
+  if(buffer.length>2*1024*1024)throw new ScheduleError('カレンダーファイルが容量上限を超えています。');
   return buffer;
 }

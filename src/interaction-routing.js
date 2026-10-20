@@ -20,7 +20,8 @@ export function interactionRoute(interaction){
   const separator=interaction.customId.indexOf(':');if(separator<1)return null;
   const namespace=interaction.customId.slice(0,separator),button=interaction.isButton();
   if(namespace==='vc')return button||interaction.isStringSelectMenu()?{target:'vc',namespace,kind:'component'}:null;
-  if(!namespaces.has(namespace)||namespace==='menu'&&!button)return null;
+  if(!namespaces.has(namespace))return null;
+  if(namespace==='menu'&&!button&&!(interaction.isStringSelectMenu()&&['menu:recent','menu:help-topic'].includes(interaction.customId)))return null;
   if(!button&&!interaction.isAnySelectMenu()&&!interaction.isModalSubmit())return null;
   return {target:interaction.customId==='wallet:open'?'wallet-self':namespace,namespace,kind:'component'};
 }

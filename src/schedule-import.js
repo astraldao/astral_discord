@@ -1,11 +1,12 @@
+import {ScheduleError} from './schedule-errors.js';
 import {scheduleEvent} from './schedule-store.js';
 import {BoundedBytes} from './bounded-bytes.js';
 
 export const MAX_SCHEDULE_IMPORT_BYTES=256*1024;
 export const MAX_SCHEDULE_IMPORT_EVENTS=200;
 const DAY=86400000;
-const invalid=()=>new Error('カレンダーファイルの形式を確認してください。UTF-8の.icsを選んでください。');
-const unsupported=()=>new Error('対応していない予定形式があります。繰り返し・取消・期間指定を含めず、通常の予定として書き出してください。');
+const invalid=()=>new ScheduleError('カレンダーファイルの形式を確認してください。UTF-8の.icsを選んでください。');
+const unsupported=()=>new ScheduleError('対応していない予定形式があります。繰り返し・取消・期間指定を含めず、通常の予定として書き出してください。');
 const textFields=new Set(['SUMMARY','LOCATION','DESCRIPTION']);
 const singleFields=new Set(['SUMMARY','DTSTART','DTEND','LOCATION','DESCRIPTION','UID','DTSTAMP','SEQUENCE','STATUS','TRANSP','CLASS','CREATED','LAST-MODIFIED','URL']);
 const recurrenceFields=new Set(['RRULE','RDATE','EXRULE','EXDATE','RECURRENCE-ID','DURATION']);
@@ -35,16 +36,16 @@ function property(line){
   return {name,params,value:line.slice(colon+1)};
 }
 function unfold(buffer){
-  if(!Buffer.isBuffer(buffer)||!buffer.length||buffer.length>MAX_SCHEDULE_IMPORT_BYTES)throw new Error('カレンダーファイルは256KiB以内で選んでください。');
+  if(!Buffer.isBuffer(buffer)||!buffer.length||buffer.length>MAX_SCHEDULE_IMPORT_BYTES)throw new ScheduleError('カレンダーファイルは256KiB以内で選んでください。');
   let value;try{value=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch{throw invalid();}
   if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)||value.replace(/\r\n/g,'').includes('\r'))throw invalid();
-  const physical=value.split(/\r?\n/);if(physical.length>10000)throw new Error('カレンダーファイルの行数が多すぎます。取り込む予定を減らしてください。');
+  const physical=value.split(/\r?\n/);if(physical.length>10000)throw new ScheduleError('カレンダーファイルの行数が多すぎます。取り込む予定を減らしてください。');
   const lines=[];let parts=[],length=0;
   const finish=()=>{if(parts.length)lines.push(parts.join(''));parts=[];length=0;};
   for(const line of physical){
     if(line.startsWith(' ')||line.startsWith('\t')){if(!parts.length)throw invalid();parts.push(line.slice(1));length+=line.length-1;}
     else {finish();if(!line)continue;parts=[line];length=line.length;}
-    if(length>8192)throw new Error('カレンダーファイルの1項目が長すぎます。予定の内容を短くしてください。');
+    if(length>8192)throw new ScheduleError('カレンダーファイルの1項目が長すぎます。予定の内容を短くしてください。');
   }
   finish();return lines;
 }
@@ -55,7 +56,7 @@ function textValue(p){
 function temporal(p){
   for(const key of p.params.keys())if(!['VALUE','TZID'].includes(key))throw unsupported();
   const kind=p.params.get('VALUE')?.toUpperCase(),zone=p.params.get('TZID');
-  if(zone!==undefined&&zone!=='Asia/Tokyo')throw new Error('時刻のタイムゾーンはUTCまたはAsia/Tokyoに対応しています。');
+  if(zone!==undefined&&zone!=='Asia/Tokyo')throw new ScheduleError('時刻のタイムゾーンはUTCまたはAsia/Tokyoに対応しています。');
   if(kind==='DATE'){
     if(zone!==undefined||!/^\d{8}$/.test(p.value))throw invalid();
     const date=p.value.slice(0,4)+'-'+p.value.slice(4,6)+'-'+p.value.slice(6),ms=Date.parse(date+'T00:00:00Z');
@@ -65,26 +66,26 @@ function temporal(p){
   if(kind!==undefined&&kind!=='DATE-TIME')throw unsupported();
   const m=p.value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/);
   if(!m||zone!==undefined&&m[7]||Number(m[4])>23||Number(m[5])>59||Number(m[6])>59)throw invalid();
-  if(m[6]!=='00')throw new Error('秒単位の予定は取り込めません。開始・終了を分単位にしてください。');
+  if(m[6]!=='00')throw new ScheduleError('秒単位の予定は取り込めません。開始・終了を分単位にしてください。');
   const day=`${m[1]}-${m[2]}-${m[3]}`,dayMs=Date.parse(day+'T00:00:00Z');
   if(!Number.isFinite(dayMs)||new Date(dayMs).toISOString().slice(0,10)!==day)throw invalid();
   const ms=dayMs+(Number(m[4])*60+Number(m[5]))*60000-(m[7]?0:9*3600000),jst=new Date(ms+9*3600000).toISOString();
   return {kind:'time',ms,date:jst.slice(0,10),minutes:Number(jst.slice(11,13))*60+Number(jst.slice(14,16))};
 }
 function eventInput(fields){
-  if(!fields.has('SUMMARY')||!fields.has('DTSTART'))throw new Error('すべての予定に、予定名と開始日を設定してください。');
+  if(!fields.has('SUMMARY')||!fields.has('DTSTART'))throw new ScheduleError('すべての予定に、予定名と開始日を設定してください。');
   const start=temporal(fields.get('DTSTART')),end=fields.has('DTEND')?temporal(fields.get('DTEND')):null;
   if(end&&end.kind!==start.kind)throw invalid();
   let date=start.date,time='';
   if(start.kind==='date'){
-    if(end){const days=(end.ms-start.ms)/DAY;if(!Number.isInteger(days)||days<1||days>31)throw new Error('終日の予定は開始日から31日以内の期間にしてください。');const last=new Date(end.ms-DAY).toISOString().slice(0,10);if(last!==date)date+=`〜${last}`;}
+    if(end){const days=(end.ms-start.ms)/DAY;if(!Number.isInteger(days)||days<1||days>31)throw new ScheduleError('終日の予定は開始日から31日以内の期間にしてください。');const last=new Date(end.ms-DAY).toISOString().slice(0,10);if(last!==date)date+=`〜${last}`;}
   }else{
     time=clock(start.minutes);
-    if(end){const minutes=(end.ms-start.ms)/60000;if(!Number.isInteger(minutes)||minutes<=0||minutes>=1440)throw new Error('時刻付きの予定は、開始後24時間未満の終了にしてください。');time+=`-${clock(end.minutes)}`;}
+    if(end){const minutes=(end.ms-start.ms)/60000;if(!Number.isInteger(minutes)||minutes<=0||minutes>=1440)throw new ScheduleError('時刻付きの予定は、開始後24時間未満の終了にしてください。');time+=`-${clock(end.minutes)}`;}
   }
   const input={title:textValue(fields.get('SUMMARY')),date,time,place:fields.has('LOCATION')?textValue(fields.get('LOCATION')):'',description:fields.has('DESCRIPTION')?textValue(fields.get('DESCRIPTION')):''};
   // Reuse the calendar's canonical bounds, without returning raw ICS values in errors.
-  try{scheduleEvent(input);}catch{throw new Error('取り込む予定は2000〜2099年、予定名80文字・場所100文字・説明500文字以内で指定してください。複数日は終日にしてください。');}
+  try{scheduleEvent(input);}catch{throw new ScheduleError('取り込む予定は2000〜2099年、予定名80文字・場所100文字・説明500文字以内で指定してください。複数日は終日にしてください。');}
   return input;
 }
 
@@ -97,7 +98,7 @@ export function parseScheduleImport(buffer){
     if(p.name==='BEGIN'){
       if(p.params.size||closed||stack.length>=4)throw invalid();const component=p.value.toUpperCase();
       if(component==='VCALENDAR'){if(calendarSeen||stack.length)throw invalid();calendarSeen=true;}
-      else if(component==='VEVENT'){if(context!=='VCALENDAR'||inputs.length>=MAX_SCHEDULE_IMPORT_EVENTS)throw new Error('1つのカレンダーから最大200件の通常予定を取り込めます。');fields=new Map();}
+      else if(component==='VEVENT'){if(context!=='VCALENDAR'||inputs.length>=MAX_SCHEDULE_IMPORT_EVENTS)throw new ScheduleError('1つのカレンダーから最大200件の通常予定を取り込めます。');fields=new Map();}
       else if(component==='VTIMEZONE'&&context==='VCALENDAR'||component==='VALARM'&&context==='VEVENT'||['STANDARD','DAYLIGHT'].includes(component)&&context==='VTIMEZONE')ignoredComponents++;
       else throw unsupported();
       stack.push(component);continue;
@@ -111,7 +112,7 @@ export function parseScheduleImport(buffer){
       if(['VERSION','METHOD','CALSCALE','X-WR-TIMEZONE'].includes(p.name)){if(calendarFields.has(p.name)||p.params.size)throw invalid();calendarFields.add(p.name);}
       if(p.name==='VERSION'){if(p.value!=='2.0')throw invalid();version=true;}
       else if(p.name==='METHOD'&&!['PUBLISH','REQUEST'].includes(p.value.toUpperCase())||p.name==='CALSCALE'&&p.value.toUpperCase()!=='GREGORIAN')throw unsupported();
-      else if(p.name==='X-WR-TIMEZONE'&&p.value!=='Asia/Tokyo'&&p.value!=='UTC')throw new Error('時刻のタイムゾーンはUTCまたはAsia/Tokyoに対応しています。');
+      else if(p.name==='X-WR-TIMEZONE'&&p.value!=='Asia/Tokyo'&&p.value!=='UTC')throw new ScheduleError('時刻のタイムゾーンはUTCまたはAsia/Tokyoに対応しています。');
       else ignoredProperties++;
     }else if(context==='VEVENT'){
       if(recurrenceFields.has(p.name)||p.name==='STATUS'&&(p.params.size||!['CONFIRMED','TENTATIVE'].includes(p.value)))throw unsupported();
@@ -128,19 +129,19 @@ export function parseScheduleImport(buffer){
 
 export async function readScheduleAttachment(attachment,{fetcher=fetch,signal}={}){
   signal?.throwIfAborted();
-  if(!attachment||!Number.isInteger(attachment.size)||attachment.size<1||attachment.size>MAX_SCHEDULE_IMPORT_BYTES||typeof attachment.name!=='string'||!/\.ics$/i.test(attachment.name))throw new Error('UTF-8の.icsファイルを1枚、256KiB以内で選んでください。');
-  let url;try{url=new URL(attachment.url);}catch{throw new Error('カレンダーファイルをもう一度アップロードしてください。');}
+  if(!attachment||!Number.isInteger(attachment.size)||attachment.size<1||attachment.size>MAX_SCHEDULE_IMPORT_BYTES||typeof attachment.name!=='string'||!/\.ics$/i.test(attachment.name))throw new ScheduleError('UTF-8の.icsファイルを1枚、256KiB以内で選んでください。');
+  let url;try{url=new URL(attachment.url);}catch{throw new ScheduleError('カレンダーファイルをもう一度アップロードしてください。');}
   const path=url.pathname.match(/^\/(?:ephemeral-)?attachments\/(\d{17,20})\/(\d{17,20})\/[^/]+$/);
-  if(url.protocol!=='https:'||url.hostname!=='cdn.discordapp.com'||url.port||url.username||url.password||url.hash||!path||path[2]!==attachment.id)throw new Error('Discordへアップロードしたカレンダーファイルを選んでください。');
+  if(url.protocol!=='https:'||url.hostname!=='cdn.discordapp.com'||url.port||url.username||url.password||url.hash||!path||path[2]!==attachment.id)throw new ScheduleError('Discordへアップロードしたカレンダーファイルを選んでください。');
   const timeout=AbortSignal.timeout(10000),abort=signal?AbortSignal.any([signal,timeout]):timeout;let response;
-  try{response=await fetcher(url.href,{redirect:'error',signal:abort});}catch{throw new Error('カレンダーファイルを取得できませんでした。もう一度アップロードしてください。');}
-  if(!response.ok||!response.body){await response.body?.cancel().catch(()=>{});throw new Error('カレンダーファイルを取得できませんでした。もう一度アップロードしてください。');}
+  try{response=await fetcher(url.href,{redirect:'error',signal:abort});}catch{throw new ScheduleError('カレンダーファイルを取得できませんでした。もう一度アップロードしてください。');}
+  if(!response.ok||!response.body){await response.body?.cancel().catch(()=>{});throw new ScheduleError('カレンダーファイルを取得できませんでした。もう一度アップロードしてください。');}
   const advertised=response.headers.get('content-length');
-  if(advertised!==null&&(!/^\d+$/.test(advertised)||!Number.isSafeInteger(Number(advertised))||Number(advertised)>MAX_SCHEDULE_IMPORT_BYTES)){await response.body.cancel().catch(()=>{});throw new Error('カレンダーファイルの容量を確認できません。256KiB以内でアップロードしてください。');}
+  if(advertised!==null&&(!/^\d+$/.test(advertised)||!Number.isSafeInteger(Number(advertised))||Number(advertised)>MAX_SCHEDULE_IMPORT_BYTES)){await response.body.cancel().catch(()=>{});throw new ScheduleError('カレンダーファイルの容量を確認できません。256KiB以内でアップロードしてください。');}
   const reader=response.body.getReader(),bytes=new BoundedBytes(MAX_SCHEDULE_IMPORT_BYTES),onAbort=()=>{void reader.cancel().catch(()=>{});};let buffer;
   abort.addEventListener('abort',onAbort,{once:true});
   try{while(true){abort.throwIfAborted();const {done,value}=await reader.read();abort.throwIfAborted();if(done)break;bytes.append(value);}buffer=bytes.finish();if(buffer.length!==attachment.size)throw invalid();}
-  catch(error){throw new Error(error?.code==='RESPONSE_LIMIT'?'カレンダーファイルは256KiB以内で選んでください。':'カレンダーファイルを最後まで取得できませんでした。もう一度アップロードしてください。');}
+  catch(error){throw new ScheduleError(error?.code==='RESPONSE_LIMIT'?'カレンダーファイルは256KiB以内で選んでください。':'カレンダーファイルを最後まで取得できませんでした。もう一度アップロードしてください。');}
   finally{abort.removeEventListener('abort',onAbort);bytes.dispose();await reader.cancel().catch(()=>{});reader.releaseLock();}
   return buffer;
 }
