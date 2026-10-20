@@ -37,7 +37,7 @@ test('version states show one primary action, side-by-side versions and useful e
   const current={version:'1.0.0',sha:'a'.repeat(40)},latest={version:'2.0.0',sha:'b'.repeat(40)};
   for(const phase of ['idle','preparing','switching','complete','blocked','failed']){
     const m=versionScreen({id:'id',turn:0,data:{supported:true,current,latest,phase,checkedAt:0}});
-    assert.equal(m.embeds[0].toJSON().fields.length,2);assert.equal(buttons(m).filter(b=>b.style===1).length,1);assert.ok(buttons(m).some(b=>b.custom_id==='admin:open'));assert.ok(m.components.length<=5);
+    const fields=m.embeds[0].toJSON().fields;assert.deepEqual(fields.slice(0,2).map(f=>[f.name,f.inline]),[['現在のバージョン',true],['確認した最新版',true]]);assert.equal(fields.length,['preparing','switching'].includes(phase)?2:3);assert.equal(buttons(m).filter(b=>b.style===1).length,1);assert.ok(buttons(m).some(b=>b.custom_id==='admin:open'));assert.ok(m.components.length<=5);
   }
   const unavailable=versionScreen({id:'id',turn:0,data:{supported:false,current}});assert.ok(buttons(unavailable).some(b=>b.url?.includes('README')||b.url?.includes('github.com')));
 });

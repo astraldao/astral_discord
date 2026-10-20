@@ -9,6 +9,7 @@ import {createMainMenu} from './main-menu.js';
 import {lobbyEntryGuide} from './vc-entry-ui.js';
 import {createUpdateClient} from './update-client.js';
 import {createVersionController} from './version-ui.js';
+import {createUpdateCapacity} from './update-capacity.js';
 import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
   StringSelectMenuBuilder, MessageFlags} from 'discord.js';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -60,7 +61,7 @@ const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1',restarting:env.ASTRAL_RESTARTING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const updateClient=createUpdateClient({version:botVersion});
-const versions=createVersionController({updater:updateClient,access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(voiceProbe?.busy)throw new EntryError('処理速度を測定中です。中断または完了後に更新してください。');if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから更新してください。');}});
+const versions=createVersionController({updater:updateClient,estimateCapacity:createUpdateCapacity(),access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(voiceProbe?.busy)throw new EntryError('処理速度を測定中です。中断または完了後に更新してください。');if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
 let guild,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,interactionHandlers,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;

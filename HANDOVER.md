@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-20 更新。現行のコマンド構成はv4.2.0。過去の調査・検証記録は各版の節を参照。
+2026-10-20 更新。現行のコマンド構成はv4.3.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -495,3 +495,14 @@ SettingsStore/TrpgStoreも、キュー待ち後だけでなくファイル書込
 メニューに6項目の使い方と、同じ本人/チャンネルで最近開いた3機能を追加。履歴は機能名だけを10分、全体最大200組でメモリ保持し、再起動で消去する。メニュー/使い方だけの表示でTTLを延長しない。読み上げはstatus画面のみ開き、stop等を履歴から実行しない。StringSelectはmenu:recent/help-topicの完全一致だけルーターへ追加。既存のprofile:open/wallet:open、2コマンド/14管理ショートカットを維持。
 
 予定表は内部ScheduleErrorの固定文だけを表示し、未信頼のpermission/fetch/native例外は固定案内へ置換する。sharedScheduleの任意タグを信用せずクラスを照合。メニューも同様にローカル固定エラーへ限定。追加47件、全956件のNodeテスト・Python内19件、構文/実行ポリシー検査、開発依存を含むnpm audit既知アドバイザリ0件。依存lockの差分はルート版だけ。新しい依存/ENV/永続形式/音声/親プロセスの変更はなく、通常の手動更新で反映。実機Discord/ホスト/実音声の試験は含まない。操作は[docs/V4_2.md](docs/V4_2.md)。
+
+
+## v4.3.0 更新前の容量表示
+
+管理者の明示的なcheckにだけcreateUpdateCapacityを実行し、対象SHA固定のGitHub tree/lockとアーカイブHEAD、ローカルのdataメタデータ/statfsで容量を表示する。新版全ファイル合計、圧縮取得量（Content-Lengthがなければ未確認/上限20MiB）、依存reuse/install/unknown、データ控え1組、小計、最低200MiBとOSの空きを分離。実ディスク割当・ホストquota・npmキャッシュ・更新中の一時領域・復旧時の追加控えは小計に含めない。新規依存容量は未知として足し込まない。
+
+root lockのversion除外dependencyHashとnode_modulesの存在、または現在/前版が参照する.complete付きdepsキャッシュだけを再利用候補とする。孤立キャッシュは更新前cleanupで消えるためreuseと判定しない。ローカルlock/stateはnofollow/64KiB制限、dataは内容を読まず10000entry/深さ16/64MiBまで。リンクや異常は未知。外部は固定repoの対象SHAへ3要求、転送禁止/8秒共通signal、tree2MiB/10000entry/64MiB集計/通常ファイル検証、lock64KiB、HEADだけを使用。アーカイブ本体・npm・削除・data内容/ENV/トークンの取得やログ/レポート永続化はしない。
+
+同一current/targetの結果を30秒、全体1要求・1cacheに制限。current/target変更で古い数値を出さず、権限/owner/channel/session/期限を計測後にも確認。status/open/confirmは新規計測を開始せず、計測失敗でも更新確認/確認済みSHAへの手動更新を妨げない。workerだけの機能なのでUPDATER_PROTOCOL2/旧親プロセスと互換、supervisor/bootstrap変更やホスティング再起動は不要。この機能自体はv4.3へ手動更新した後の確認から有効。
+
+新規16件、全972件のNodeテスト・Python内19件、構文/実行ポリシー・npm audit既知0件を検証。実機Discord/Quaxlyのquota照合は未実施。依存/ENV/永続形式/音声処理の変更なし。[表示範囲と手順](docs/UPDATE_CAPACITY.md)。
