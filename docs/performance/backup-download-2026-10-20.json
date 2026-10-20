@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-20",
+  "runtime": "v24.19.0",
+  "scope": "Synthetic100PCs x256KiB flat TXT kept alive in both modes. Compares current compatibility API generating every ZIP with the one-part flow including three planning/validation passes. Separate process per sample, twice GC after generation while output ZIPs remain live. Not peak process memory, real PC data, network, Discord, Quaxly or voice synthesis. Both modes use the new one-buffer encoder, so this does not compare old encoder performance.",
+  "order": [
+    "all",
+    "one",
+    "one",
+    "all",
+    "all",
+    "one"
+  ],
+  "medians": [
+    {
+      "mode": "all",
+      "outputBytes": 26225868,
+      "elapsedMs": 283.714459,
+      "cpuMs": 292.18,
+      "arrayBuffersDelta": 26225884,
+      "externalDelta": 26286638,
+      "heapUsedDelta": 186064,
+      "rssDelta": 62390272
+    },
+    {
+      "mode": "one",
+      "outputBytes": 7080968,
+      "elapsedMs": 144.47810900000002,
+      "cpuMs": 151.567,
+      "arrayBuffersDelta": 7080984,
+      "externalDelta": 7141738,
+      "heapUsedDelta": 203736,
+      "rssDelta": 43646976
+    }
+  ],
+  "samples": [
+    {
+      "mode": "all",
+      "characters": 100,
+      "outputs": 4,
+      "outputBytes": 26225868,
+      "elapsedMs": 277.45973299999997,
+      "cpuMs": 285.667,
+      "arrayBuffersDelta": 26225884,
+      "externalDelta": 26286638,
+      "heapUsedDelta": 186064,
+      "rssDelta": 62521344
+    },
+    {
+      "mode": "one",
+      "characters": 100,
+      "outputs": 1,
+      "outputBytes": 7080968,
+      "elapsedMs": 149.65118399999997,
+      "cpuMs": 157.076,
+      "arrayBuffersDelta": 7080984,
+      "externalDelta": 7141738,
+      "heapUsedDelta": 203736,
+      "rssDelta": 43646976
+    },
+    {
+      "mode": "one",
+      "characters": 100,
+      "outputs": 1,
+      "outputBytes": 7080968,
+      "elapsedMs": 142.45006899999998,
+      "cpuMs": 149.35,
+      "arrayBuffersDelta": 7080984,
+      "externalDelta": 7141738,
+      "heapUsedDelta": 203736,
+      "rssDelta": 43646976
+    },
+    {
+      "mode": "all",
+      "characters": 100,
+      "outputs": 4,
+      "outputBytes": 26225868,
+      "elapsedMs": 283.714459,
+      "cpuMs": 292.18,
+      "arrayBuffersDelta": 26225884,
+      "externalDelta": 26286638,
+      "heapUsedDelta": 186064,
+      "rssDelta": 62390272
+    },
+    {
+      "mode": "all",
+      "characters": 100,
+      "outputs": 4,
+      "outputBytes": 26225868,
+      "elapsedMs": 285.209033,
+      "cpuMs": 293.858,
+      "arrayBuffersDelta": 26225884,
+      "externalDelta": 26286638,
+      "heapUsedDelta": 186136,
+      "rssDelta": 62390272
+    },
+    {
+      "mode": "one",
+      "characters": 100,
+      "outputs": 1,
+      "outputBytes": 7080968,
+      "elapsedMs": 144.47810900000002,
+      "cpuMs": 151.567,
+      "arrayBuffersDelta": 7080984,
+      "externalDelta": 7141738,
+      "heapUsedDelta": 203736,
+      "rssDelta": 43253760
+    }
+  ]
+}

@@ -6,7 +6,7 @@ import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuH
 import {visibleCharacters,searchScenarios,iacharaUrl,characterRevision} from './trpg-store.js';
 import {createTrpgRepair,trpgPanelTarget} from './trpg-repair.js';
 import {tableScreen} from './tables-ui.js';
-import {backupBundles} from './backups.js';
+import {backupScreen,createTrpgBackups} from './trpg-backup.js';
 import {createIacharaClient} from './iachara.js';
 const row=(...x)=>new ActionRowBuilder().addComponents(...x);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`trpg:${s.id}:${a}`).setLabel(label).setStyle(style);
@@ -44,11 +44,13 @@ export function trpgPanel(p){
   return message;
 }
 export function createTrpgController({store,guild,iachara=createIacharaClient(),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});const channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルの閲覧権限がありません。');return canConfigure(member.permissions);}}) {
-  const sessions=new AdminSessions();const cooldown=new Map(),backupCooldown=new Map();
+  const sessions=new AdminSessions();const cooldown=new Map();
   const isAdmin=i=>access(i);const repair=createTrpgRepair({store,guild,render:trpgPanel});
   const managementSession=s=>s.entry==='admin' && s.isAdmin;
   const requireAdmin=s=>{if(!managementSession(s))throw new Error('管理者専用の操作です。/admin から開いてください。');};
+  const backups=createTrpgBackups({store,authorize:authorizeSave});
   function screen(s,note=''){
+    if(s.view==='backup'){if(!s.backup || s.backup.admin&&!s.isAdmin)throw new Error('控えの取得に必要な権限を確認できません。画面を開き直してください。');return backupScreen(s);}
     if(['home','install','scenarios','archives','tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table','repairs','repair','repair-clear'].includes(s.view) && !managementSession(s))throw new Error('管理者専用の画面です。');
     const d=store.metadata();let title='✦  卓・キャラシ',body='',components=[];
     const back=()=>row(button(s,'home','卓・キャラシのメニューへ'));
@@ -247,16 +249,9 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         if(s.view!=='delete-character' || !s.deleteCharacter || s.deleteCharacter.id!==s.characterId)throw new Error('登録解除の確認画面から操作してください。');
         await store.removeCharacter(s.characterId,s.userId,s.panelId,s.isAdmin,s.deleteCharacter.revision,()=>authorizeSave(i,s,{characterId:s.characterId}));delete s.deleteCharacter;s.characterId=null;s.view='characters';s.page=s.characterPage??0;if(s.tableReturn){s.tableId=s.tableReturn.tableId;s.view='table-remove-pcs';s.page=s.tableReturn.page;delete s.tableReturn;}note='✓ PC登録と控えを削除しました。';
       }
-      else if(action==='backup-panel' || action==='backup-all'){
-        if(action==='backup-all')requireAdmin(s);
-        const scope=action==='backup-all'?null:s.panelId;
-        if(action==='backup-panel' && !scope)throw new Error('パネルから開いてください。');
-        if((backupCooldown.get(s.userId)??0)>Date.now())throw new Error('ZIPの再取得は10秒ほどお待ちください。');
-        const files=backupBundles(store.backupCharacters(s.userId,scope,s.isAdmin));
-        if(backupCooldown.size>=200)for(const [id,end] of backupCooldown)if(end<=Date.now())backupCooldown.delete(id);
-        backupCooldown.set(s.userId,Date.now()+10000);
-        await i.editReply({...screen(s,'✓ 控えをZIPにまとめました。ダウンロードして保管してください。'),files:files.map(f=>new AttachmentBuilder(f.data,{name:f.name}))});return;
-      }
+      else if(action==='backup-panel' || action==='backup-all'){await backups.start(i,s,action==='backup-all');return;}
+      else if(action==='backup-part'){await backups.download(i,s,parts[3],parts[4]);return;}
+      else if(action==='backup-return')backups.back(s,parts[3]);
       else if(action==='prev' || action==='next')s.page+=action==='prev'?-1:1;
       else throw new Error('不明な操作です。');
       await authorizeSave(i,s);await i.editReply(screen(s,note));
@@ -264,7 +259,8 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       const components=[];
       // Recovery buttons carry no stored data. Every click still rechecks access.
       if(s && locked){
-        if(s.entry==='admin' && ['repairs','repair','repair-clear'].includes(s.view))components.push(row(button(s,'repairs','復旧対象の一覧へ'),...(s.view==='repair' && store.metadata().panels.find(p=>p.id===s.repairId)?.repairPending?[button(s,'form-repair-result','復旧結果を登録')]:[])));
+        if(s.view==='backup' && s.backup)components.push(row(button(s,`backup-return:${s.backup.token}`,'一覧へ戻る'),button(s,`backup-part:${s.backup.token}:${s.backup.page}`,'このZIPを再取得'),button(s,s.backup.scope===null?'backup-all':'backup-panel','最新の控えを取得')));
+        else if(s.entry==='admin' && ['repairs','repair','repair-clear'].includes(s.view))components.push(row(button(s,'repairs','復旧対象の一覧へ'),...(s.view==='repair' && store.metadata().panels.find(p=>p.id===s.repairId)?.repairPending?[button(s,'form-repair-result','復旧結果を登録')]:[])));
         else if(s.entry==='admin' && s.view==='scenarios')components.push(row(button(s,'scenarios','ベース卓一覧へ'),...(s.scenarioDraft?[button(s,s.scenarioDraftId?'form-scenario-edit':'form-scenario','入力を修正')]:[])));
         else if(s.entry==='admin' && ['tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table'].includes(s.view))components.push(row(button(s,'tables','卓セット一覧へ'),...(s.copyName!==undefined?[button(s,'form-table-copy','複製名を修正')]:s.tableDraft?[button(s,s.tableEditId?'form-table-edit':'form-table','入力を修正')]:(s.tableId?[button(s,'table','卓セットへ')]:[]))));
         else if(s.panelId)components.push(row(button(s,s.tableReturn?'table-return':'characters',s.tableReturn?'参加PC一覧へ':'PC一覧へ'),button(s,'form-register','共有URLを入力し直す')));
