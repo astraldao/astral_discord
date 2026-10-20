@@ -2,6 +2,7 @@ import {ScheduleError} from './schedule-errors.js';
 import {randomUUID} from 'node:crypto';
 import {mkdir,readFile,writeFile,rename,unlink,stat} from 'node:fs/promises';
 import {dirname} from 'node:path';
+import {scheduleColor,validScheduleColor} from './schedule-colors.js';
 const LIMIT=2*1024*1024;
 const id=x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(x);
 const snowflake=x=>typeof x==='string'&&/^\d{17,20}$/.test(x);
@@ -30,7 +31,7 @@ export function scheduleTime(value){
 export function scheduleEvent(input){
   const title=String(input.title??'').normalize('NFKC').trim(),place=String(input.place??'').trim(),description=String(input.description??'').trim();if(!bounded(title,80)||/[\r\n]/.test(title)||!bounded(place,100,false)||/[\r\n]/.test(place)||!bounded(description,500,false))throw new ScheduleError('予定名80文字、場所100文字、説明500文字以内で入力してください。');
   const dates=scheduleEventDates(input.date,input.endDate),time=scheduleTime(input.time??'');if(dates.endDate&&time.start!==null)throw new ScheduleError('複数日の予定は終日です。時刻を空欄にしてください。');
-  return {title,...dates,...time,place,description};
+  const color=scheduleColor(input.color);return {title,...dates,...time,place,description,...(color?{color}:{})};
 }
 export const scheduleEventSignature=e=>JSON.stringify([e.title.normalize('NFKC').trim(),e.date,e.endDate??e.date,e.start,e.end,e.place.trim(),e.description.trim()]);
 function importCandidates(inputs){
@@ -43,7 +44,7 @@ function uniqueImportEvents(calendar,events){
   return {events:added,eventCount:events.length,duplicates:existingDuplicates+fileDuplicates,existingDuplicates,fileDuplicates};
 }
 export const planScheduleImport=(calendar,inputs)=>uniqueImportEvents(calendar,importCandidates(inputs));
-const validEvent=e=>e&&id(e.id)&&Number.isSafeInteger(e.revision)&&e.revision>=0&&bounded(e.title,80)&&!/[\r\n]/.test(e.title)&&scheduleDate(e.date)===e.date&&(!Object.hasOwn(e,'endDate')||typeof e.endDate==='string'&&scheduleDate(e.endDate)===e.endDate&&e.endDate>e.date&&scheduleEventDates(e.date,e.endDate).endDate===e.endDate&&e.start===null&&e.end===null)&&(e.start===null?e.end===null:Number.isInteger(e.start)&&e.start>=0&&e.start<1440&&(e.end===null||Number.isInteger(e.end)&&e.end>e.start&&e.end<e.start+1440))&&bounded(e.place,100,false)&&!/[\r\n]/.test(e.place)&&bounded(e.description,500,false);
+const validEvent=e=>e&&(e.color===undefined||validScheduleColor(e.color))&&id(e.id)&&Number.isSafeInteger(e.revision)&&e.revision>=0&&bounded(e.title,80)&&!/[\r\n]/.test(e.title)&&scheduleDate(e.date)===e.date&&(!Object.hasOwn(e,'endDate')||typeof e.endDate==='string'&&scheduleDate(e.endDate)===e.endDate&&e.endDate>e.date&&scheduleEventDates(e.date,e.endDate).endDate===e.endDate&&e.start===null&&e.end===null)&&(e.start===null?e.end===null:Number.isInteger(e.start)&&e.start>=0&&e.start<1440&&(e.end===null||Number.isInteger(e.end)&&e.end>e.start&&e.end<e.start+1440))&&bounded(e.place,100,false)&&!/[\r\n]/.test(e.place)&&bounded(e.description,500,false);
 function validate(d){
   if(!d||d.version!==1||!Array.isArray(d.calendars)||d.calendars.length>20)throw new ScheduleError('予定表データの形式が不正です。');
   let events=0,pubs=0;const ids=new Set();for(const c of d.calendars){if(!c||!id(c.id)||ids.has(c.id)||!bounded(c.title,60)||/[\r\n]/.test(c.title)||!Number.isSafeInteger(c.revision)||c.revision<0||!Array.isArray(c.events)||c.events.length>200||!c.events.every(validEvent)||new Set(c.events.map(e=>e.id)).size!==c.events.length||!Array.isArray(c.publications)||c.publications.length>5)throw new ScheduleError('予定表データの形式が不正です。');ids.add(c.id);events+=c.events.length;pubs+=c.publications.length;
@@ -86,6 +87,9 @@ export class ScheduleStore {
       const added=plan.events.map(event=>({id:randomUUID(),revision:0,...event}));c.events.push(...added);c.revision++;
       return {ids:added.map(e=>e.id),added:added.length,duplicates:plan.duplicates};
     },check);
+  }
+  setEventColor(calendarId,eventId,color,revision,check){
+    color=scheduleColor(color);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new ScheduleError('予定が変更されました。詳細を開き直してください。');if(color)e.color=color;else delete e.color;e.revision++;c.revision++;},check);
   }
   removeEvent(calendarId,eventId,revision,check){return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new ScheduleError('予定が変更されました。開き直してください。');c.events=c.events.filter(e=>e.id!==eventId);c.revision++;},check);}
   reserve(calendarId,channelId,month,check){month=scheduleMonth(month);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c)throw new ScheduleError('予定表が見つかりません。');if(c.publications.some(p=>p.channelId===channelId&&p.month===month))throw new ScheduleError('このチャンネル・表示月は投稿済み、または送信結果の確認待ちです。「投稿を更新」か「投稿URLで復旧」を使ってください。');const p={id:randomUUID(),channelId,month,status:'pending',messageId:null};c.publications.push(p);return p.id;},check);}

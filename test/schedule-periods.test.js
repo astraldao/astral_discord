@@ -72,9 +72,9 @@ test('dense full-month ranges have honest overflow counts and bounded PNG output
   const reversed=calendarImage('2026-10',[...events].reverse(),{selectedDate:'2026-10-14'});assert.deepEqual(result.buffer,reversed.buffer);
 });
 test('a continuous period band is drawn across the gap between adjacent day cells',()=>{
-  const {buffer,width}=calendarImage('2026-10',[{id:'range',...scheduleEvent(period({date:'2026/10/04〜2026/10/06'}))}]);
+  const {buffer,width,geometry}=calendarImage('2026-10',[{id:'range',...scheduleEvent(period({date:'2026/10/04〜2026/10/06'}))}]);
   let position=8,palette,parts=[];while(position<buffer.length){const length=buffer.readUInt32BE(position),kind=buffer.toString('ascii',position+4,position+8);if(kind==='PLTE')palette=buffer.subarray(position+8,position+8+length);if(kind==='IDAT')parts.push(buffer.subarray(position+8,position+8+length));position+=length+12;}
-  const raw=inflateSync(Buffer.concat(parts)),y=118+142+40+20,row=raw.subarray(y*(width+1),(y+1)*(width+1)),indices=new Uint8Array(width);assert.equal(row[0],1);for(let x=0;x<width;x++)indices[x]=(row[x+1]+(x?indices[x-1]:0))&255;const at=x=>Array.from(palette.subarray(indices[x]*3,indices[x]*3+3));assert.deepEqual(at(128),at(129));assert.deepEqual(at(129),at(130));assert.notDeepEqual(at(129),[255,255,255]);
+  const raw=inflateSync(Buffer.concat(parts)),y=geometry.top+geometry.weekHeight+geometry.bandTop+geometry.bandHeight-3,row=raw.subarray(y*(width+1),(y+1)*(width+1)),indices=new Uint8Array(width);assert.equal(row[0],1);for(let x=0;x<width;x++)indices[x]=(row[x+1]+(x?indices[x-1]:0))&255;const at=x=>Array.from(palette.subarray(indices[x]*3,indices[x]*3+3));assert.deepEqual(at(128),at(129));assert.deepEqual(at(129),at(130));assert.notDeepEqual(at(129),[255,255,255]);
 });
 test('bulk events commit once, return distinct identities, preserve ranges and increment only the calendar revision',async()=>{
   const store=new ScheduleStore(),id=await store.create('予定表');let saves=0;const save=store.save.bind(store);store.save=async data=>{saves++;return save(data);};

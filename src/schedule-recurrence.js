@@ -25,7 +25,7 @@ export function scheduleRecurrence(event,{frequency,count}={}){
   const date=scheduleDate(event.date),endDate=event.endDate===undefined?date:scheduleDate(event.endDate);
   const firstMs=Date.parse(`${date}T00:00:00Z`),duration=Date.parse(`${endDate}T00:00:00Z`)-firstMs,time=timeInput(event);
   if(duration<0||duration>30*dayMs||duration>0&&event.start!==null)throw new ScheduleError('複数日の繰り返しは終日の予定、31日以内で指定してください。');
-  const base=scheduleEvent({title:event.title,date,time,place:event.place,description:event.description});
+  const base=scheduleEvent({title:event.title,date,time,place:event.place,description:event.description,color:event.color});
   const dates=[],inputs=[],first=new Date(firstMs),step=frequency==='daily'?1:frequency==='weekly'?7:14;
   // A monthly search visits at most the 1,200 months of the supported century.
   // The original day is retained, so January 31 never drifts to February 28.
@@ -39,7 +39,7 @@ export function scheduleRecurrence(event,{frequency,count}={}){
     }else startMs=firstMs+offset*step*dayMs;
     const start=dateAt(startMs),end=dateAt(startMs+duration);
     dates.push(start);
-    inputs.push({title:base.title,date:duration?`${start}〜${end}`:start,time,place:base.place,description:base.description});
+    inputs.push({title:base.title,date:duration?`${start}〜${end}`:start,time,place:base.place,description:base.description,...(base.color?{color:base.color}:{})});
   }
   if(inputs.length!==count)throw rangeError();
   return {frequency,label:scheduleRecurrenceChoices[frequency],count,dates,inputs};

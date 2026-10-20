@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {inflateSync} from 'node:zlib';
 import {encodePng} from './sprite-image.js';
+import {scheduleColors,validScheduleColor} from './schedule-colors.js';
 const font=JSON.parse(readFileSync(new URL('../assets/calendar-font.json',import.meta.url),'utf8'));
 const atlas=inflateSync(Buffer.from(font.pixels,'base64'),{maxOutputLength:8*1024*1024});
 const theme={paper:[255,255,255],ink:[38,43,49],muted:[118,125,132],line:[232,235,238],weekend:[250,251,252],selected:[234,246,253],today:[38,43,49],sunday:[201,70,78],saturday:[43,111,177],white:[255,255,255]};
@@ -10,10 +11,11 @@ const foregrounds=[theme.ink,theme.muted,theme.white,theme.sunday,theme.saturday
 const colors=[...backgrounds,...backgrounds.flatMap(a=>foregrounds.flatMap(b=>[1,2].map(n=>a.map((v,i)=>Math.round((v*(3-n)+b[i]*n)/3)))))];
 const palette=Buffer.from(colors.flat()),lookup=Buffer.alloc(32768);
 for(let i=0;i<colors.length;i++){const [r,g,b]=colors[i];lookup[((r>>3)<<10)|((g>>3)<<5)|(b>>3)]=i;}
-const glyph=(char,size)=>font.glyphs[`${size}:${char}`]??font.glyphs[`${size}:□`];
-const measure=(value,size)=>[...value].reduce((n,c)=>n+(glyph(c,size)?.advance??size),0);
-// The same title keeps its color across dates and edits elsewhere in the calendar.
-function calendarEventColor(title){let hash=0;for(const c of String(title))hash=(Math.imul(hash,31)+c.codePointAt(0))>>>0;return hash%bands.length;}
+const glyph=(char,size)=>font.glyphs[`${size===16?20:size}:${char}`]??font.glyphs[`${size===16?20:size}:□`];
+const advance=(char,size)=>Math.round((glyph(char,size)?.advance??size)*(size===16?0.8:1));
+const measure=(value,size)=>[...value].reduce((n,c)=>n+advance(c,size),0);
+// Explicit choices take priority; automatic colors stay stable for the same title.
+function calendarEventColor(event){if(validScheduleColor(event.color))return scheduleColors[event.color].index;let hash=0;for(const c of String(event.title))hash=(Math.imul(hash,31)+c.codePointAt(0))>>>0;return hash%bands.length;}
 export function calendarLayout(month,events,today,selectedDate){
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||Number(month.slice(0,4))<2000||Number(month.slice(0,4))>2099)throw new Error('カレンダーの月が不正です。');
   const year=Number(month.slice(0,4)),m=Number(month.slice(5)),days=new Date(Date.UTC(year,m,0)).getUTCDate(),offset=new Date(Date.UTC(year,m-1,1)).getUTCDay();
@@ -27,16 +29,24 @@ export function calendarLayout(month,events,today,selectedDate){
   }
   return {month,rows,offset,cells,spans,count:visible.length};
 }
-const time=n=>n===null?'終日':`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
+const time=n=>n==null?'終日':`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
 export function calendarImage(month,events,{today,selectedDate,title=''}={}){
-  const layout=calendarLayout(month,events,today,selectedDate),width=840,cell=116,week=142,top=118,height=top+layout.rows*week+38,pixels=Buffer.alloc(width*height*4,255);
+  const layout=calendarLayout(month,events,today,selectedDate),width=840,cell=116,top=118;
+  const lanes=layout.spans.reduce((n,span)=>Math.max(n,span.lane+1),0),rich=lanes<=1;
+  const timed=rich&&layout.spans.some(span=>Number.isInteger(span.event.start)),wrapped=rich&&layout.spans.some(span=>measure(span.event.title,20)>(span.endCol-span.col+1)*cell-14);
+  const bandTop=rich?36:40,bandHeight=rich?(wrapped?45:25)+(timed?18:0):25,laneGap=28,week=rich?bandTop+bandHeight+15:142;
+  const footer=timed?52:38,height=top+layout.rows*week+footer,pixels=Buffer.alloc(width*height*4,255);
   function rect(x,y,w,h,color){for(let j=Math.max(0,y);j<Math.min(height,y+h);j++)for(let i=Math.max(0,x);i<Math.min(width,x+w);i++){const at=(j*width+i)*4;for(let c=0;c<3;c++)pixels[at+c]=color[c];}}
   function circle(x,y,r,color){for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++)if(i*i+j*j<=r*r)rect(x+i,y+j,1,1,color);}
   function text(value,x,y,size,color,maxWidth=width-x){
-    x=Math.round(x);y=Math.round(y);
-    const chars=[...String(value).replace(/[\r\n\t]/g,' ')];let result='',used=0;
-    for(let n=0;n<chars.length;n++){const advance=glyph(chars[n],size)?.advance??size,reserve=n<chars.length-1?measure('…',size):0;if(used+advance+reserve>maxWidth){if(size===20)result+='…';break;}result+=chars[n];used+=advance;}
-    for(const char of result){const g=glyph(char,size);if(!g){x+=size;continue;}for(let j=0;j<g.h;j++)for(let i=0;i<g.w;i++){const alpha=atlas[g.offset+j*g.w+i];if(!alpha)continue;const px=x+g.x+i,py=y+g.y+j;if(px<0||py<0||px>=width||py>=height||px>=width-14)continue;const at=(py*width+px)*4;for(let c=0;c<3;c++)pixels[at+c]=Math.round((pixels[at+c]*(3-alpha)+color[c]*alpha)/3);}x+=g.advance;}
+    x=Math.round(x);y=Math.round(y);const left=x,right=Math.min(width-14,x+maxWidth),scale=size===16?0.8:1;
+    const valueText=String(value).replace(/[\r\n\t]/g,' '),chars=[...valueText];let result=valueText,used=0;
+    if(measure(valueText,size)>maxWidth){result='';for(const char of chars){const step=advance(char,size);if(used+step+measure('…',size)>maxWidth)break;result+=char;used+=step;}result+='…';}
+    for(const char of result){const g=glyph(char,size);if(!g){x+=size;continue;}for(let j=0;j<Math.ceil(g.h*scale);j++)for(let i=0;i<Math.ceil(g.w*scale);i++){const alpha=atlas[g.offset+Math.min(g.h-1,Math.floor(j/scale))*g.w+Math.min(g.w-1,Math.floor(i/scale))];if(!alpha)continue;const px=x+Math.round(g.x*scale)+i,py=y+Math.round(g.y*scale)+j;if(px<left||py<0||px>=right||py>=height)continue;const at=(py*width+px)*4;for(let c=0;c<3;c++)pixels[at+c]=Math.round((pixels[at+c]*(3-alpha)+color[c]*alpha)/3);}x+=advance(char,size);}
+  }
+  function eventTitle(value,x,y,maxWidth){
+    const clean=String(value).replace(/[\r\n\t]/g,' ');if(!wrapped||measure(clean,20)<=maxWidth){text(clean,x,y,20,theme.ink,maxWidth);return;}
+    let first='',used=0;const chars=[...clean];let index=0;for(;index<chars.length;index++){const step=advance(chars[index],20);if(used+step>maxWidth)break;first+=chars[index];used+=step;}text(first,x,y,20,theme.ink,maxWidth);text(chars.slice(index).join(''),x,y+22,20,theme.ink,maxWidth);
   }
   text(`${month.slice(0,4)}年${Number(month.slice(5))}月`,22,8,28,theme.ink);
   const count=`予定 ${layout.count}件`;text(count,width-22-measure(count,20),18,20,theme.muted);
@@ -55,15 +65,18 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
     }
   }
   for(const span of layout.spans){
-    const x=17+span.col*cell,y=top+span.row*week+40+span.lane*28,w=(span.endCol-span.col+1)*cell-6;
-    rect(x,y,w,25,bands[calendarEventColor(span.event.title)]);
-    text(span.event.title,x+4,y-2,20,theme.ink,w-8);
+    const x=17+span.col*cell,y=top+span.row*week+bandTop+span.lane*laneGap,w=(span.endCol-span.col+1)*cell-6;
+    rect(x,y,w,bandHeight,bands[calendarEventColor(span.event)]);
+    const titleY=y+(timed?18:0)-2;
+    if(timed)text(time(span.event.start),x+4,y-2,16,theme.ink,w-8);
+    eventTitle(span.event.title,x+4,titleY,w-8);
     if(span.continuesBefore)rect(x,y+7,2,11,theme.muted);
     if(span.continuesAfter)rect(x+w-2,y+7,2,11,theme.muted);
   }
   for(const c of layout.cells)if(c.hidden)text(`+${c.hidden}件`,21+c.col*cell,top+c.row*week+121,20,theme.muted,cell-14);
   rect(14,top+layout.rows*week,width-28,1,theme.line);
-  text('予定の詳細・時刻は下のメニューから',22,height-31,20,theme.muted);
-  return {buffer:encodePng(pixels,width,height,{palette,lookup}),width,height,layout};
+  if(timed){text('時刻は開始時刻・色は予定の目印です',22,height-48,16,theme.muted);text('予定の詳細は下のメニューから',22,height-28,16,theme.muted);}
+  else text('色は予定の目印・詳細は下のメニューから',22,height-31,20,theme.muted);
+  return {buffer:encodePng(pixels,width,height,{palette,lookup}),width,height,layout,geometry:{top,weekHeight:week,bandTop,bandHeight,laneGap,rich,timed,wrapped}};
 }
 export function calendarAlt(layout){return `${layout.month}の月間カレンダー。日曜始まり。${layout.count}件。${layout.cells.filter(c=>c.items.length).map(c=>`${c.day}日${c.today?'（今日）':''}${c.selected?'（選択中）':''}: ${c.items.length}件、${c.items.map(e=>`${time(e.start)} ${e.title}${e.endDate?`（${e.date}〜${e.endDate}）`:''}`).join('、')}`).join('。')}`.slice(0,1024);}

@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-20 更新。現行のコマンド構成はv4.3.0。過去の調査・検証記録は各版の節を参照。
+2026-10-20 更新。現行のコマンド構成はv4.4.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -506,3 +506,16 @@ root lockのversion除外dependencyHashとnode_modulesの存在、または現�
 同一current/targetの結果を30秒、全体1要求・1cacheに制限。current/target変更で古い数値を出さず、権限/owner/channel/session/期限を計測後にも確認。status/open/confirmは新規計測を開始せず、計測失敗でも更新確認/確認済みSHAへの手動更新を妨げない。workerだけの機能なのでUPDATER_PROTOCOL2/旧親プロセスと互換、supervisor/bootstrap変更やホスティング再起動は不要。この機能自体はv4.3へ手動更新した後の確認から有効。
 
 新規16件、全972件のNodeテスト・Python内19件、構文/実行ポリシー・npm audit既知0件を検証。実機Discord/Quaxlyのquota照合は未実施。依存/ENV/永続形式/音声処理の変更なし。[表示範囲と手順](docs/UPDATE_CAPACITY.md)。
+
+
+## v4.4.0 カレンダーの表示と日付・詳細操作
+
+ユーザー提供画像の余白・早い省略・開始時刻不在を見直した。calendar-imageは最大表示lane1以下の月で内容に応じた均一の週高を計算し、長い名前2行・開始時刻を16pxで表示。既存20px atlasから16px描画し、文字幅と描画境界を合わせる。denseは旧3lane/142pxとoverflowを優先する。日時/件数/同名単日イベントを自動結合しない。4件の架空11月は840x536（旧866高）、長名/時刻7件例は840x740。PNGを実視・独立デコード/pixelで確認。3例をdocs/previewsに保存、scripts/preview-calendar.jsで再現できる。
+
+schedule-days.jsで現在のカレンダー/月だけから件数・日付・名前を列挙。days画面は予定あり/全日を切替・25件/ページ・月/ページ移動・今日/入力を提供する。別の月を見ても元のmonth/query/date/range/pageは選ぶまで変更せず、戻ると保持。選択値は現在のページから検証し、選択時だけ日表示へ。旧day-jump受付は残す。権限・元投稿・owner/channel/turn/TTLのreadonly境界を維持する。
+
+任意color（blue/green/red/purple/yellow/slate）を既存version1予定に追加し、無指定は従来の題名hashによる自動色。setEventColorはevent revision/画面世代/本人/現在の管理者権限を固定し、queue後とwrite後rename前の同じcheckを利用する。stageは同じpinの再描画では再利用し、busy中の二度押しで先行保存を無効化しない。保存済み共有投稿は既存refreshで更新、編集・copy・recurrenceも色を保持する。色はICSに出さず、新規importはauto、重複判定はpresentationを無視して現在色を保護する。
+
+イベント詳細の前後移動は現在選択範囲/検索全体の順序内で、一覧へ戻るpageを現在イベントへ合わせる。表示外へ編集されたイベントは個別閲覧/export可だが前後移動は無効。export-eventは1件だけのastral-event.icsを私的に返し、完全なperiod/UID/時刻を保つ。resumeや通常navigationで自動再添付しない。
+
+新規27件、全999Node+19nestedPython、構文/実行ポリシー検査とnpm audit既知0件。新規テストは実Store一時ファイルによるcolorのrename前拒否/復旧、pixel/画像高さ/件数、Unicode clip、日付選択/ページ/境界/取消/権限、範囲内前後、単体ICS、copy/recurrence、busy二度押しを含む。既存の画像接続線テストはrender geometryを参照するよう変更し、意味の検証を維持。新しい依存/ENV/音声処理/親プロセス変更はなく、手動更新で反映。旧イベントはそのまま読める任意フィールドで、手作業の移行不要。実機Discord/ホストの表示は手動更新後に確認。[v4.4の手順](docs/V4_4.md)。
