@@ -1,5 +1,6 @@
-import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
+import {mkdir, readFile, writeFile, rename, unlink} from 'node:fs/promises';
 import {dirname} from 'node:path';
+import {randomUUID} from 'node:crypto';
 const id = value => typeof value === 'string' && /^\d{17,20}$/.test(value);
 export const validDensukeEmail=value=>typeof value==='string' && value.length<=254 && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(value);
 export function validateSettings(c) {
@@ -29,9 +30,14 @@ export class SettingsStore {
       // Permission checks performed before joining the queue may already be stale.
       await check();
       const next=this.get();change(next);validateSettings(next);
-      await mkdir(dirname(this.path),{recursive:true});
-      await writeFile(`${this.path}.tmp`,JSON.stringify(next,null,2)+'\n',{mode:0o600});
-      await rename(`${this.path}.tmp`,this.path);
+      const temp=`${this.path}.${randomUUID()}.tmp`,io=promise=>promise.catch(()=>{throw new Error('設定を保存できませんでした。変更は確定していません。');});
+      try{
+        await io(mkdir(dirname(this.path),{recursive:true,mode:0o700}));
+        await io(writeFile(temp,JSON.stringify(next,null,2)+'\n',{mode:0o600,flag:'wx'}));
+        // The caller's authority may change during filesystem I/O.
+        await check();
+        await io(rename(temp,this.path));
+      }finally{await unlink(temp).catch(()=>{});}
       this.value=next;return this.get();
     });
     this.tail=run.catch(()=>{});return run;

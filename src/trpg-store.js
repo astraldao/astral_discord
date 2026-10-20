@@ -1,4 +1,4 @@
-import {mkdir,readFile,writeFile,rename} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rename,unlink} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 
@@ -69,7 +69,18 @@ export class TrpgStore {
     if(d.tables.length>=100)throw new Error('卓セットは100件までです。');
     const copy={id:randomUUID(),name,scenarioId:source.scenarioId,answerUrl:'',characterIds:[],pinned:false,completed:false};d.tables.push(copy);return copy.id;
   },check);}
-  update(fn,check=()=>{}){const job=this.tail.then(async()=>{await check();const d=this.get();const result=fn(d);const raw=JSON.stringify(d);if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの合計容量は32MBまでです。');await mkdir(dirname(this.path),{recursive:true});const temp=`${this.path}.tmp`;await writeFile(temp,raw,{mode:0o600});await rename(temp,this.path);this.data=d;return result;});this.tail=job.catch(()=>{});return job;}
+  update(fn,check=()=>{}){const job=this.tail.then(async()=>{
+    await check();const d=this.get(),result=fn(d),raw=JSON.stringify(d);if(Buffer.byteLength(raw)>MAX_STORE)throw new Error('卓管理データの合計容量は32MBまでです。');
+    const temp=`${this.path}.${randomUUID()}.tmp`,io=promise=>promise.catch(()=>{throw new Error('卓管理データを保存できませんでした。変更は確定していません。');});
+    try{
+      await io(mkdir(dirname(this.path),{recursive:true,mode:0o700}));
+      await io(writeFile(temp,raw,{mode:0o600,flag:'wx'}));
+      // Recheck permissions and the operation generation before replacing the file.
+      await check();
+      await io(rename(temp,this.path));
+    }finally{await unlink(temp).catch(()=>{});}
+    this.data=d;return result;
+  });this.tail=job.catch(()=>{});return job;}
   async scenario(name,url,check){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{const old=d.scenarios.find(x=>key(x.name)===key(name));if(old){old.name=name;old.url=url;return old.id;}if(d.scenarios.length>=200)throw new Error('シナリオは200件まで登録できます。');const id=randomUUID();d.scenarios.push({id,name,url});return id;},check);}
   editScenario(id,name,url,revision,check){name=String(name).trim();if(!name || name.length>100)throw new Error('シナリオ名は100文字以内で入力してください。');url=roomUrl(url);return this.update(d=>{
     const old=d.scenarios.find(x=>x.id===id);if(!old || JSON.stringify(old)!==revision)throw new Error('ベース卓が変更されました。選び直して編集してください。');

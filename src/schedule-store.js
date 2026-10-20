@@ -31,6 +31,17 @@ export function scheduleEvent(input){
   const dates=scheduleEventDates(input.date,input.endDate),time=scheduleTime(input.time??'');if(dates.endDate&&time.start!==null)throw new Error('複数日の予定は終日です。時刻を空欄にしてください。');
   return {title,...dates,...time,place,description};
 }
+export const scheduleEventSignature=e=>JSON.stringify([e.title.normalize('NFKC').trim(),e.date,e.endDate??e.date,e.start,e.end,e.place.trim(),e.description.trim()]);
+function importCandidates(inputs){
+  if(!Array.isArray(inputs)||inputs.length<1||inputs.length>200)throw new Error('取り込みは1ファイル1〜200件までです。');
+  return inputs.map(scheduleEvent);
+}
+function uniqueImportEvents(calendar,events){
+  const existing=new Set(calendar.events.map(scheduleEventSignature)),seen=new Set(),added=[];let existingDuplicates=0,fileDuplicates=0;
+  for(const event of events){const signature=scheduleEventSignature(event);if(existing.has(signature)){existingDuplicates++;continue;}if(seen.has(signature)){fileDuplicates++;continue;}seen.add(signature);added.push(event);}
+  return {events:added,eventCount:events.length,duplicates:existingDuplicates+fileDuplicates,existingDuplicates,fileDuplicates};
+}
+export const planScheduleImport=(calendar,inputs)=>uniqueImportEvents(calendar,importCandidates(inputs));
 const validEvent=e=>e&&id(e.id)&&Number.isSafeInteger(e.revision)&&e.revision>=0&&bounded(e.title,80)&&!/[\r\n]/.test(e.title)&&scheduleDate(e.date)===e.date&&(!Object.hasOwn(e,'endDate')||typeof e.endDate==='string'&&scheduleDate(e.endDate)===e.endDate&&e.endDate>e.date&&scheduleEventDates(e.date,e.endDate).endDate===e.endDate&&e.start===null&&e.end===null)&&(e.start===null?e.end===null:Number.isInteger(e.start)&&e.start>=0&&e.start<1440&&(e.end===null||Number.isInteger(e.end)&&e.end>e.start&&e.end<e.start+1440))&&bounded(e.place,100,false)&&!/[\r\n]/.test(e.place)&&bounded(e.description,500,false);
 function validate(d){
   if(!d||d.version!==1||!Array.isArray(d.calendars)||d.calendars.length>20)throw new Error('予定表データの形式が不正です。');
@@ -64,6 +75,16 @@ export class ScheduleStore {
     if(!Array.isArray(inputs)||inputs.length<1||inputs.length>26)throw new Error('一括登録は1〜26件で指定してください。');
     const events=inputs.map(scheduleEvent);
     return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c||c.revision!==calendarRevision)throw new Error('予定表が変更されました。内容を確認し直してください。');if(c.events.length+events.length>200||d.calendars.reduce((n,c)=>n+c.events.length,0)+events.length>1000)throw new Error('予定の保存件数が上限を超えています。');const added=events.map(event=>({id:randomUUID(),revision:0,...event}));c.events.push(...added);c.revision++;return added.map(event=>event.id);},check);
+  }
+  importEvents(calendarId,inputs,calendarRevision,check){
+    const events=importCandidates(inputs);
+    return this.update(d=>{
+      const c=d.calendars.find(c=>c.id===calendarId);if(!c||c.revision!==calendarRevision)throw new Error('予定表が変更されました。ファイルを選び直して内容を確認してください。');
+      const plan=uniqueImportEvents(c,events);if(!plan.events.length)throw new Error('新しく取り込む予定はありません。同じ内容は登録済みです。');
+      if(c.events.length+plan.events.length>200||d.calendars.reduce((n,c)=>n+c.events.length,0)+plan.events.length>1000)throw new Error('予定の保存件数が上限を超えています。');
+      const added=plan.events.map(event=>({id:randomUUID(),revision:0,...event}));c.events.push(...added);c.revision++;
+      return {ids:added.map(e=>e.id),added:added.length,duplicates:plan.duplicates};
+    },check);
   }
   removeEvent(calendarId,eventId,revision,check){return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new Error('予定が変更されました。開き直してください。');c.events=c.events.filter(e=>e.id!==eventId);c.revision++;},check);}
   reserve(calendarId,channelId,month,check){month=scheduleMonth(month);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c)throw new Error('予定表が見つかりません。');if(c.publications.some(p=>p.channelId===channelId&&p.month===month))throw new Error('このチャンネル・表示月は投稿済み、または送信結果の確認待ちです。「投稿を更新」か「投稿URLで復旧」を使ってください。');const p={id:randomUUID(),channelId,month,status:'pending',messageId:null};c.publications.push(p);return p.id;},check);}
