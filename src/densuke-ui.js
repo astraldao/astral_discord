@@ -8,9 +8,13 @@ import {answerUrl} from './trpg-store.js';
 import {choices,eventData,UncertainCreation,createDensukeClient} from './densuke.js';
 import {validDensukeEmail} from './settings.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
-const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`densuke:${s.id}:${action}`).setLabel(label).setStyle(style);
+const screenActions=new Set(['choice','form','cancel','share','restart','form-email','form-recover']);
+const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`densuke:${s.id}:${action}${action.includes(':')?'':':'+s.controlToken}`).setLabel(label).setStyle(style);
+const invalidateEventControls=s=>{for(const key of ['controlToken','reviewToken','eventToken','recoverToken','recoverPhase','recoverDraft'])delete s[key];};
 const safe=(value,max)=>{const escaped=escapeMarkdown(String(value)).replace(/@/g,'＠');return escaped.length>max?escaped.slice(0,max-1)+'…':escaped;};
 export function densukeScreen(s,note='') {
+  s.controlToken??=randomUUID().slice(0,12);
+  if(s.phase==='review')s.reviewToken??=randomUUID().slice(0,12);
   const e=s.inputDraft??s.event;let title='✦  日程調整',description,components=[];
   if(s.phase==='done') {
     title=s.result.recovered?'✦  作成済みの日程調整を登録しました':'✦  日程調整を作成しました';
@@ -26,13 +30,14 @@ export function densukeScreen(s,note='') {
     title=s.phase==='review'?'✦  内容を確認して作成':'✦  日程調整を準備';
     description=e.name?`**イベント名**\n${safe(e.name,250)}\n\n**候補日程**\n${safe(e.schedule,1200)}\n\n**イベント説明**\n${e.description?safe(e.description,800):'なし'}\n\n**パスワード** ${e.password?'設定あり（非表示）':'なし'}\n**回答の選択肢** ${choices[e.choice]}\n\n${s.inputDraft?'入力に修正が必要です。「内容を修正」で直してください。':'内容がよければ「この内容で作成」を押してください。'}控えメールは設定済みの固定宛先に送信します。`:'**1**  回答の選択肢を選ぶ\n**2**  イベント名と候補日程を入力する\n**3**  内容を確認して伝助を作成する\n\nイベント説明・パスワードは任意です。候補日程は1行に1候補を入力してください。';
     if(escapeMarkdown(e.schedule).length>1200 || escapeMarkdown(e.description).length>800)description+='\n\n表示は一部省略しています。「内容を修正」で全文を確認できます。伝助には全文を送ります。';
-    components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice`).setPlaceholder('回答の選択肢を選ぶ').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'イベント内容を入力',s.phase==='review'?ButtonStyle.Secondary:ButtonStyle.Primary),...(s.phase==='review'?[button(s,'create','この内容で作成',ButtonStyle.Primary)]:[]),button(s,'cancel','作成をキャンセル')),row(button(s,'form-email','控えメールの宛先'),button(s,'form-recover','作成済みURLを登録'))];
+    components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice:${s.controlToken}`).setPlaceholder('回答の選択肢を選ぶ').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'イベント内容を入力',s.phase==='review'?ButtonStyle.Secondary:ButtonStyle.Primary),...(s.phase==='review'?[button(s,`create:${s.reviewToken}`,'この内容で作成',ButtonStyle.Primary)]:[]),button(s,'cancel','作成をキャンセル')),row(button(s,'form-email','控えメールの宛先'),button(s,'form-recover','作成済みURLを登録'))];
   }
   if(s.phase!=='creating'&&components.length<5)components.push(row(adminSectionButton('schedule'),adminHomeButton()));
   return {...payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?'success':s.phase==='uncertain'?'error':'normal',components}),attachments:[]};
 }
 export function densukeModal(s) {
-  const modal=new ModalBuilder().setCustomId(`densuke:${s.id}:submit`).setTitle('伝助のイベント内容');
+  s.eventToken=randomUUID().slice(0,12);
+  const modal=new ModalBuilder().setCustomId(`densuke:${s.id}:submit:${s.eventToken}`).setTitle('伝助のイベント内容');
   const draft=s.inputDraft??s.event;
   for(const [key,label,max,required,paragraph] of [['name','イベント名（必須）',250,true,false],['schedule','候補日程（必須・1行に1候補）',4000,true,true],['description','イベント説明（任意）',2000,false,true],['password','パスワード（任意・半角英数字8文字以内）',8,false,false]]) {
     const input=new TextInputBuilder().setCustomId(key).setLabel(label).setMaxLength(max).setRequired(required).setStyle(paragraph?TextInputStyle.Paragraph:TextInputStyle.Short);
@@ -68,6 +73,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
     let s,locked=false;
     try {
       await authorize(i);const [,id,action,token]=i.customId.split(':');s=sessions.get(id,i.user.id);if(i.channelId!==s.channelId)throw new Error('元のチャンネルから操作してください。');
+      if(screenActions.has(action) && (!s.controlToken || token!==s.controlToken))throw new Error('この画面は更新されています。表示された最新の内容から操作してください。');
       if(s.busy)throw new Error('処理中です。少しお待ちください。');s.busy=true;locked=true;
       if(action==='form-recover' && ['draft','review','uncertain'].includes(s.phase)){
         s.recoverToken=randomUUID().slice(0,12);s.recoverPhase=s.phase;const modal=new ModalBuilder().setCustomId(`densuke:${s.id}:submit-recover:${s.recoverToken}`).setTitle('作成済みの伝助を復旧');
@@ -79,7 +85,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
       if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});
       await authorizeSession(i,s);let note='';
       if(action==='submit-recover' && ['draft','review','uncertain'].includes(s.phase)){
-        if(!s.recoverToken || token!==s.recoverToken || s.phase!==s.recoverPhase)throw new Error('最新のURL登録フォームから操作してください。');s.recoverDraft=i.fields.getTextInputValue('answer').trim().slice(0,1000);const answer=answerUrl(s.recoverDraft);if(!answer)throw new Error('回答用URLを入力してください。');s.result={answer,recovered:true};delete s.recoverDraft;delete s.recoverToken;delete s.recoverPhase;s.phase='done';s.event.name||='作成済みイベント';s.event.password='';delete s.inputDraft;note='✓ 作成済みイベントのURLを登録しました。再作成はしていません。';
+        if(!s.recoverToken || token!==s.recoverToken || s.phase!==s.recoverPhase)throw new Error('最新のURL登録フォームから操作してください。');s.recoverDraft=i.fields.getTextInputValue('answer').trim().slice(0,1000);const answer=answerUrl(s.recoverDraft);if(!answer)throw new Error('回答用URLを入力してください。');s.result={answer,recovered:true};invalidateEventControls(s);s.phase='done';s.event.name||='作成済みイベント';s.event.password='';delete s.inputDraft;note='✓ 作成済みイベントのURLを登録しました。再作成はしていません。';
       } else if(action==='share' && s.phase==='done') {
         if(s.shared)throw new Error(s.shareUncertain?'前回の共有結果が未確認です。共有先を確認してください。自動再送はしません。':'このイベントは共有済みです。');
         if(i.channelId!==s.channelId)throw new Error('作成したチャンネルから共有してください。');
@@ -90,10 +96,10 @@ export function createDensukeController({email,settings,client=createDensukeClie
           if([10003,50001,50013,50035].includes(error?.code)){s.shared=false;delete s.shareUncertain;note='共有できませんでした。共有先とBotの閲覧・送信・埋め込み権限を確認し、もう一度「回答URLを共有」を押してください。';}
           else note='共有結果を確認できませんでした。チャンネルを確認し、必要なら回答用URLを手動で共有してください。';
         }
-      } else if(action==='restart' && ['done','closed'].includes(s.phase)){s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};delete s.result;delete s.shared;delete s.shareUncertain;delete s.inputDraft;delete s.recoverToken;delete s.recoverDraft;delete s.recoverPhase;s.reviewEmail=currentEmail();}
+      } else if(action==='restart' && ['done','closed'].includes(s.phase)){s.phase='draft';invalidateEventControls(s);s.event={name:'',schedule:'',description:'',password:'',choice:'1'};delete s.result;delete s.shared;delete s.shareUncertain;delete s.inputDraft;s.reviewEmail=currentEmail();}
       else if(!['draft','review'].includes(s.phase))throw new Error('この作成操作は終了しています。');
-      else if(action==='cancel'){s.phase='closed';s.event.password='';delete s.inputDraft;}
-      else if(action==='choice'){if(!Object.hasOwn(choices,i.values[0]))throw new Error('回答の選択肢が不正です。');s.event.choice=i.values[0];if(s.inputDraft)s.inputDraft.choice=i.values[0];}
+      else if(action==='cancel'){s.phase='closed';invalidateEventControls(s);s.event.password='';delete s.inputDraft;}
+      else if(action==='choice'){if(!Object.hasOwn(choices,i.values[0]))throw new Error('回答の選択肢が不正です。');if(s.event.choice!==i.values[0]){invalidateEventControls(s);s.event.choice=i.values[0];if(s.inputDraft)s.inputDraft.choice=i.values[0];}}
       else if(action==='submit-email') {
         const value=i.fields.getTextInputValue('email').trim();
         if(!validDensukeEmail(value))throw new Error('254文字以内の半角メールアドレスを入力してください。');
@@ -107,15 +113,17 @@ export function createDensukeController({email,settings,client=createDensukeClie
           if(!['draft','review'].includes(s.phase))throw new Error('メール設定画面を開き直してください。');
         });
         delete s.emailEditBase;
-        if(s.phase==='review')s.reviewEmail=value;
+        if(s.reviewEmail!==value)invalidateEventControls(s);s.reviewEmail=value;
         note='✓ 固定メールを保存しました。再起動後も引き継ぎます。';
       }
       else if(action==='submit') {
+        if(!s.eventToken || token!==s.eventToken)throw new Error('最新のイベント入力フォームから操作してください。');
         const fields={choice:s.event.choice};for(const key of ['name','schedule','description','password'])fields[key]=i.fields.getTextInputValue(key);
-        s.inputDraft={choice:fields.choice};for(const [key,max] of Object.entries({name:250,schedule:4000,description:2000,password:8}))s.inputDraft[key]=String(fields[key]).slice(0,max);s.phase='draft';
+        invalidateEventControls(s);s.inputDraft={choice:fields.choice};for(const [key,max] of Object.entries({name:250,schedule:4000,description:2000,password:8}))s.inputDraft[key]=String(fields[key]).slice(0,max);s.phase='draft';
         s.event=eventData(fields);delete s.inputDraft;s.phase='review';s.reviewEmail=currentEmail();
       } else if(action==='create') {
         if(s.phase!=='review')throw new Error('先に内容を入力してください。');
+        if(!s.reviewToken || token!==s.reviewToken)throw new Error('最新の内容確認画面から内容を確認して作成してください。');
         const destination=currentEmail();
         if(!validDensukeEmail(destination))throw new Error('「控えメールの宛先」で宛先を設定してください。');
         if(s.reviewEmail!==destination)throw new Error('別の操作で固定メールが変更されました。「内容を修正」から再確認してください。');
@@ -123,6 +131,7 @@ export function createDensukeController({email,settings,client=createDensukeClie
         const beforeCreate=async()=>{
           await authorizeSession(i,s);
           if(s.phase!=='creating')throw new Error('この作成操作は終了しています。');
+          if(s.reviewToken!==token)throw new Error('内容の確認画面が変更されました。最新の画面で確認してください。');
           if(currentEmail()!==destination || s.reviewEmail!==destination)throw new Error('別の操作で固定メールが変更されました。「内容を修正」から再確認してください。');
         };
         s.phase='creating';let requested=false;
@@ -132,8 +141,8 @@ export function createDensukeController({email,settings,client=createDensukeClie
           // UI/permission requests can overlap another administrator's attempt.
           // Reserve synchronously after their last await, before calling Densuke.
           checkCreationRate(i.user.id);const time=now();attempts.set(i.user.id,time+300000);nextGlobal=time+60000;
-          requested=true;s.result=await client.create(s.event,destination,{beforeCreate});s.phase='done';s.event.password='';note='✓ 作成しました。URLはこの画面だけに表示しています。';
-        }catch(error){s.phase=requested&&error instanceof UncertainCreation?'uncertain':'review';throw error;}
+          requested=true;s.result=await client.create(s.event,destination,{beforeCreate});s.phase='done';invalidateEventControls(s);s.event.password='';note='✓ 作成しました。URLはこの画面だけに表示しています。';
+        }catch(error){s.phase=requested&&error instanceof UncertainCreation?'uncertain':'review';if(s.phase==='uncertain')invalidateEventControls(s);throw error;}
       } else throw new Error('不明な操作です。');
       await authorizeSession(i,s);await i.editReply(densukeScreen(s,note));
     } catch(error) {
