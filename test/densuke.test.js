@@ -300,3 +300,42 @@ test('failure to display a successful creation keeps the completed result and ne
   const reopened=f.interaction();await f.controller.open(reopened);assert.ok(JSON.stringify(reopened.result).includes(result.answer));
   await f.controller.handle(f.interaction(`densuke:${s.id}:create`));assert.equal(f.calls(),1);assert.equal(s.phase,'done');
 });
+
+const shareButton=i=>i.result.components.flatMap(r=>r.toJSON().components).find(c=>c.custom_id?.endsWith(':share'));
+test('known Discord send denials keep answer sharing retryable after correction',async()=>{
+  for(const code of [10003,50001,50013,50035]){
+    const f=fixture(),s=await f.open();Object.assign(s,{phase:'done',event:event(),result:{...result}});let sends=0,posts=0;
+    const channel={send:async()=>{if(++sends===1)throw Object.assign(new Error('known rejection'),{code});posts++;}};
+    const first=f.interaction(`densuke:${s.id}:share`,{channel});await f.controller.handle(first);assert.equal(s.shared,false);assert.equal(s.shareUncertain,undefined);assert.equal(shareButton(first).disabled,false);assert.equal(shareButton(first).label,'回答URLを共有');
+    await f.controller.handle(f.interaction(`densuke:${s.id}:share`,{channel}));await f.controller.handle(f.interaction(`densuke:${s.id}:share`,{channel}));assert.equal(sends,2);assert.equal(posts,1);assert.equal(s.shared,true);assert.equal(s.shareUncertain,undefined);
+  }
+});
+test('unknown answer-share outcomes stay visibly unconfirmed and never invite a duplicate send',async()=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{phase:'done',event:event(),result:{...result}});let sends=0;
+  const channel={send:async()=>{sends++;throw new Error('simulated unknown outcome');}},first=f.interaction(`densuke:${s.id}:share`,{channel});await f.controller.handle(first);
+  assert.equal(s.shared,true);assert.equal(s.shareUncertain,true);assert.equal(shareButton(first).label,'共有結果は未確認');assert.equal(shareButton(first).disabled,true);
+  const reopened=f.interaction();await f.controller.open(reopened);assert.equal(shareButton(reopened).label,'共有結果は未確認');
+  const repeated=f.interaction(`densuke:${s.id}:share`,{channel});await f.controller.handle(repeated);assert.ok(JSON.stringify(repeated.result).includes('未確認'));assert.ok(!JSON.stringify(repeated.result).includes('このイベントは共有済みです'));assert.equal(sends,1);assert.deepEqual(s.result,result);
+});
+test('sharing in progress is not labelled as confirmed and concurrent clicks send only once',{timeout:5000},async t=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{phase:'done',event:event(),result:{...result}});let enter,release,sends=0;const entered=new Promise(resolve=>enter=resolve),gate=new Promise(resolve=>release=resolve);t.after(()=>release());
+  const channel={send:async()=>{sends++;enter();await gate;}},first=f.interaction(`densuke:${s.id}:share`,{channel}),pending=f.controller.handle(first);await entered;
+  const duplicate=f.interaction(`densuke:${s.id}:share`,{channel});await f.controller.handle(duplicate);assert.equal(shareButton(duplicate).label,'共有結果は未確認');assert.equal(shareButton(duplicate).disabled,true);
+  release();await pending;assert.equal(sends,1);assert.equal(s.shareUncertain,undefined);assert.equal(shareButton(first).label,'回答URLは共有済み');
+});
+test('a new event clears the previous unconfirmed sharing state without creating or posting automatically',async()=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{phase:'done',event:event(),result:{...result}});
+  await f.controller.handle(f.interaction(`densuke:${s.id}:share`,{channel:{send:async()=>{throw new Error('unknown');}}}));assert.equal(s.shareUncertain,true);
+  await f.controller.handle(f.interaction(`densuke:${s.id}:restart`));assert.equal(s.shared,undefined);assert.equal(s.shareUncertain,undefined);assert.equal(s.phase,'draft');assert.equal(f.calls(),0);assert.equal(f.posts.length,0);
+});
+test('permission loss after an unknown share preserves its state but hides private event details',async()=>{
+  let allowed=true,sends=0;const f=fixture(),guild={members:{fetch:async()=>({permissions:new PermissionsBitField(allowed?P.Administrator:0n)})},channels:{fetch:async()=>({permissionsFor:()=>({has:()=>true})})}},controller=createDensukeController({email,guild}),s=controller.sessions.create('owner');Object.assign(s,{phase:'done',channelId:'channel',event:event(),result:{...result}});
+  const i=f.interaction(`densuke:${s.id}:share`,{channel:{send:async()=>{sends++;allowed=false;throw new Error('unknown');}}});await controller.handle(i);assert.equal(s.shareUncertain,true);assert.ok(!JSON.stringify(i.result).includes(result.answer));assert.ok(!JSON.stringify(i.result).includes(event().name));
+  allowed=true;const reopened=f.interaction();await controller.open(reopened);assert.equal(shareButton(reopened).label,'共有結果は未確認');assert.equal(sends,1);
+});
+test('a confirmed public share stays confirmed even when its private result display fails',async()=>{
+  const f=fixture(),s=await f.open();Object.assign(s,{phase:'done',event:event(),result:{...result}});let sends=0;
+  await assert.rejects(f.controller.handle(f.interaction(`densuke:${s.id}:share`,{channel:{send:async()=>{sends++;}},async editReply(){throw Object.assign(new Error('expired'),{code:10062});}})));
+  assert.equal(s.shared,true);assert.equal(s.shareUncertain,undefined);const reopened=f.interaction();await f.controller.open(reopened);assert.equal(shareButton(reopened).label,'回答URLは共有済み');
+  await f.controller.handle(f.interaction(`densuke:${s.id}:share`,{channel:{send:async()=>{sends++;}}}));assert.equal(sends,1);
+});

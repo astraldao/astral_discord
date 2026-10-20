@@ -15,7 +15,7 @@ export function densukeScreen(s,note='') {
   if(s.phase==='done') {
     title=s.result.recovered?'✦  作成済みの日程調整を登録しました':'✦  日程調整を作成しました';
     description=`**${safe(e.name,250)}**\n\n**回答用URL**\n${s.result.answer}${s.result.edit?`\n\n**編集用URL · 非公開**\n${s.result.edit}`:''}\n\n共有先：<#${s.channelId}>\n共有ボタンで、回答用URLだけをこのチャンネルに投稿します。編集用URLとパスワードは投稿しません。`;
-    components=[row(new ButtonBuilder().setLabel('回答ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.answer),...(s.result.edit?[new ButtonBuilder().setLabel('編集ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.edit)]:[])),row(button(s,'share',s.shared?'回答URLは共有済み':'回答URLを共有',ButtonStyle.Primary).setDisabled(!!s.shared)),row(button(s,'restart','別のイベントを作る'))];
+    components=[row(new ButtonBuilder().setLabel('回答ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.answer),...(s.result.edit?[new ButtonBuilder().setLabel('編集ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.edit)]:[])),row(button(s,'share',s.shared?(s.shareUncertain?'共有結果は未確認':'回答URLは共有済み'):'回答URLを共有',ButtonStyle.Primary).setDisabled(!!s.shared)),row(button(s,'restart','別のイベントを作る'))];
   } else if(s.phase==='uncertain'){
     title='✦  作成結果の確認が必要です';
     description='伝助で作成されている可能性があります。控えメールを確認してください。\n\n**作成済みの場合**\nメールの回答用URLを登録すると、回答用URLを共有できます。\n\n重複を防ぐため、この画面から再作成はしません。';
@@ -81,13 +81,16 @@ export function createDensukeController({email,settings,client=createDensukeClie
       if(action==='submit-recover' && ['draft','review','uncertain'].includes(s.phase)){
         if(!s.recoverToken || token!==s.recoverToken || s.phase!==s.recoverPhase)throw new Error('最新のURL登録フォームから操作してください。');s.recoverDraft=i.fields.getTextInputValue('answer').trim().slice(0,1000);const answer=answerUrl(s.recoverDraft);if(!answer)throw new Error('回答用URLを入力してください。');s.result={answer,recovered:true};delete s.recoverDraft;delete s.recoverToken;delete s.recoverPhase;s.phase='done';s.event.name||='作成済みイベント';s.event.password='';delete s.inputDraft;note='✓ 作成済みイベントのURLを登録しました。再作成はしていません。';
       } else if(action==='share' && s.phase==='done') {
-        if(s.shared)throw new Error('このイベントは共有済みです。');
+        if(s.shared)throw new Error(s.shareUncertain?'前回の共有結果が未確認です。共有先を確認してください。自動再送はしません。':'このイベントは共有済みです。');
         if(i.channelId!==s.channelId)throw new Error('作成したチャンネルから共有してください。');
-        // Mark before sending: a timeout must not invite duplicate automatic posts.
-        s.shared=true;
-        try {await i.channel.send(payload('✦  日程調整',`**${safe(s.event.name,250)}**\n候補日程への回答をお願いします。`,{components:[row(new ButtonBuilder().setLabel('伝助で回答する').setStyle(ButtonStyle.Link).setURL(s.result.answer))]}));note='✓ 回答用URLを共有しました。';}
-        catch{note='共有結果を確認できませんでした。チャンネルを確認し、必要なら回答用URLを手動で共有してください。';}
-      } else if(action==='restart' && ['done','closed'].includes(s.phase)){s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};delete s.result;delete s.shared;delete s.inputDraft;delete s.recoverToken;delete s.recoverDraft;delete s.recoverPhase;s.reviewEmail=currentEmail();}
+        // Reserve before sending; keep confirmation separate so timeouts cannot invite duplicate posts.
+        s.shared=true;s.shareUncertain=true;
+        try {await i.channel.send(payload('✦  日程調整',`**${safe(s.event.name,250)}**\n候補日程への回答をお願いします。`,{components:[row(new ButtonBuilder().setLabel('伝助で回答する').setStyle(ButtonStyle.Link).setURL(s.result.answer))]}));delete s.shareUncertain;note='✓ 回答用URLを共有しました。';}
+        catch(error){
+          if([10003,50001,50013,50035].includes(error?.code)){s.shared=false;delete s.shareUncertain;note='共有できませんでした。共有先とBotの閲覧・送信・埋め込み権限を確認し、もう一度「回答URLを共有」を押してください。';}
+          else note='共有結果を確認できませんでした。チャンネルを確認し、必要なら回答用URLを手動で共有してください。';
+        }
+      } else if(action==='restart' && ['done','closed'].includes(s.phase)){s.phase='draft';s.event={name:'',schedule:'',description:'',password:'',choice:'1'};delete s.result;delete s.shared;delete s.shareUncertain;delete s.inputDraft;delete s.recoverToken;delete s.recoverDraft;delete s.recoverPhase;s.reviewEmail=currentEmail();}
       else if(!['draft','review'].includes(s.phase))throw new Error('この作成操作は終了しています。');
       else if(action==='cancel'){s.phase='closed';s.event.password='';delete s.inputDraft;}
       else if(action==='choice'){if(!Object.hasOwn(choices,i.values[0]))throw new Error('回答の選択肢が不正です。');s.event.choice=i.values[0];if(s.inputDraft)s.inputDraft.choice=i.values[0];}
