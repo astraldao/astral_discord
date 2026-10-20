@@ -180,7 +180,7 @@ client.once('clientReady', async () => {
   try {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
-    voiceProbe=createVoiceBenchmark({onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info)),canStart:()=>{if(backupReader?.active||pending.size||queue.size||resourcePresence.activeCount>1)throw new EntryError('読み上げ・VC入室・別の操作が進行中です。終了後に測定してください。');},activity:()=>resourcePresence.activity()});
+    voiceProbe=createVoiceBenchmark({version:botVersion,onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info)),canStart:()=>{if(backupReader?.active||pending.size||queue.size||resourcePresence.activeCount>1)throw new EntryError('読み上げ・VC入室・別の操作が進行中です。終了後に測定してください。');},activity:()=>resourcePresence.activity()});
     speedMeasurements=createBenchmarkController({guild,probe:voiceProbe,onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info))});
     backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>voiceProbe.busy||pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity(),onDiagnostic:failure=>console.warn('読み上げ停止:',failure.code,`v${botVersion}`,JSON.stringify(failure.info??{}))});
     const bannerState=user=>({key:user.banner??null,url:user.bannerURL({extension:'png',size:1024})??null});

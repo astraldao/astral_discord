@@ -17,8 +17,15 @@ function calendarEventColor(title){let hash=0;for(const c of String(title))hash=
 export function calendarLayout(month,events,today,selectedDate){
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||Number(month.slice(0,4))<2000||Number(month.slice(0,4))>2099)throw new Error('カレンダーの月が不正です。');
   const year=Number(month.slice(0,4)),m=Number(month.slice(5)),days=new Date(Date.UTC(year,m,0)).getUTCDate(),offset=new Date(Date.UTC(year,m-1,1)).getUTCDay();
-  const cells=Array.from({length:days},(_,n)=>{const date=`${month}-${String(n+1).padStart(2,'0')}`,items=events.filter(e=>e.date===date).sort((a,b)=>(a.start??-1)-(b.start??-1)||a.title.localeCompare(b.title));return {day:n+1,date,row:Math.floor((offset+n)/7),col:(offset+n)%7,today:date===today,selected:date===selectedDate,items,hidden:Math.max(0,items.length-3)};});
-  return {month,rows:Math.ceil((offset+days)/7),offset,cells,count:cells.reduce((n,c)=>n+c.items.length,0)};
+  const last=`${month}-${String(days).padStart(2,'0')}`,visible=events.filter(e=>e.date<=last&&(e.endDate??e.date)>=`${month}-01`);
+  const cells=Array.from({length:days},(_,n)=>{const date=`${month}-${String(n+1).padStart(2,'0')}`,items=visible.filter(e=>e.date<=date&&(e.endDate??e.date)>=date).sort((a,b)=>(a.start??-1)-(b.start??-1)||a.title.localeCompare(b.title));return {day:n+1,date,row:Math.floor((offset+n)/7),col:(offset+n)%7,today:date===today,selected:date===selectedDate,items,hidden:items.length};});
+  const rows=Math.ceil((offset+days)/7),spans=[];
+  for(let row=0;row<rows;row++){
+    const week=cells.filter(c=>c.row===row),occupied=[0,0,0];
+    const segments=visible.flatMap(event=>{const covered=week.filter(c=>event.date<=c.date&&(event.endDate??event.date)>=c.date);if(!covered.length)return [];return [{event,row,col:covered[0].col,endCol:covered.at(-1).col,continuesBefore:event.date<covered[0].date,continuesAfter:(event.endDate??event.date)>covered.at(-1).date}];}).sort((a,b)=>(b.endCol-b.col)-(a.endCol-a.col)||a.col-b.col||(a.event.start??-1)-(b.event.start??-1)||a.event.title.localeCompare(b.event.title)||String(a.event.id??'').localeCompare(String(b.event.id??'')));
+    for(const segment of segments){const mask=((1<<(segment.endCol-segment.col+1))-1)<<segment.col,lane=occupied.findIndex(bits=>!(bits&mask));if(lane===-1)continue;occupied[lane]|=mask;spans.push({...segment,lane});for(const c of week)if(c.col>=segment.col&&c.col<=segment.endCol)c.hidden--;}
+  }
+  return {month,rows,offset,cells,spans,count:visible.length};
 }
 const time=n=>n===null?'終日':`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
 export function calendarImage(month,events,{today,selectedDate,title=''}={}){
@@ -45,15 +52,18 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
       if(c.today)circle(x+cell/2,y+19,15,theme.today);
       const day=String(c.day);text(day,x+(cell-measure(day,20))/2,y+2,20,c.today?theme.white:col===0?theme.sunday:col===6?theme.saturday:theme.ink);
       if(c.selected)rect(x+4,y+1,cell-8,3,theme.saturday);
-      c.items.slice(0,3).forEach((event,n)=>{
-        const by=y+40+n*28;rect(x+3,by,cell-6,25,bands[calendarEventColor(event.title)]);
-        text(event.title,x+7,by-2,20,theme.ink,cell-14);
-      });
-      if(c.hidden)text(`+${c.hidden}件`,x+7,y+121,20,theme.muted,cell-14);
     }
   }
+  for(const span of layout.spans){
+    const x=17+span.col*cell,y=top+span.row*week+40+span.lane*28,w=(span.endCol-span.col+1)*cell-6;
+    rect(x,y,w,25,bands[calendarEventColor(span.event.title)]);
+    text(span.event.title,x+4,y-2,20,theme.ink,w-8);
+    if(span.continuesBefore)rect(x,y+7,2,11,theme.muted);
+    if(span.continuesAfter)rect(x+w-2,y+7,2,11,theme.muted);
+  }
+  for(const c of layout.cells)if(c.hidden)text(`+${c.hidden}件`,21+c.col*cell,top+c.row*week+121,20,theme.muted,cell-14);
   rect(14,top+layout.rows*week,width-28,1,theme.line);
   text('予定の詳細・時刻は下のメニューから',22,height-31,20,theme.muted);
   return {buffer:encodePng(pixels,width,height,{palette,lookup}),width,height,layout};
 }
-export function calendarAlt(layout){return `${layout.month}の月間カレンダー。日曜始まり。${layout.count}件。${layout.cells.filter(c=>c.items.length).map(c=>`${c.day}日${c.today?'（今日）':''}${c.selected?'（選択中）':''}: ${c.items.length}件、${c.items.map(e=>`${time(e.start)} ${e.title}`).join('、')}`).join('。')}`.slice(0,1024);}
+export function calendarAlt(layout){return `${layout.month}の月間カレンダー。日曜始まり。${layout.count}件。${layout.cells.filter(c=>c.items.length).map(c=>`${c.day}日${c.today?'（今日）':''}${c.selected?'（選択中）':''}: ${c.items.length}件、${c.items.map(e=>`${time(e.start)} ${e.title}${e.endDate?`（${e.date}〜${e.endDate}）`:''}`).join('、')}`).join('。')}`.slice(0,1024);}

@@ -24,7 +24,7 @@ test('benchmark measures the fixed text, real-time factor, encoder and container
   const r=await probe.run('owner');assert.equal(r.ok,true);assert.equal(r.warmupMs,200);assert.equal(r.firstAudioMs,120);assert.equal(r.synthesisMs,1000);assert.equal(r.audioMs,200);assert.equal(r.maxGapMs,380);assert.equal(r.realTimeFactor,5);assert.equal(r.encodingMs,20);assert.equal(r.throttledMs,40);assert.equal(r.throttledPercent,50);assert.equal(active,0);assert.equal(closed,1);assert.equal(probe.busy,false);await assert.rejects(probe.run('owner'),/あと30秒/);probe.close();
 });
 test('active work is rejected before starting a worker, concurrent runs are reserved once and owner cancellation is checked',async()=>{
-  let starts=0;const blocked=createVoiceBenchmark({canStart:()=>{throw new Error('busy');},worker:()=>starts++});await assert.rejects(blocked.run('a'),/busy/);assert.equal(starts,0);assert.equal(blocked.busy,false);
+  let starts=0;const blocked=createVoiceBenchmark({canStart:()=>{throw new Error('busy');},worker:()=>starts++});await assert.rejects(blocked.run('a'),/終了後に測定/);assert.equal(starts,0);assert.equal(blocked.busy,false);
   const ready=deferred(),probe=createVoiceBenchmark({capacity:async()=>({}),worker:()=>{starts++;return {ready:ready.promise,close:()=>ready.reject(new Error('stopped'))};}}),first=probe.run('a');await tick();assert.equal(probe.busy,true);await assert.rejects(probe.run('b'),/実行中/);assert.throws(()=>probe.cancel('b'));probe.cancel('a');const result=await first;assert.equal(result.cancelled,true);assert.equal(result.failure,undefined);assert.equal(probe.busy,false);assert.equal(starts,1);probe.close();await assert.rejects(probe.run('a'),/停止/);
 });
 test('failure details retain the actual timed-out part and discard text, native errors and environment values',async()=>{
@@ -77,7 +77,7 @@ test('permanently unavailable replies preserve the result for a freshly authoriz
   const ready=deferred(),notices=[];const probe=createVoiceBenchmark({capacity:async()=>({}),worker:()=>({ready:ready.promise,async stream(_,__,chunk){chunk(wave());},close(){ready.reject(new Error('closed'));}}),encode:async()=>({packets:5,audioMs:100})});
   const c=createBenchmarkController({probe,access:async()=>{},onDiagnostic:info=>notices.push(info)});await c.open(interaction());const s=[...c.sessions.sessions.values()][0];
   const task=c.handle(interaction(`perf:${s.id}:${s.turn}:start`,{async editReply(){throw Object.assign(new Error('SECRET_TOKEN_AND_PATH'),{code:10015});}}));await tick();assert.equal(probe.busy,true);ready.resolve();await task;
-  assert.equal(s.busy,false);assert.equal(probe.snapshot().result.ok,true);assert.equal(probe.snapshot().result.cancelled,undefined);const reopen=interaction();await c.open(reopen);assert.ok(JSON.stringify(reopen.result).includes('測定が完了'));assert.deepEqual(notices.map(({stage,code})=>({stage,code})),[{stage:'progress',code:10015},{stage:'error',code:10015}]);probe.close();
+  assert.equal(s.busy,false);assert.equal(probe.snapshot().result.ok,true);assert.equal(probe.snapshot().result.cancelled,undefined);assert.equal(probe.history().length,1);assert.equal(probe.history()[0].ok,true);const reopen=interaction();await c.open(reopen);assert.ok(JSON.stringify(reopen.result).includes('測定が完了'));assert.deepEqual(notices.map(({stage,code})=>({stage,code})),[{stage:'progress',code:10015},{stage:'error',code:10015}]);probe.close();
 });
 
 test('a transient progress permission lookup failure leaves the authorized fixed-text measurement running',async()=>{

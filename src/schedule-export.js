@@ -15,7 +15,7 @@ export function scheduleExport(calendar,events,{now=Date.now()}={}){
   const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Astral Discord//Schedule//JA','CALSCALE:GREGORIAN',`X-WR-CALNAME:${text(calendar.title)}`];
   for(const event of events){
     lines.push('BEGIN:VEVENT',`UID:${calendar.id}.${event.id}@astral.local`,`DTSTAMP:${stamp(new Date(now))}`,`SEQUENCE:${event.revision}`,`SUMMARY:${text(event.title)}`);
-    if(event.start===null)lines.push(`DTSTART;VALUE=DATE:${event.date.replace(/-/g,'')}`,`DTEND;VALUE=DATE:${nextDate(event.date)}`);
+    if(event.start===null)lines.push(`DTSTART;VALUE=DATE:${event.date.replace(/-/g,'')}`,`DTEND;VALUE=DATE:${nextDate(event.endDate??event.date)}`);
     else {lines.push(`DTSTART:${stamp(utc(event.date,event.start))}`);if(event.end!==null)lines.push(`DTEND:${stamp(utc(event.date,event.end))}`);}
     if(event.place)lines.push(`LOCATION:${text(event.place)}`);
     if(event.description)lines.push(`DESCRIPTION:${text(event.description)}`);
