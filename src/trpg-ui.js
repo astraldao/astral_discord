@@ -13,12 +13,12 @@ const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCus
 const link=(label,url)=>new ButtonBuilder().setLabel(label).setStyle(ButtonStyle.Link).setURL(url);
 const menu=(s,a,label,items)=>new StringSelectMenuBuilder().setCustomId(`trpg:${s.id}:${a}`).setPlaceholder(label).addOptions(items);
 const input=(id,label,max,required=true,value='')=>{
-  const field=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMaxLength(max).setRequired(required).setPlaceholder({name:'例：星の神話、エンドロール',url:label.includes('共有URL')?'https://iachara.com/view/…':'https://ccfolia.com/rooms/…',query:'名前の一部でも検索できます'}[id]??'入力してください');
+  const field=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMaxLength(max).setRequired(required).setPlaceholder({name:'例：星の神話、エンドロール',url:label.includes('共有URL')?'https://iachara.com/view/…':'https://ccfolia.com/rooms/…',query:'名前の一部でも検索できます',message:'https://discord.com/channels/… または メッセージID'}[id]??'入力してください');
   if(value)field.setValue(String(value).slice(0,max));
   return row(field);
 };
 function form(s,kind){
-  if(kind==='repair-result'){s.repairToken=randomUUID().slice(0,12);return new ModalBuilder().setCustomId(`trpg:${s.id}:submit-repair-result:${s.repairToken}`).setTitle('復旧結果のメッセージIDを登録').addComponents(input('message','設置先のBotパネルのメッセージID',20,true,s.repairMessageDraft));}
+  if(kind==='repair-result'){s.repairToken=randomUUID().slice(0,12);return new ModalBuilder().setCustomId(`trpg:${s.id}:submit-repair-result:${s.repairToken}`).setTitle('パネルの投稿を登録').addComponents(input('message','Bot投稿のリンク、またはメッセージID',200,true,s.repairMessageDraft));}
   if(kind==='table-copy'){const source=s.copySource;s.copyModal={token:randomUUID().slice(0,12),id:source.id,revision:JSON.stringify(source)};return new ModalBuilder().setCustomId(`trpg:${s.id}:submit-table-copy:${s.copyModal.token}`).setTitle('卓セットを複製').addComponents(input('name','新しい卓名（伝助・参加PCは引き継がない）',100,true,s.copyName??`${source.name}（複製）`.slice(0,100)));}
   if(kind==='table' || kind==='table-edit'){const t=s.tableDraft??(kind==='table-edit'?s.tableForm:null);s.tableModal={token:randomUUID().slice(0,12),id:s.tableEditId??null,revision:s.tableForm?JSON.stringify(s.tableForm):undefined};return new ModalBuilder().setCustomId(`trpg:${s.id}:submit-table:${s.tableModal.token}`).setTitle(kind==='table'?'卓セットを作成':'卓セットを編集').addComponents(input('name','卓名',100,true,t?.name),input('answer','伝助の回答用URL（任意）',250,false,t?.answerUrl));}
   if(['table-search','table-scenario-search','table-pc-search'].includes(kind)){
@@ -84,7 +84,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
     } else if(s.view==='repair'){
       const p=d.panels.find(x=>x.id===s.repairId);if(!p)throw new Error('パネルが見つかりません。');title='✦  復旧内容を確認';
       body=`**公開範囲** ${p.mode==='secret'?'秘匿':'共有'}（変更しません）\n**登録PC** ${d.characters.filter(c=>c.panelId===p.id).length}件（保持します）\n**設置先** <#${p.repairPending?.channelId??s.repairChannelId}>\n\n`;
-      if(p.repairPending){body+='前回の投稿結果が未確認です。設置先でBotのパネルを探し、メッセージIDを登録してください。結果を登録するまで再送しません。';components.push(row(button(s,'form-repair-result','復旧結果を登録',ButtonStyle.Primary),button(s,'repair-clear','設置先にパネルがない')));}
+      if(p.repairPending){body+='前回の投稿結果が未確認です。設置先でBotのパネルを探し、メッセージの「リンクをコピー」で取得したリンクを登録してください。メッセージIDも使えます。結果を登録するまで再送しません。';components.push(row(button(s,'form-repair-result','復旧結果を登録',ButtonStyle.Primary),button(s,'repair-clear','設置先にパネルがない')));}
       else{body+='元のパネルが残っている場合は同じメッセージを更新します。失われた場合だけ再設置します。';components.push(row(new ChannelSelectMenuBuilder().setCustomId(`trpg:${s.id}:repair-channel`).setPlaceholder('復旧先のチャンネル').addChannelTypes(ChannelType.GuildText)),row(button(s,'confirm-repair','この内容で復旧',ButtonStyle.Primary)));}
       components.push(row(button(s,'repairs','復旧対象の一覧へ')));
     } else if(['tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table'].includes(s.view)){
@@ -189,8 +189,8 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         s.repairStage=null;s.view='repairs';note=result==='updated'?'✓ 既存のパネルを更新しました。':'✓ PC登録と公開範囲を保持して再設置しました。';
       }
       else if(action==='submit-repair-result'){
-        requireAdmin(s);if(s.view!=='repair' || !s.repairToken || parts[3]!==s.repairToken)throw new Error('最新の復旧結果フォームから操作してください。');const id=i.fields.getTextInputValue('message').trim();s.repairMessageDraft=id.slice(0,20);
-        await repair.adopt(s.repairStage,id,async()=>{sessions.get(s.id,s.userId);s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);requireAdmin(s);});delete s.repairToken;s.view='repairs';note='✓ 確認したパネルを復旧先として登録しました。';
+        requireAdmin(s);if(s.view!=='repair' || !s.repairToken || parts[3]!==s.repairToken)throw new Error('最新の復旧結果フォームから操作してください。');const value=i.fields.getTextInputValue('message').trim();s.repairMessageDraft=value.slice(0,200);
+        await repair.adopt(s.repairStage,value,async()=>{sessions.get(s.id,s.userId);s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);requireAdmin(s);});delete s.repairToken;s.view='repairs';note='✓ 確認したパネルを復旧先として登録しました。';
       }
       else if(action==='submit-scenario'){
         requireAdmin(s);if(!s.scenarioModal || parts[3]!==s.scenarioModal.token)throw new Error('最新の入力フォームから操作してください。');
