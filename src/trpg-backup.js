@@ -32,7 +32,7 @@ export function createTrpgBackups({store,authorize,now=()=>Date.now()}){
       if(uploadLimit(i)<b.parts[page].bytes)throw new Error('送信上限が変わりました。最新の控えでZIPを作り直してください。');
       const prepared=prepare(s,b);
       if(prepared.plan.signature!==b.signature)throw new Error('控えが更新・変更されました。最新の控えでZIPを作り直してください。');
-      const file=prepared.part(page);
+      const file=await prepared.partAsync(page);
       await check(i,s,b);
       // Changes committed while permissions were being fetched cannot slip into
       // a multipart download or expose a backup that has since been removed.

@@ -1,0 +1,87 @@
+{
+  "date": "2026-10-20",
+  "runtime": "v24.19.0",
+  "scope": "Synthetic100PCs x256KiB. One ZIP including three synchronous planning/validation passes, sync vs cooperative per-PC encoding. Each sample in a separate process. setImmediate heartbeat largest interval, not a real user interaction, Discord, voice latency, Quaxly or CPU quota simulation. No timing thresholds in tests.",
+  "order": [
+    "sync",
+    "cooperative",
+    "cooperative",
+    "sync",
+    "sync",
+    "cooperative"
+  ],
+  "medians": [
+    {
+      "mode": "sync",
+      "outputBytes": 7080968,
+      "elapsedMs": 166.70486699999998,
+      "cpuMs": 171.9,
+      "maximumGapMs": 167.40448300000003,
+      "turns": 2
+    },
+    {
+      "mode": "cooperative",
+      "outputBytes": 7080968,
+      "elapsedMs": 169.63693800000001,
+      "cpuMs": 184.693,
+      "maximumGapMs": 56.117536,
+      "turns": 29
+    }
+  ],
+  "samples": [
+    {
+      "mode": "sync",
+      "characters": 100,
+      "outputBytes": 7080968,
+      "elapsedMs": 158.464989,
+      "cpuMs": 163.981,
+      "maximumGapMs": 159.24990400000002,
+      "turns": 2
+    },
+    {
+      "mode": "cooperative",
+      "characters": 100,
+      "outputBytes": 7080968,
+      "elapsedMs": 169.63693800000001,
+      "cpuMs": 184.693,
+      "maximumGapMs": 56.117536,
+      "turns": 29
+    },
+    {
+      "mode": "cooperative",
+      "characters": 100,
+      "outputBytes": 7080968,
+      "elapsedMs": 164.255467,
+      "cpuMs": 178.886,
+      "maximumGapMs": 55.794263000000015,
+      "turns": 29
+    },
+    {
+      "mode": "sync",
+      "characters": 100,
+      "outputBytes": 7080968,
+      "elapsedMs": 166.70486699999998,
+      "cpuMs": 171.9,
+      "maximumGapMs": 167.40448300000003,
+      "turns": 2
+    },
+    {
+      "mode": "sync",
+      "characters": 100,
+      "outputBytes": 7080968,
+      "elapsedMs": 175.72006400000004,
+      "cpuMs": 180.884,
+      "maximumGapMs": 176.35866800000002,
+      "turns": 2
+    },
+    {
+      "mode": "cooperative",
+      "characters": 100,
+      "outputBytes": 7080968,
+      "elapsedMs": 178.511524,
+      "cpuMs": 194.976,
+      "maximumGapMs": 59.52101599999999,
+      "turns": 29
+    }
+  ]
+}

@@ -77,3 +77,10 @@ test('an obsolete pagination action cannot redraw administrator backup metadata 
   const f=await fixture(t,{entry:'panel'});await f.act('backup-panel');f.setAdmin(false);
   const i=await f.act('next');assert.ok(!i.result.files);assert.ok(!JSON.stringify(i.result).includes('このパネルの全PCの控え'));assert.deepEqual(i.result.attachments,[]);
 });
+
+for(const change of ['source','permission'])test(`${change} changes while ZIP construction yields cannot expose the generated file`,{timeout:5000},async t=>{
+  const f=await fixture(t),pending=f.act('backup-all');
+  let observed;const changed=new Promise(resolve=>setImmediate(()=>{observed={view:f.s.view,busy:f.s.busy};if(change==='permission')f.deny();else{const replacement=structuredClone(f.store.data);replacement.characters.shift();f.store.data=replacement;}resolve();}));
+  const i=await pending;await changed;assert.deepEqual(observed,{view:'backup',busy:true});assert.ok(!i.result.files);assert.deepEqual(i.result.attachments,[]);assert.equal(f.s.busy,false);
+  assert.ok(!JSON.stringify(i.result).includes('FOREIGN TXT'));
+});

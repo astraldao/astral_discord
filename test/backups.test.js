@@ -36,3 +36,13 @@ test('backup planning rejects an unfittable record before building a ZIP and val
   const prepared=prepareBackups(characters);for(const part of [-1,0.5,1,'0',NaN])assert.throws(()=>prepared.part(part));
   characters[0].txt='mutated';assert.ok(prepared.part(0).data.includes(Buffer.from('本文')));
 });
+
+test('cooperative ZIP generation lets another task run and produces byte-identical output',async()=>{
+  const {prepareBackups}=await import('../src/backups.js'),characters=Array.from({length:4},(_,n)=>({name:`PC${n}`,txt:'本文🪐'.repeat(300)})),prepared=prepareBackups(characters);let heartbeat=false;
+  setImmediate(()=>{heartbeat=true;});const asynchronous=await prepared.partAsync(0);assert.equal(heartbeat,true);assert.deepEqual(asynchronous,prepared.part(0));
+  await assert.rejects(prepared.partAsync(-1),/ZIP/);
+});
+test('cooperative generation retains the original snapshot even if its input records are edited during a yield',async()=>{
+  const {prepareBackups}=await import('../src/backups.js'),characters=[{name:'PC',txt:'ORIGINAL'}],prepared=prepareBackups(characters);
+  const pending=prepared.partAsync(0);characters[0].txt='MUTATED';const file=await pending;assert.ok(file.data.includes(Buffer.from('ORIGINAL')));assert.ok(!file.data.includes(Buffer.from('MUTATED')));
+});

@@ -1,0 +1,10 @@
+import {setImmediate as yieldTurn} from 'node:timers/promises';
+import {prepareBackups} from '../../src/backups.js';
+const mode=process.argv[2];if(!['sync','cooperative'].includes(mode))throw Error('usage: sync|cooperative');
+const synthetic=()=>JSON.parse(JSON.stringify(Array.from({length:100},(_,n)=>({id:`synthetic-${n}`,ownerId:'synthetic',panelId:'panel',name:`Synthetic${n}`,txt:'x'.repeat(256*1024-String(n).length)+n}))));
+const characters=synthetic();let active=true,last=performance.now(),maximumGapMs=0,turns=0,heartbeat;
+const beat=()=>{const at=performance.now();maximumGapMs=Math.max(maximumGapMs,at-last);last=at;turns++;if(active)heartbeat=setImmediate(beat);};heartbeat=setImmediate(beat);await yieldTurn();
+const cpu=process.cpuUsage(),began=performance.now(),initial=prepareBackups(characters).plan,prepared=prepareBackups(characters),file=mode==='sync'?prepared.part(0):await prepared.partAsync(0);
+if(prepareBackups(characters).plan.signature!==initial.signature)throw Error('snapshot changed');
+const elapsedMs=performance.now()-began,used=process.cpuUsage(cpu);await yieldTurn();active=false;clearImmediate(heartbeat);
+console.log(JSON.stringify({mode,characters:characters.length,outputBytes:file.data.length,elapsedMs,cpuMs:(used.user+used.system)/1000,maximumGapMs,turns}));
