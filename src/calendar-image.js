@@ -29,13 +29,21 @@ export function calendarLayout(month,events,today,selectedDate){
   }
   return {month,rows,offset,cells,spans,count:visible.length};
 }
+function titleLines(value,maxWidth){
+  const lines=[''];let used=0;for(const char of String(value).replace(/[\r\n\t]/g,' ')){const step=advance(char,20);if(used+step>maxWidth&&lines.at(-1)){lines.push('');used=0;}lines[lines.length-1]+=char;used+=step;}return lines;
+}
 const time=n=>n==null?'終日':`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
 export function calendarImage(month,events,{today,selectedDate,title=''}={}){
   const layout=calendarLayout(month,events,today,selectedDate),width=840,cell=116,top=118;
   const lanes=layout.spans.reduce((n,span)=>Math.max(n,span.lane+1),0),rich=lanes<=1;
   const timed=rich&&layout.spans.some(span=>Number.isInteger(span.event.start)),wrapped=rich&&layout.spans.some(span=>measure(span.event.title,20)>(span.endCol-span.col+1)*cell-14);
-  const bandTop=rich?36:40,bandHeight=rich?(wrapped?45:25)+(timed?18:0):25,laneGap=28,week=rich?bandTop+bandHeight+15:142;
-  const footer=timed?52:38,height=top+layout.rows*week+footer,pixels=Buffer.alloc(width*height*4,255);
+  const bandTop=40,bandHeight=rich?(wrapped?45:25)+(timed?18:0):25,laneGap=28,week=rich?bandTop+bandHeight+15:142;
+  // Only expand titles actually shortened in a visible card. Object identity keeps
+  // distinct same-title events separate while deduplicating week-crossing spans.
+  const shortened=[...new Set(layout.spans.filter(span=>titleLines(span.event.title,(span.endCol-span.col+1)*cell-14).length>(wrapped?2:1)).map(span=>span.event))].sort((a,b)=>a.date.localeCompare(b.date)||(a.start??-1)-(b.start??-1)||a.title.localeCompare(b.title));
+  const titleKey=shortened.slice(0,8).map(event=>({event,lines:titleLines(event.title,680)}));
+  const keyHeight=titleKey.length?34+titleKey.reduce((n,item)=>n+Math.max(44,item.lines.length*24+8),0)+(shortened.length>8?26:0):0;
+  const footer=timed?52:38,height=top+layout.rows*week+keyHeight+footer,pixels=Buffer.alloc(width*height*4,255);
   function rect(x,y,w,h,color){for(let j=Math.max(0,y);j<Math.min(height,y+h);j++)for(let i=Math.max(0,x);i<Math.min(width,x+w);i++){const at=(j*width+i)*4;for(let c=0;c<3;c++)pixels[at+c]=color[c];}}
   function circle(x,y,r,color){for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++)if(i*i+j*j<=r*r)rect(x+i,y+j,1,1,color);}
   function text(value,x,y,size,color,maxWidth=width-x){
@@ -46,7 +54,7 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
   }
   function eventTitle(value,x,y,maxWidth){
     const clean=String(value).replace(/[\r\n\t]/g,' ');if(!wrapped||measure(clean,20)<=maxWidth){text(clean,x,y,20,theme.ink,maxWidth);return;}
-    let first='',used=0;const chars=[...clean];let index=0;for(;index<chars.length;index++){const step=advance(chars[index],20);if(used+step>maxWidth)break;first+=chars[index];used+=step;}text(first,x,y,20,theme.ink,maxWidth);text(chars.slice(index).join(''),x,y+22,20,theme.ink,maxWidth);
+    const lines=titleLines(clean,maxWidth);text(lines[0],x,y,20,theme.ink,maxWidth);text(lines.slice(1).join(''),x,y+22,20,theme.ink,maxWidth);
   }
   text(`${month.slice(0,4)}年${Number(month.slice(5))}月`,22,8,28,theme.ink);
   const count=`予定 ${layout.count}件`;text(count,width-22-measure(count,20),18,20,theme.muted);
@@ -75,8 +83,19 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
   }
   for(const c of layout.cells)if(c.hidden)text(`+${c.hidden}件`,21+c.col*cell,top+c.row*week+121,20,theme.muted,cell-14);
   rect(14,top+layout.rows*week,width-28,1,theme.line);
+  if(titleKey.length){
+    let y=top+layout.rows*week+8;text('枠内で省略した予定名',22,y,20,theme.muted);y+=28;
+    for(const {event,lines} of titleKey){
+      rect(22,y+4,4,Math.max(28,lines.length*24),bands[calendarEventColor(event)]);
+      text(event.date.slice(5).replace('-','/'),34,y,20,theme.ink,90);
+      text(time(event.start),34,y+24,16,theme.muted,90);
+      lines.forEach((line,index)=>text(line,138,y+index*24,20,theme.ink,680));
+      y+=Math.max(44,lines.length*24+8);
+    }
+    if(shortened.length>8)text(`ほか${shortened.length-8}件の長い予定名は下のメニューから`,22,y,16,theme.muted);
+  }
   if(timed){text('時刻は開始時刻・色は予定の目印です',22,height-48,16,theme.muted);text('予定の詳細は下のメニューから',22,height-28,16,theme.muted);}
   else text('色は予定の目印・詳細は下のメニューから',22,height-31,20,theme.muted);
-  return {buffer:encodePng(pixels,width,height,{palette,lookup}),width,height,layout,geometry:{top,weekHeight:week,bandTop,bandHeight,laneGap,rich,timed,wrapped}};
+  return {buffer:encodePng(pixels,width,height,{palette,lookup}),width,height,layout,geometry:{top,weekHeight:week,bandTop,bandHeight,laneGap,rich,timed,wrapped,titleKeyCount:titleKey.length,shortenedCount:shortened.length,keyHeight}};
 }
 export function calendarAlt(layout){return `${layout.month}の月間カレンダー。日曜始まり。${layout.count}件。${layout.cells.filter(c=>c.items.length).map(c=>`${c.day}日${c.today?'（今日）':''}${c.selected?'（選択中）':''}: ${c.items.length}件、${c.items.map(e=>`${time(e.start)} ${e.title}${e.endDate?`（${e.date}〜${e.endDate}）`:''}`).join('、')}`).join('。')}`.slice(0,1024);}
