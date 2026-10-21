@@ -13,7 +13,7 @@ test('today, daily counts, overnight start date, all-day sorting and other month
 });
 test('PNG is compact, indexed and correctly sized even with 200 events in one day',()=>{
   const events=Array.from({length:200},(_,n)=>({date:'2026-08-01',start:n,title:'予定'.repeat(40)}));
-  const {buffer,width,height,layout}=calendarImage('2026-08',events,{today:'2026-08-01'});assert.equal(width,840);assert.equal(height,1008);assert.equal(buffer.readUInt32BE(16),width);assert.equal(buffer.readUInt32BE(20),height);assert.equal(buffer[25],3);assert.ok(buffer.length<150000);assert.ok(calendarAlt(layout).length<=1024);
+  const {buffer,width,height,layout,geometry}=calendarImage('2026-08',events,{today:'2026-08-01'});assert.equal(width,840);assert.equal(height,1008+geometry.keyHeight);assert.equal(geometry.titleKeyCount,3);assert.equal(buffer.readUInt32BE(16),width);assert.equal(buffer.readUInt32BE(20),height);assert.equal(buffer[25],3);assert.ok(buffer.length<150000);assert.ok(calendarAlt(layout).length<=1024);
   let position=8,data=[];while(position<buffer.length){const length=buffer.readUInt32BE(position),type=buffer.toString('ascii',position+4,position+8);if(type==='IDAT')data.push(buffer.subarray(position+8,position+8+length));position+=length+12;}assert.equal(inflateSync(Buffer.concat(data)).length,(width+1)*height);
 });
 
