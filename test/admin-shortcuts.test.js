@@ -13,7 +13,7 @@ function interaction(action){return {user:{id:'owner'},channelId:'channel',optio
 function controller(extra={}){return createAdminController({settings:{get:()=>structuredClone(config),update:()=>assert.fail('navigation must not write')},guild:{channels:{cache:new Map()}},access:async()=>true,changed:()=>assert.fail('navigation must not cancel reservations'),pendingCount:()=>2,...extra});}
 test('every direct admin choice opens its exact destination once without changing settings',async()=>{
   const choices=commands().find(c=>c.name==='admin').toJSON().options[0].choices;
-  assert.equal(new Set(choices.map(c=>c.value)).size,14);
+  assert.equal(new Set(choices.map(c=>c.value)).size,15);
   assert.deepEqual(choices.map(c=>c.value),adminDestinations.map(d=>d.action));
   for(const d of adminDestinations){
     const calls=[],hooks={};
@@ -22,6 +22,7 @@ test('every direct admin choice opens its exact destination once without changin
     assert.equal(i.acks.length,1);assert.equal(i.acks[0].flags,MessageFlags.Ephemeral);
     const s=[...c.sessions.sessions.values()][0];assert.equal(s.originChannelId,'channel');
     if(d.action.startsWith('nav-')){assert.equal(s.view,d.action.slice(4));assert.ok(i.result.embeds[0].toJSON().description);}
+    else if(d.action==='open-security'){assert.equal(s.view,'security');assert.deepEqual(calls,[]);assert.ok(i.result.embeds[0].toJSON().description.includes('OSV'));}
     else {assert.deepEqual(calls,[d.action]);if(d.action==='diagnose'){assert.equal(s.view,'diagnostics');assert.match(i.result.embeds[0].toJSON().description,/Bot/);}}
   }
 });

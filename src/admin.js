@@ -4,6 +4,7 @@ import {canConfigure} from './commands.js';
 import {payload,text,menuHomeButton,restartButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 export {adminCategories} from './admin-navigation.js';
+import {securityScreen} from './security-ui.js';
 import {diagnosticsScreen} from './diagnostics.js';
 import {validateSettings} from './settings.js';
 
@@ -135,9 +136,9 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,diagnose,access=async i=>canConfigure((await guild.members.fetch({user:i.user.id,force:true})).permissions)}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,diagnose,securityScan,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});if(!canConfigure(member.permissions))return false;const channel=await guild.channels.fetch(i.channelId,{force:true});return channel?.permissionsFor(member)?.has(P.ViewChannel)===true;}}) {
   const sessions=new AdminSessions();
-  const screen=(s,note='')=>({...(s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
+  const screen=(s,note='')=>({...(s.view==='security'?securityScreen(s):s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
     if(!['lobby','add'].includes(action))return;
     const channel=await guild.channels.fetch(value);
@@ -207,6 +208,15 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         if(interaction.values?.length!==1||!adminCategories.some(c=>c.id===interaction.values[0]))throw new Error('カテゴリを選び直してください。');
         s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=`category-${interaction.values[0]}`;s.page=0;
       }else if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
+      else if(action==='open-security'){s.stage=null;s.view='security';s.page=0;s.security=securityScan?.snapshot()??null;}
+      else if(action==='security-run'){
+        if(s.view!=='security'||!securityScan)throw new Error('脆弱性診断を開き直してください。');sessions.get(s.id,s.userId);
+        const result=await securityScan.run();if(!await access(interaction))throw new Error('管理者権限がありません。');sessions.get(s.id,s.userId);s.security=result;s.page=0;
+      }
+      else if(action==='security-prev'||action==='security-next'){
+        if(s.view!=='security'||s.security?.status!=='complete')throw new Error('脆弱性診断を開き直してください。');
+        s.page+=action==='security-prev'?-1:1;
+      }
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}
@@ -228,6 +238,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         s.stage={action:operation,value,base:JSON.stringify(c),description};
         if(pendingCount() || ['lobby','remove','word-remove'].includes(operation))s.stage.description+=`\n\n現在の入室予約：${pendingCount()}件`;else note=await save(s,interaction);
       }
+      if(s.view==='security')sessions.get(s.id,s.userId);
       await interaction.editReply(screen(s,note));
     } catch(error) {
       const note=`操作できませんでした：${text(error.message)}`;

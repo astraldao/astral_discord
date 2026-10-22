@@ -6,7 +6,7 @@ import {panel,countdownCard,payload,choiceNavigation,waitingCard,cardFooter,setB
 import {canEnter} from '../src/queue.js';
 test('all commands and embed/component payloads serialize under Discord builder limits',()=>{
   const json=commands().map(c=>c.toJSON());assert.deepEqual(json.map(c=>c.name),['menu','admin']);
-  assert.equal(json.find(c=>c.name==='admin').options[0].choices.length,14);
+  assert.equal(json.find(c=>c.name==='admin').options[0].choices.length,15);
   assert.equal(json.find(c=>c.name==='admin').options[0].required,false);
   for(const message of [panel({seconds:5,voice:true}),countdownCard('テストVC',5,5),countdownCard('@everyone',1,15),payload('完了','本文')]) {
     for(const embed of message.embeds)assert.ok(embed.toJSON().description);

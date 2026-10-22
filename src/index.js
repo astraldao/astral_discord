@@ -21,6 +21,7 @@ import {synthesize,gentlePcm} from './speech.js';
 import {SettingsStore} from './settings.js';
 import {registerCommands} from './commands.js';
 import {readFile} from 'node:fs/promises';
+import {createSecurityScan} from './security-scan.js';
 import {createDiagnostics} from './diagnostics.js';
 import {createAdminController} from './admin.js';
 import {createPanelRefresher} from './panel.js';
@@ -203,7 +204,7 @@ client.once('clientReady', async () => {
     trpg=createTrpgController({store:trpgStore,guild});
     restarts=createRestartController({guild,store:runtimeEnv,rpc:updateClient,supported:env.ASTRAL_RESTART_PROTOCOL==='1'&&process.connected,beforeStart:()=>{if(updateBusy({active:Math.max(0,resourcePresence.activeCount-1)+(backupReader?.active?1:0),pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}))throw new EntryError('読み上げ・VC入室・ゲームなどが進行中です。終了後に再起動してください。');}});
     runtimeSettings=createRuntimeEnvController({guild,store:runtimeEnv});
-    admin=createAdminController({settings,guild,refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),openRuntime:i=>runtimeSettings.open(i),openRestart:i=>restarts.open(i),openPerformance:i=>speedMeasurements.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active,lastFailure:backupReader.lastFailure})})});
+    admin=createAdminController({settings,guild,securityScan:createSecurityScan(),refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),openRuntime:i=>runtimeSettings.open(i),openRestart:i=>restarts.open(i),openPerformance:i=>speedMeasurements.open(i),diagnose:createDiagnostics({settings,guild,version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active,lastFailure:backupReader.lastFailure})})});
     interactionHandlers=createInteractionHandlers({mainMenu,backupReader,speedMeasurements,restarts,runtimeSettings,banner,versions,admin,densuke,trpg,profile,forumTags,sharedSchedules,schedule,blackjack,casino,rps,four,chipAccount,chipTools});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
