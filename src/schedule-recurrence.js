@@ -63,3 +63,5 @@ export function scheduleRecurrenceOverlapCount(existingEvents,inputs){
   const existing=existingEvents.map(event=>eventInterval(scheduleEvent({title:event.title,date:event.date,endDate:event.endDate,time:timeInput(event),place:event.place,description:event.description})));
   return inputs.map(scheduleEvent).map(eventInterval).filter(candidate=>existing.some(event=>intervalsOverlap(event,candidate))).length;
 }
+
+export {eventInterval as scheduleEventInterval,intervalsOverlap as scheduleIntervalsOverlap};

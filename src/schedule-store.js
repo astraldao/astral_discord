@@ -1,3 +1,5 @@
+import {validScheduleHistory,recordScheduleChange,eventSnapshot,scheduleRestoration,historyFingerprint} from './schedule-history.js';
+import {scheduleShift} from './schedule-shift.js';
 import {ScheduleError} from './schedule-errors.js';
 import {randomUUID} from 'node:crypto';
 import {mkdir,readFile,writeFile,rename,unlink,stat} from 'node:fs/promises';
@@ -49,7 +51,8 @@ function validate(d){
   if(!d||d.version!==1||!Array.isArray(d.calendars)||d.calendars.length>20)throw new ScheduleError('予定表データの形式が不正です。');
   let events=0,pubs=0;const ids=new Set();for(const c of d.calendars){if(!c||!id(c.id)||ids.has(c.id)||!bounded(c.title,60)||/[\r\n]/.test(c.title)||!Number.isSafeInteger(c.revision)||c.revision<0||!Array.isArray(c.events)||c.events.length>200||!c.events.every(validEvent)||new Set(c.events.map(e=>e.id)).size!==c.events.length||!Array.isArray(c.publications)||c.publications.length>5)throw new ScheduleError('予定表データの形式が不正です。');ids.add(c.id);events+=c.events.length;pubs+=c.publications.length;
     for(const p of c.publications){if(!p||!id(p.id)||ids.has(p.id)||!snowflake(p.channelId)||scheduleMonth(p.month)!==p.month||!['pending','ready'].includes(p.status)||(p.status==='ready'?!snowflake(p.messageId):p.messageId!==null))throw new ScheduleError('予定表の投稿情報が不正です。');ids.add(p.id);}if(new Set(c.publications.map(p=>`${p.channelId}:${p.month}`)).size!==c.publications.length)throw new ScheduleError('予定表の投稿情報が重複しています。');
-  }if(events>1000||pubs>50)throw new ScheduleError('予定表の保存件数が上限を超えています。');return d;
+  }if(!validScheduleHistory(d,validEvent))throw new ScheduleError('予定の変更履歴の形式が不正です。');
+  if(events>1000||pubs>50)throw new ScheduleError('予定表の保存件数が上限を超えています。');return d;
 }
 export class ScheduleStore {
   constructor(path=null){this.path=path;this.data={version:1,calendars:[]};this.tail=Promise.resolve();}
@@ -72,7 +75,7 @@ export class ScheduleStore {
   }
   create(title,check){title=String(title).normalize('NFKC').trim();return this.update(d=>{const c={id:randomUUID(),title,revision:0,events:[],publications:[]};d.calendars.push(c);return c.id;},check);}
   rename(id,title,revision,check){title=String(title).normalize('NFKC').trim();return this.update(d=>{const c=d.calendars.find(c=>c.id===id);if(!c||c.revision!==revision)throw new ScheduleError('予定表が変更されました。開き直してください。');c.title=title;c.revision++;},check);}
-  putEvent(calendarId,eventId,input,revision,check){const event=scheduleEvent(input);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c)throw new ScheduleError('予定表が見つかりません。');let e=eventId?c.events.find(e=>e.id===eventId):null;if(eventId&&(!e||e.revision!==revision))throw new ScheduleError('予定が変更されました。開き直して編集してください。');if(!e){e={id:randomUUID(),revision:0};c.events.push(e);}else e.revision++;delete e.endDate;Object.assign(e,event);c.revision++;return e.id;},check);}
+  putEvent(calendarId,eventId,input,revision,check){const event=scheduleEvent(input);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c)throw new ScheduleError('予定表が見つかりません。');let e=eventId?c.events.find(e=>e.id===eventId):null;if(eventId&&(!e||e.revision!==revision))throw new ScheduleError('予定が変更されました。開き直して編集してください。');const before=e?eventSnapshot(e):null;if(!e){e={id:randomUUID(),revision:0};c.events.push(e);}else e.revision++;delete e.endDate;Object.assign(e,event);c.revision++;if(before)recordScheduleChange(d,c,'edit',[before],[e]);return e.id;},check);}
   putEvents(calendarId,inputs,calendarRevision,check){
     if(!Array.isArray(inputs)||inputs.length<1||inputs.length>26)throw new ScheduleError('一括登録は1〜26件で指定してください。');
     const events=inputs.map(scheduleEvent);
@@ -89,9 +92,19 @@ export class ScheduleStore {
     },check);
   }
   setEventColor(calendarId,eventId,color,revision,check){
-    color=scheduleColor(color);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new ScheduleError('予定が変更されました。詳細を開き直してください。');if(color)e.color=color;else delete e.color;e.revision++;c.revision++;},check);
+    color=scheduleColor(color);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new ScheduleError('予定が変更されました。詳細を開き直してください。');const before=eventSnapshot(e);if(color)e.color=color;else delete e.color;e.revision++;c.revision++;recordScheduleChange(d,c,'color',[before],[e]);},check);
   }
-  removeEvent(calendarId,eventId,revision,check){return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new ScheduleError('予定が変更されました。開き直してください。');c.events=c.events.filter(e=>e.id!==eventId);c.revision++;},check);}
+  removeEvent(calendarId,eventId,revision,check){return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId),e=c?.events.find(e=>e.id===eventId);if(!e||e.revision!==revision)throw new ScheduleError('予定が変更されました。開き直してください。');c.events=c.events.filter(e=>e.id!==eventId);c.revision++;recordScheduleChange(d,c,'delete',[e],[]);},check);}
+  shiftEvents(calendarId,eventIds,days,revision,check){
+    const ids=Array.isArray(eventIds)?[...eventIds]:eventIds;
+    return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c||c.revision!==revision)throw new ScheduleError('予定表が変更されました。移動のプレビューを確認し直してください。');const plan=scheduleShift(c,ids,days);for(const {after} of plan.changes)Object.assign(c.events.find(e=>e.id===after.id),after,{revision:after.revision+1});c.revision++;recordScheduleChange(d,c,'shift',plan.changes.map(v=>v.before),plan.changes.map(v=>c.events.find(e=>e.id===v.after.id)));return plan.changes.map(v=>v.after.id);},check);
+  }
+  restoreHistory(calendarId,historyId,revision,check){
+    return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c||c.revision!==revision)throw new ScheduleError('予定表が変更されました。復元の確認を開き直してください。');const plan=scheduleRestoration(c,historyId),before=plan.entry.before;for(const e of plan.events){const index=c.events.findIndex(v=>v.id===e.id);if(index<0)c.events.push(e);else c.events[index]=e;}plan.entry.restored=true;c.revision++;recordScheduleChange(d,c,'restore',before,plan.events);return plan.events.map(e=>e.id);},check);
+  }
+  clearHistory(calendarId,revision,historyKey,check){
+    return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c||c.revision!==revision||historyFingerprint(c)!==historyKey)throw new ScheduleError('履歴が変更されました。消去の確認を開き直してください。');delete c.history;c.revision++;},check);
+  }
   reserve(calendarId,channelId,month,check){month=scheduleMonth(month);return this.update(d=>{const c=d.calendars.find(c=>c.id===calendarId);if(!c)throw new ScheduleError('予定表が見つかりません。');if(c.publications.some(p=>p.channelId===channelId&&p.month===month))throw new ScheduleError('このチャンネル・表示月は投稿済み、または送信結果の確認待ちです。「投稿を更新」か「投稿URLで復旧」を使ってください。');const p={id:randomUUID(),channelId,month,status:'pending',messageId:null};c.publications.push(p);return p.id;},check);}
   complete(id,messageId,check){return this.update(d=>{const p=d.calendars.flatMap(c=>c.publications).find(p=>p.id===id);if(!p||p.status!=='pending')throw new ScheduleError('この投稿は確認済みです。');p.messageId=messageId;p.status='ready';},check);}
   changeMonth(id,month,revision,check){month=scheduleMonth(month);return this.update(d=>{const c=d.calendars.find(c=>c.publications.some(p=>p.id===id)),p=c?.publications.find(p=>p.id===id);if(!p||p.status!=='ready'||JSON.stringify({...p,calendarId:c.id})!==revision)throw new ScheduleError('投稿情報が変更されました。開き直してください。');if(c.publications.some(x=>x.id!==id&&x.channelId===p.channelId&&x.month===month))throw new ScheduleError('このチャンネルの表示月はすでに登録されています。');p.month=month;},check);}
