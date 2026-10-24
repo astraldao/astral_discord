@@ -13,7 +13,7 @@ export function diceRequest(content){
   let rest=source;for(const m of matches)rest=rest.replace(m[0],' ');
   rest=rest.replace(/<@!?\d{17,20}>/g,' ').replace(/[\s,、。!！:：・/\[\]()「」『』]+/g,' ').trim();
   const bare=!rest;
-  const request=/^(?:(?:ダイス|サイコロ|ロール|判定|ダメージ|回復|幸運|SAN|技能|命中|攻撃|チェック|sanチェック|SANチェック|正気度|成功判定|を|で|の|に|お願い|お願いします|振って|振ってください|振る|振ります|ロールして|くれる|もらえる|結果|教えて|出して|よろしく|ください|して|する|します|roll|please)\s*)+$/iu.test(rest);
+  const request=/^(?:(?:ダイス|サイコロ|ロール|判定|ダメージ|回復|幸運|SAN|技能|目星|聞き耳|図書館|アイデア|知識|回避|応急手当|説得|信用|心理学|隠密|探索|命中|攻撃|チェック|sanチェック|SANチェック|正気度|成功判定|を|で|の|に|は|じゃあ|では|次は|今回は|ちょっと|もう一度|お願い|お願いします|振って|振ってください|振る|振ります|ロールして|くれる|もらえる|結果|教えて|出して|よろしく|ください|して|する|します|roll|please)\s*)+$/iu.test(rest);
   if(!bare&&!request)return null;
   const rolls=matches.map(m=>({count:Number(m[1]),sides:Number(m[2]),modifier:m[3]?(m[3]==='-'?-1:1)*Number(m[4]):0}));
   if(rolls.length>5||rolls.some(r=>r.count<1||r.count>100||r.sides<2||r.sides>1000000||Math.abs(r.modifier)>1000000)||rolls.reduce((n,r)=>n+r.count,0)>200)return {error:'ダイスは1回1〜100個、面数2〜1000000、最大5式・合計200個、補正は±1000000までです。'};
@@ -32,15 +32,17 @@ export async function configureDiceContent(client,loadApplication){
   try{const app=await loadApplication(),flags=new ApplicationFlagsBitField(app.flags);if(flags.has(ApplicationFlagsBitField.Flags.GatewayMessageContent)||flags.has(ApplicationFlagsBitField.Flags.GatewayMessageContentLimited)){client.options.intents=client.options.intents.add(GatewayIntentBits.MessageContent).freeze();return true;}}catch{}
   return false;
 }
-export function createChatDice({guild,enabled=()=>true,now=Date.now,random=randomInt}={}){
-  const users=new Map(),seen=new Map();let pending=0,last=-Infinity;
+export function createChatDice({guild,enabled=()=>true,now=()=>performance.now(),random=randomInt}={}){
+  const users=new Map(),seen=new Map();let pending=0,global={tokens:8,at:now()};
   return {async onMessage(message){
     try{
       if(!enabled()||message.guildId!==guild.id||message.author?.bot||message.webhookId||message.system||typeof message.id!=='string'||!message.author?.id||message.partial)return;
       const originalContent=message.content;const request=diceRequest(originalContent);if(!request)return;
-      const time=now();for(const [id,at] of seen)if(time-at>=60000)seen.delete(id);for(const [id,at] of users)if(time-at>=60000)users.delete(id);
-      if(seen.has(message.id)||seen.size>=1000||users.size>=500&&!users.has(message.author.id)||time-(users.get(message.author.id)??-Infinity)<2000||time-last<200||pending>=4)return;
-      seen.set(message.id,time);users.set(message.author.id,time);last=time;pending++;
+      const time=now();for(const [id,at] of seen)if(time-at>=60000)seen.delete(id);for(const [id,at] of users)if(time-at.seen>=60000)users.delete(id);
+      const user=users.get(message.author.id)??{tokens:3,at:time,seen:time};
+      const userTokens=Math.min(3,user.tokens+Math.max(0,time-user.at)/2000),globalTokens=Math.min(8,global.tokens+Math.max(0,time-global.at)/200);
+      if(seen.has(message.id)||seen.size>=1000||users.size>=500&&!users.has(message.author.id)||userTokens<1||globalTokens<1||pending>=4)return;
+      seen.set(message.id,time);users.set(message.author.id,{tokens:userTokens-1,at:time,seen:time});global={tokens:globalTokens-1,at:time};pending++;
       try{
         let [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
         const allowed=()=>enabled()&&member&&!member.user?.bot&&!member.pending&&channel?.guildId===guild.id&&channel.isTextBased?.()&&!channel.archived&&!channel.locked&&channel.permissionsFor(member)?.has(P.ViewChannel)&&channel.permissionsFor(bot)?.has([P.ViewChannel,P.ReadMessageHistory,channel.isThread?.()?P.SendMessagesInThreads:P.SendMessages]);

@@ -45,7 +45,7 @@ export function organizeScreen(s,c,{time,date,note=''}){
   }else if(s.view==='conflicts'){
     title='予定の時間の重なり';const report=s.conflictReport;if(!report||report.revision!==c.revision)throw new ScheduleError('予定表が変更されました。重なりを確認し直してください。');const p=page(report.pairs,5,s.conflictPage);s.conflictPage=p.index;
     body=`**予定表全体 · 重なり ${report.total}組**\n${p.index+1}/${p.count}ページ${report.total>100?' · 先頭100組を表示':''}\n\n${p.items.map(([a,b])=>{const first=c.events.find(e=>e.id===a),second=c.events.find(e=>e.id===b);return `${eventLine(first)}\n↳ ${safe(short(second.title))} · ${date(second)} · ${time(second)}`;}).join('\n\n')||'時間が重なる予定は見つかりませんでした。'}\n\n終日はその日全体、終了時刻未指定は開始時刻だけとして比較します。終了と次の開始が同時なら重なりません。場所・参加者の重複を判定するものではありません。`;
-    components=[row(button('conflicts','重なりを再確認',ButtonStyle.Primary),...(p.count>1?[button('conflicts-prev','前の5組').setDisabled(p.index===0),button('conflicts-next','次の5組').setDisabled(p.index===p.count-1)]:[])),back];
+    components=[...(p.items.length?[row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:conflict-event`).setPlaceholder('このページの予定を開いて確認・編集').addOptions(...[...new Set(p.items.flat())].map(id=>{const e=c.events.find(v=>v.id===id);return {value:id,label:e.title,description:`${date(e)} · ${time(e)}`};})))]:[]),row(button('conflicts','重なりを再確認',ButtonStyle.Primary),...(p.count>1?[button('conflicts-prev','前の5組').setDisabled(p.index===0),button('conflicts-next','次の5組').setDisabled(p.index===p.count-1)]:[])),back];
   }
   return payload(title,intro+body,{components});
 }

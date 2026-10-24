@@ -2,11 +2,11 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Messa
 import {payload,menuHomeButton,adminHomeButton} from './ui.js';
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`menu:${action}`).setLabel(label).setStyle(style);
-import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting} from './menu-catalog.js';
+import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting,menuGuideTopics} from './menu-catalog.js';
 class MenuUiError extends Error{}
 export function mainMenuScreen({admin=false,recent=[]}={}){
   const items=[...new Set(recent.filter(destination))].slice(0,3);
-  return {...payload('メニュー','**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · このチャンネルの投稿を、参加中のVCで聞く\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n初めての操作は「使い方」で確認できます。',{components:[
+  return {...payload('メニュー','**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · このチャンネルの投稿を、参加中のVCで聞く\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n初めての操作は「使い方」で確認できます。チャットダイスは1D100などを投稿して使えます。',{components:[
     row(button('vc','VCに入る',ButtonStyle.Primary),button('read','読み上げ'),button('game','ゲーム'),button('calendar','予定表')),
     row(new StringSelectMenuBuilder().setCustomId('menu:find').setPlaceholder('目的・説明から機能を探す').addOptions(...Object.entries(destinations).map(([value,d])=>({value,label:d.label,description:d.summary})))),
     row(button('profile','自分の読み方'),button('wallet','自分のチップ'),button('help','使い方')),
@@ -15,10 +15,10 @@ export function mainMenuScreen({admin=false,recent=[]}={}){
   ]}),attachments:[]};
 }
 export function mainMenuGuideScreen(topic){
-  const selected=destination(topic)?destinations[topic]:null;
+  const selected=typeof topic==='string'&&Object.hasOwn(menuGuideTopics,topic)?menuGuideTopics[topic]:null;
   return {...payload(selected?`使い方 · ${selected.label}`:'使い方',selected?`${selected.guide}\n\n**うまく動かないとき**\n${menuTroubleshooting[topic]}`:'操作の手順を選んでください。\n\n普段は **/menu**、管理者の設定は **/admin** から開きます。\nどの機能も、まず画面で内容を確認できます。',{components:[
-    row(new StringSelectMenuBuilder().setCustomId('menu:help-topic').setPlaceholder('知りたい操作を選ぶ').addOptions(...Object.entries(destinations).map(([value,item])=>({value,label:item.label,description:item.summary,default:value===topic})))),
-    row(...(selected?[button(topic,`${selected.label}を開く`,ButtonStyle.Primary)]:[]),menuHomeButton()),
+    row(new StringSelectMenuBuilder().setCustomId('menu:help-topic').setPlaceholder('知りたい操作を選ぶ').addOptions(...Object.entries(menuGuideTopics).map(([value,item])=>({value,label:item.label,description:item.summary,default:value===topic})))),
+    row(...(selected&&destination(topic)?[button(topic,`${selected.label}を開く`,ButtonStyle.Primary)]:[]),menuHomeButton()),
   ]}),attachments:[]};
 }
 export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openWallet,openCalendar,now=()=>Date.now(),access=async i=>{
@@ -52,7 +52,7 @@ export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openW
     if(action==='open')await i.editReply(mainMenuScreen({...permission,recent:history(i)}));
     else if(action==='help')await i.editReply(mainMenuGuideScreen());
     else if(action==='help-topic'){
-      if(i.values?.length!==1||!destination(i.values[0]))throw new MenuUiError('知りたい操作を選び直してください。');
+      if(i.values?.length!==1||!(typeof i.values[0]==='string'&&Object.hasOwn(menuGuideTopics,i.values[0])))throw new MenuUiError('知りたい操作を選び直してください。');
       await i.editReply(mainMenuGuideScreen(i.values[0]));
     }
     else if(action==='vc')await openVc(i);

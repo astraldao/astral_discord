@@ -79,9 +79,9 @@ test('failed feature calls are not remembered and arbitrary permission or contro
 });
 test('guide topics explain the next step and open existing screens without starting a feature',async()=>{
   const f=fixture(),first=await f.run('menu:help');assert.deepEqual(f.calls,[]);assert.match(first.result.embeds[0].toJSON().description,/普段は/);
-  const choices=controls(first.result).find(c=>c.custom_id==='menu:help-topic').options;assert.equal(choices.length,6);
+  const choices=controls(first.result).find(c=>c.custom_id==='menu:help-topic').options;assert.equal(choices.length,7);
   for(const {value} of choices){
-    const i=await f.run('menu:help-topic',{values:[value]}),buttons=controls(i.result);assert.ok(buttons.some(b=>b.custom_id===`menu:${value}`));assert.ok(buttons.some(b=>b.custom_id==='menu:open'));
+    const i=await f.run('menu:help-topic',{values:[value]}),buttons=controls(i.result);assert.equal(buttons.some(b=>b.custom_id===`menu:${value}`),value!=='dice');assert.ok(buttons.some(b=>b.custom_id==='menu:open'));
     assert.deepEqual(f.calls,[]);assert.deepEqual(i.result.attachments,[]);assert.deepEqual(i.result.allowedMentions.parse,[]);
   }
   const read=await f.run('menu:help-topic',{values:['read']});assert.match(read.result.embeds[0].toJSON().description,/画面を開くだけでは開始しません/);

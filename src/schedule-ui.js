@@ -64,7 +64,7 @@ export function scheduleScreen(s,store,note=''){
       m=payload(`📅  ${safe(e.title)}`,`${intro}**${dateLabel(e)} · ${e.date.slice(0,4)}年**\n**${eventTime(e)}** · 日本時間${e.color?`\n${scheduleColors[e.color].emoji} ${scheduleColors[e.color].label}`:''}${e.place?`\n\n場所 ${safe(e.place)}`:''}${e.description?`\n\n${safe(e.description)}`:''}\n\n${index>=0?`表示範囲の ${index+1}/${selected.length}件目`:'この予定は現在の一覧の表示条件外です。'}`,{components:[
         ...(admin?[row(button(s,'edit-event','予定を編集',ButtonStyle.Primary),button(s,'repeat','繰り返して追加')),row(button(s,'copy-event','複製して編集'),button(s,'delete-event','予定を削除',ButtonStyle.Danger)),row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:event-color`).setPlaceholder('予定の色を選ぶ').addOptions({label:'自動（予定名で決まる）',value:'auto',default:!e.color},...Object.entries(scheduleColors).map(([value,color])=>({label:color.label,emoji:color.emoji,value,default:value===e.color}))))]:[]),
         row(button(s,'event-prev','前の予定').setDisabled(index<=0),button(s,'event-next','次の予定').setDisabled(index<0||index===selected.length-1),button(s,'list','予定の一覧へ')),
-        row(button(s,'export-event','この予定だけ保存（ICS）'),...(admin?[button(s,'event-history','この予定の履歴')]:[])),
+        row(button(s,'export-event','この予定だけ保存（ICS）'),...(admin?[button(s,'event-history','この予定の履歴'),...(s.conflictReport?.calendarId===c.id?[button(s,'conflicts-return','重なりの一覧へ')]:[])]:[])),
       ]});
     }else if(s.view==='days'){
       const picker=s.dayPicker,p=pickerDays(s,c);
@@ -301,7 +301,16 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       delete s.bulkStage;delete s.bulk;s.view='organize';note=`✓ ${stage.eventIds.length}件の日付を移動しました。履歴が保持されている間は元の日付へ復元できます。\n${await refreshed(s.calendarId)}`;
     }
     else if(action==='conflicts'){
-      if(!['organize','conflicts'].includes(s.view))throw new ScheduleError('整理メニューから操作してください。');const c=store.calendar(s.calendarId);s.conflictReport={...scheduleConflicts(c),revision:c.revision};s.conflictPage=0;s.view='conflicts';
+      if(!['organize','conflicts'].includes(s.view))throw new ScheduleError('整理メニューから操作してください。');const c=store.calendar(s.calendarId);s.conflictReport={...scheduleConflicts(c),calendarId:c.id,revision:c.revision};s.conflictPage=0;s.view='conflicts';
+    }
+    else if(action==='conflict-event'){
+      const c=store.calendar(s.calendarId),r=s.conflictReport;
+      if(s.view!=='conflicts'||!r||r.calendarId!==c.id||r.revision!==c.revision||i.values?.length!==1||!r.pairs.slice(s.conflictPage*5,s.conflictPage*5+5).flat().includes(i.values[0]))throw new ScheduleError('表示中の重なりから予定を選び直してください。');
+      s.eventId=i.values[0];s.view='event';
+    }
+    else if(action==='conflicts-return'){
+      if(s.view!=='event'||s.conflictReport?.calendarId!==s.calendarId)throw new ScheduleError('重なりの一覧から予定を選び直してください。');
+      const c=store.calendar(s.calendarId);if(s.conflictReport.revision!==c.revision){s.conflictReport={...scheduleConflicts(c),calendarId:c.id,revision:c.revision};s.conflictPage=0;note='変更後の予定で、重なりを確認し直しました。';}s.view='conflicts';
     }
     else if(action==='conflicts-prev'||action==='conflicts-next'){if(s.view!=='conflicts')throw new ScheduleError('重なりの確認から操作してください。');s.conflictPage+=action==='conflicts-next'?1:-1;}
     else if(action==='list'){s.view='list';delete s.dayPicker;delete s.form;delete s.publishStage;delete s.deleteStage;delete s.repeat;delete s.repeatStage;delete s.importStage;delete s.importPage;delete s.importIndex;delete s.bulk;delete s.bulkStage;delete s.restoreStage;delete s.conflictReport;}

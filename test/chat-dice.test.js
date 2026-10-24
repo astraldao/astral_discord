@@ -5,7 +5,7 @@ import {diceRequest,rollDice,createChatDice,configureDiceContent} from '../src/c
 import {changeSettings} from '../src/admin.js';
 const request=s=>diceRequest(s);
 test('bare, Japanese declarations, explicit requests and fullwidth expressions are accepted',()=>{
- for(const text of ['1D100','1d4','3D10','１Ｄ１００','1D4,3D10','判定1D100','1D100を振って','1D100を振ってください','1D100振ってくれる？','3D10ロールしてもらえる？','ダメージ 3D10','回復 1D4+2','roll 3d10','SANチェック 1d100','<@123456789012345678> 1d100'])assert.ok(request(text)?.rolls,text);
+ for(const text of ['1D100','1d4','3D10','１Ｄ１００','1D4,3D10','判定1D100','目星1D100','聞き耳 1d100','じゃあ目星で1D100振って','1D100を振って','1D100を振ってください','1D100振ってくれる？','3D10ロールしてもらえる？','ダメージ 3D10','回復 1D4+2','roll 3d10','SANチェック 1d100','<@123456789012345678> 1d100'])assert.ok(request(text)?.rolls,text);
  assert.deepEqual(request('1D4,3D10').rolls,[{count:1,sides:4,modifier:0},{count:3,sides:10,modifier:0}]);assert.equal(request('3d10-2').rolls[0].modifier,-2);
 });
 test('explanations, questions, negations, examples, narratives, code, quotes and unrelated prose are not requests',()=>{
@@ -34,7 +34,7 @@ test('permission loss, archived threads, edited/deleted source and disabled sett
  for(const mode of ['permission','archived','edited','disabled','missing','late-permission']){const f=fixture();if(mode==='permission')f.visible(false);if(mode==='archived')f.archived(true);if(mode==='edited')f.edited(true);if(mode==='disabled')f.enabled(false);if(mode==='missing')f.channel.messages.fetch=async()=>{throw new Error('missing');};if(mode==='late-permission')f.channel.messages.fetch=async()=>{f.visible(false);return f.current;};await f.controller.onMessage(f.message);assert.equal(f.replies.length,0,mode);}
 });
 test('deduplication and cooldowns prevent duplicate posts and unknown outcomes never retry',async()=>{
- const f=fixture();f.fail(true);await f.controller.onMessage(f.message);await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);f.fail(false);await f.controller.onMessage({...f.message,id:'second'});assert.equal(f.replies.length,1);f.now(4000);await f.controller.onMessage({...f.message,id:'second'});assert.equal(f.replies.length,2);
+ const f=fixture();f.fail(true);await f.controller.onMessage(f.message);await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);f.fail(false);await f.controller.onMessage({...f.message,id:'second'});assert.equal(f.replies.length,2);await f.controller.onMessage({...f.message,id:'second'});assert.equal(f.replies.length,2);await f.controller.onMessage({...f.message,id:'third'});assert.equal(f.replies.length,3);await f.controller.onMessage({...f.message,id:'fourth'});assert.equal(f.replies.length,3);f.now(4000);await f.controller.onMessage({...f.message,id:'fourth'});assert.equal(f.replies.length,4);
 });
 test('at most four replies can be pending and message edits during permission lookup cannot change the dice',async()=>{
  const f=fixture();let release;f.guild.members.fetch=()=>new Promise(resolve=>release=resolve);const original=f.controller.onMessage(f.message);await new Promise(r=>setImmediate(r));f.message.content='100D10';release({user:{bot:false}});f.guild.members.fetch=async()=>({user:{bot:false}});await original;assert.equal(f.replies.length,1);assert.match(f.replies[0].content,/3D10/);

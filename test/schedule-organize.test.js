@@ -126,3 +126,10 @@ test('a pruned history detail returns to usable organizer controls instead of tr
 test('resuming a pruned history detail opens the available history list without replaying a write',async()=>{
  const f=await expiredHistoryFixture(),before=f.calendar(),i=interaction();await f.controller.openAdmin(i);assert.equal(f.s.view,'history');assert.ok(JSON.stringify(i.replies).includes('履歴の一覧に戻りました'));assert.deepEqual(f.calendar(),before);
 });
+
+test('conflict review opens only an on-page event and returns to recomputed conflicts after editing',async()=>{
+ const f=await uiFixture();const other=await f.store.putEvent(f.id,null,input({title:'重なる予定'}));await f.act('organize');await f.act('conflicts');assert.ok(controls(f.screen()).some(c=>c.custom_id?.endsWith(':conflict-event')));await f.act('conflict-event',[f.event]);assert.equal(f.s.view,'event');assert.equal(f.s.eventId,f.event);assert.ok(controls(f.screen()).some(c=>c.custom_id?.endsWith(':conflicts-return')));await f.store.putEvent(f.id,f.event,input({date:'2026-10-26'}),0);await f.act('conflicts-return');assert.equal(f.s.view,'conflicts');assert.equal(f.s.conflictReport.total,0);assert.equal(f.s.conflictReport.revision,f.calendar().revision);await f.act('conflict-event',[other]);assert.equal(f.s.view,'conflicts');
+});
+test('viewers cannot navigate from conflict IDs and foreign calendar reports cannot be used',async()=>{
+ const f=await uiFixture(),viewer=await f.viewer();const before=f.calendar();await f.act('conflict-event',[f.event],viewer);assert.equal(viewer.view,'list');assert.deepEqual(f.calendar(),before);await f.act('organize');await f.act('conflicts');f.s.conflictReport.calendarId='foreign';await f.act('conflict-event',[f.event]);assert.notEqual(f.s.view,'event');
+});
