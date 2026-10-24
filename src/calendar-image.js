@@ -7,15 +7,18 @@ const atlas=inflateSync(Buffer.from(font.pixels,'base64'),{maxOutputLength:8*102
 const theme={paper:[255,255,255],ink:[38,43,49],muted:[118,125,132],line:[232,235,238],weekend:[250,251,252],selected:[234,246,253],today:[38,43,49],sunday:[201,70,78],saturday:[43,111,177],white:[255,255,255]};
 const bands=[[208,239,252],[210,244,229],[255,223,222],[233,223,251],[255,239,202],[223,233,244]];
 const backgrounds=[...Object.values(theme),...bands];
-const adjacentPaper=[246,247,249],adjacentBands=bands.map(color=>color.map(value=>Math.round(value*0.4+255*0.6)));
+const adjacentPaper=[248,249,251],adjacentBands=bands.map(color=>color.map(value=>Math.round(value*0.4+255*0.6)));
 const adjacentBackgrounds=[adjacentPaper,...adjacentBands];
 const foregrounds=[theme.ink,theme.muted,theme.white,theme.sunday,theme.saturday];
-// Keep index zero white for unmapped buckets, and existing colors last for current-month pixels.
-const colors=[theme.paper,...adjacentBackgrounds,...adjacentBackgrounds.flatMap(a=>foregrounds.flatMap(b=>[1,2].map(n=>a.map((v,i)=>Math.round((v*(3-n)+b[i]*n)/3))))),...backgrounds.slice(1),...backgrounds.flatMap(a=>foregrounds.flatMap(b=>[1,2].map(n=>a.map((v,i)=>Math.round((v*(3-n)+b[i]*n)/3)))))];
-const palette=Buffer.from(colors.flat()),lookup=Buffer.alloc(32768);
+// Deduplicate the palette and preserve exact colors that share a 5-bit bucket.
+const accents=bands.map(color=>color.map((value,index)=>Math.round(value*0.55+theme.ink[index]*0.45)));
+const rawColors=[theme.paper,...accents,...adjacentBackgrounds,...adjacentBackgrounds.flatMap(a=>foregrounds.flatMap(b=>[1,2].map(n=>a.map((v,i)=>Math.round((v*(3-n)+b[i]*n)/3))))),...backgrounds.slice(1),...backgrounds.flatMap(a=>foregrounds.flatMap(b=>[1,2].map(n=>a.map((v,i)=>Math.round((v*(3-n)+b[i]*n)/3)))))];
+const colors=[...new Map(rawColors.map(color=>[color.join(','),color])).values()];
+const palette=Buffer.from(colors.flat()),lookup=Buffer.alloc(32768),exact=new Map(colors.map(([r,g,b],index)=>[(r<<16)|(g<<8)|b,index]));
 for(let i=0;i<colors.length;i++){const [r,g,b]=colors[i];lookup[((r>>3)<<10)|((g>>3)<<5)|(b>>3)]=i;}
-const glyph=(char,size)=>font.glyphs[`${size===16?20:size}:${char}`]??font.glyphs[`${size===16?20:size}:□`];
-const advance=(char,size)=>Math.round((glyph(char,size)?.advance??size)*(size===16?0.8:1));
+const fontSize=size=>size>=24?28:20;
+const glyph=(char,size)=>font.glyphs[`${fontSize(size)}:${char}`]??font.glyphs[`${fontSize(size)}:□`];
+const advance=(char,size)=>Math.round((glyph(char,size)?.advance??fontSize(size))*size/fontSize(size));
 const measure=(value,size)=>[...value].reduce((n,c)=>n+advance(c,size),0);
 // Explicit choices take priority; automatic colors stay stable for the same title.
 function calendarEventColor(event){if(validScheduleColor(event.color))return scheduleColors[event.color].index;let hash=0;for(const c of String(event.title))hash=(Math.imul(hash,31)+c.codePointAt(0))>>>0;return hash%bands.length;}
@@ -69,71 +72,86 @@ function cardTitle(value,maxWidth){
 }
 const time=n=>n==null?'終日':`${String(Math.floor(n/60)).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
 export function calendarImage(month,events,{today,selectedDate,title=''}={}){
-  const layout=calendarLayout(month,events,today,selectedDate),allSpans=[...layout.spans,...layout.contextSpans],currentEvents=new Set(layout.cells.flatMap(c=>c.items)),width=840,cell=116,top=118;
-  const lanes=allSpans.reduce((n,span)=>Math.max(n,span.lane+1),0),rich=lanes<=1;
-  const timed=rich&&allSpans.some(span=>Number.isInteger(span.event.start)),wrapped=rich&&allSpans.some(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-14).lines.length>1);
-  const bandTop=40,bandHeight=rich?(wrapped?45:25)+(timed?18:0):25,laneGap=28,week=rich?bandTop+bandHeight+15:142;
+  const layout=calendarLayout(month,events,today,selectedDate),allSpans=[...layout.spans,...layout.contextSpans],currentEvents=new Set(layout.cells.flatMap(c=>c.items)),width=840,cell=112,left=28,top=176;
+  let bottom=top;
+  const weeks=Array.from({length:layout.rows},(_,row)=>{
+    const spans=allSpans.filter(span=>span.row===row),lanes=spans.reduce((n,span)=>Math.max(n,span.lane+1),0),rich=lanes<=1;
+    const timed=rich&&spans.some(span=>Number.isInteger(span.event.start)),wrapped=rich&&spans.some(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-16).lines.length>1);
+    const bandTop=40,bandHeight=rich?(wrapped?52:30)+(timed?18:0):28,laneGap=bandHeight+4,hidden=layout.gridCells.slice(row*7,row*7+7).some(c=>c.hidden);
+    const contentBottom=lanes?bandTop+(lanes-1)*laneGap+bandHeight:30,height=Math.max(58,contentBottom+(hidden?28:14));
+    const week={row,top:bottom,height,lanes,rich,timed,wrapped,bandTop,bandHeight,laneGap,overflowY:contentBottom+3};bottom+=height;return week;
+  });
+  const rich=weeks.every(week=>week.rich),timed=weeks.some(week=>week.timed),wrapped=weeks.some(week=>week.wrapped);
   // Only expand titles actually shortened in a visible card. Object identity keeps
   // distinct same-title events separate while deduplicating week-crossing spans.
-  const shortened=[...new Set(allSpans.filter(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-14).lines.length>(wrapped?2:1)).map(span=>span.event))].sort((a,b)=>Number(!currentEvents.has(a))-Number(!currentEvents.has(b))||a.date.localeCompare(b.date)||(a.start??-1)-(b.start??-1)||a.title.localeCompare(b.title));
-  const titleKey=shortened.slice(0,8).map(event=>({event,lines:titleLines(event.title,680)}));
+  const shortened=[...new Set(allSpans.filter(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-16).lines.length>(weeks[span.row].wrapped?2:1)).map(span=>span.event))].sort((a,b)=>Number(!currentEvents.has(a))-Number(!currentEvents.has(b))||a.date.localeCompare(b.date)||(a.start??-1)-(b.start??-1)||a.title.localeCompare(b.title));
+  const titleKey=shortened.slice(0,8).map(event=>({event,lines:titleLines(event.title,668)}));
   const keyHeight=titleKey.length?34+titleKey.reduce((n,item)=>n+Math.max(44,item.lines.length*24+8),0)+(shortened.length>8?26:0):0;
-  const footer=timed?52:38,height=top+layout.rows*week+keyHeight+footer,pixels=Buffer.alloc(width*height*4,255);
+  const footer=42,height=bottom+keyHeight+footer,pixels=Buffer.alloc(width*height*4,255);
   function rect(x,y,w,h,color){for(let j=Math.max(0,y);j<Math.min(height,y+h);j++)for(let i=Math.max(0,x);i<Math.min(width,x+w);i++){const at=(j*width+i)*4;for(let c=0;c<3;c++)pixels[at+c]=color[c];}}
   function circle(x,y,r,color){for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++)if(i*i+j*j<=r*r)rect(x+i,y+j,1,1,color);}
   function text(value,x,y,size,color,maxWidth=width-x){
-    x=Math.round(x);y=Math.round(y);const left=x,right=Math.min(width-14,x+maxWidth),scale=size===16?0.8:1;
+    x=Math.round(x);y=Math.round(y);const origin=x,right=Math.min(width-left,x+maxWidth),scale=size/fontSize(size);
     const valueText=String(value).replace(/[\r\n\t]/g,' '),chars=[...valueText];let result=valueText,used=0;
     if(measure(valueText,size)>maxWidth){result='';for(const char of chars){const step=advance(char,size);if(used+step+measure('…',size)>maxWidth)break;result+=char;used+=step;}result+='…';}
-    for(const char of result){const g=glyph(char,size);if(!g){x+=size;continue;}for(let j=0;j<Math.ceil(g.h*scale);j++)for(let i=0;i<Math.ceil(g.w*scale);i++){const alpha=atlas[g.offset+Math.min(g.h-1,Math.floor(j/scale))*g.w+Math.min(g.w-1,Math.floor(i/scale))];if(!alpha)continue;const px=x+Math.round(g.x*scale)+i,py=y+Math.round(g.y*scale)+j;if(px<left||py<0||px>=right||py>=height)continue;const at=(py*width+px)*4;for(let c=0;c<3;c++)pixels[at+c]=Math.round((pixels[at+c]*(3-alpha)+color[c]*alpha)/3);}x+=advance(char,size);}
+    for(const char of result){const g=glyph(char,size);if(!g){x+=size;continue;}for(let j=0;j<Math.ceil(g.h*scale);j++)for(let i=0;i<Math.ceil(g.w*scale);i++){const alpha=atlas[g.offset+Math.min(g.h-1,Math.floor(j/scale))*g.w+Math.min(g.w-1,Math.floor(i/scale))];if(!alpha)continue;const px=x+Math.round(g.x*scale)+i,py=y+Math.round(g.y*scale)+j;if(px<origin||py<0||px>=right||py>=height)continue;const at=(py*width+px)*4;for(let c=0;c<3;c++)pixels[at+c]=Math.round((pixels[at+c]*(3-alpha)+color[c]*alpha)/3);}x+=advance(char,size);}
   }
-  function eventTitle(value,x,y,maxWidth,color=theme.ink){
+  function roundedRect(x,y,w,h,r,color,{before=false,after=false}={}){
+    for(let dy=0;dy<h;dy++){
+      const edge=dy<r?r-dy-0.5:dy>=h-r?dy-(h-r)+0.5:0,inset=edge?Math.ceil(r-Math.sqrt(Math.max(0,r*r-edge*edge))):0;
+      rect(x+(before?0:inset),y+dy,w-(before?0:inset)-(after?0:inset),1,color);
+    }
+  }
+  function eventTitle(value,x,y,maxWidth,style,color=theme.ink){
     const {size,lines}=cardTitle(value,maxWidth);
-    if(!wrapped||lines.length===1){text(lines.join(''),x,y+(size===16?2:0),size,color,maxWidth);return;}
+    if(!style.wrapped||lines.length===1){text(lines.join(''),x,y+(size===16?3:0),size,color,maxWidth);return;}
     text(lines[0],x,y,20,color,maxWidth);text(lines.slice(1).join(''),x,y+22,20,color,maxWidth);
   }
-  text(`${month.slice(0,4)}年${Number(month.slice(5))}月`,22,8,28,theme.ink);
-  const count=`当月 ${layout.count}件`;text(count,width-22-measure(count,20),18,20,theme.muted);
-  text(title||'月間カレンダー',22,49,20,theme.muted,width-44);
-  ['日','月','火','水','木','金','土'].forEach((day,n)=>text(day,14+n*cell+(cell-20)/2,86,20,n===0?theme.sunday:n===6?theme.saturday:theme.muted));
+  text(`${month.slice(0,4)}年`,left,14,20,theme.muted);
+  text(`${Number(month.slice(5))}月`,left,38,38,theme.ink);
+  const count=`当月 ${layout.count}件`,pillWidth=measure(count,20)+28;
+  roundedRect(width-left-pillWidth,42,pillWidth,36,18,adjacentPaper);text(count,width-left-pillWidth+14,46,20,theme.ink);
+  text('日本時間',width-left-measure('日本時間',16),88,16,theme.muted);
+  text(title||'月間カレンダー',left,99,20,theme.muted,width-left*2);
+  roundedRect(left,136,cell*7,32,8,adjacentPaper);
+  ['日','月','火','水','木','金','土'].forEach((day,n)=>text(day,left+n*cell+(cell-20)/2,140,20,n===0?theme.sunday:n===6?theme.saturday:theme.muted));
   for(let row=0;row<layout.rows;row++){
-    const y=top+row*week;
+    const style=weeks[row],y=style.top;
     for(let col=0;col<7;col++){
-      const x=14+col*cell,c=layout.gridCells[row*7+col];
-      rect(x,y,cell,week,!c.inMonth?adjacentPaper:c.selected?theme.selected:col===0||col===6?theme.weekend:theme.paper);
+      const x=left+col*cell,c=layout.gridCells[row*7+col];
+      rect(x,y,cell,style.height,!c.inMonth?adjacentPaper:c.selected?theme.selected:col===0||col===6?theme.weekend:theme.paper);
       rect(x,y,cell,1,theme.line);
-      if(c.today&&c.inMonth)circle(x+cell/2,y+19,15,theme.today);
+      if(c.today&&c.inMonth)circle(x+cell/2,y+19,15,theme.saturday);
       const day=!c.inMonth&&(col===0||c.day===1)?`${Number(c.date.slice(5,7))}/${c.day}`:String(c.day);
       text(day,x+(cell-measure(day,20))/2,y+2,20,!c.inMonth?theme.muted:c.today?theme.white:col===0?theme.sunday:col===6?theme.saturday:theme.ink);
-      if(c.selected)rect(x+4,y+1,cell-8,3,theme.saturday);
+      if(c.selected)roundedRect(x+cell/2-10,y+34,20,3,1,theme.saturday);
     }
   }
   for(const span of allSpans){
-    const x=17+span.col*cell,y=top+span.row*week+bandTop+span.lane*laneGap,w=(span.endCol-span.col+1)*cell-6;
-    rect(x,y,w,bandHeight,(span.outside?adjacentBands:bands)[calendarEventColor(span.event)]);
-    const titleY=y+(timed?18:0)-2;
-    if(timed)text(time(span.event.start),x+4,y-2,16,span.outside?theme.muted:theme.ink,w-8);
-    eventTitle(span.event.title,x+4,titleY,w-8,span.outside?theme.muted:theme.ink);
-    if(span.continuesBefore)rect(x,y+7,2,11,theme.muted);
-    if(span.continuesAfter)rect(x+w-2,y+7,2,11,theme.muted);
+    const style=weeks[span.row],x=left+3+span.col*cell,y=style.top+style.bandTop+span.lane*style.laneGap,w=(span.endCol-span.col+1)*cell-6,index=calendarEventColor(span.event);
+    roundedRect(x,y,w,style.bandHeight,4,(span.outside?adjacentBands:bands)[index],{before:span.continuesBefore,after:span.continuesAfter});
+    if(!span.outside&&!span.continuesBefore)rect(x+2,y+5,2,style.bandHeight-10,accents[index]);
+    if(style.timed)text(time(span.event.start),x+6,y+1,16,theme.muted,w-16);
+    eventTitle(span.event.title,x+6,y+(style.timed?18:1),w-10,style,span.outside?theme.muted:theme.ink);
+    if(span.continuesBefore)rect(x,y+9,2,Math.min(12,style.bandHeight-18),theme.muted);
+    if(span.continuesAfter)rect(x+w-2,y+9,2,Math.min(12,style.bandHeight-18),theme.muted);
   }
-  for(const c of layout.gridCells)if(c.hidden)text(`+${c.hidden}件`,21+c.col*cell,top+c.row*week+121,20,theme.muted,cell-14);
-  rect(14,top+layout.rows*week,width-28,1,theme.line);
+  for(const c of layout.gridCells)if(c.hidden){const style=weeks[c.row];text(`+${c.hidden}件`,left+7+c.col*cell,style.top+style.overflowY,16,theme.muted,cell-14);}
+  rect(left,bottom,cell*7,1,theme.line);
   if(titleKey.length){
-    let y=top+layout.rows*week+8;text('枠内で省略した予定名',22,y,20,theme.muted);y+=28;
+    let y=bottom+8;text('省略した予定名',left,y,20,theme.muted);y+=28;
     for(const {event,lines} of titleKey){
       const outside=!currentEvents.has(event),ink=outside?theme.muted:theme.ink;
-      rect(22,y+4,4,Math.max(28,lines.length*24),(outside?adjacentBands:bands)[calendarEventColor(event)]);
-      text(event.date.slice(5).replace('-','/'),34,y,20,ink,90);
-      text(time(event.start),34,y+24,16,theme.muted,90);
-      lines.forEach((line,index)=>text(line,138,y+index*24,20,ink,680));
+      rect(left,y+4,3,Math.max(28,lines.length*24),(outside?adjacentBands:bands)[calendarEventColor(event)]);
+      text(event.date.slice(5).replace('-','/'),left+12,y,20,ink,90);
+      text(time(event.start),left+12,y+24,16,theme.muted,90);
+      lines.forEach((line,index)=>text(line,144,y+index*24,20,ink,668));
       y+=Math.max(44,lines.length*24+8);
     }
-    if(shortened.length>8)text(`ほか${shortened.length-8}件の長い予定名は下のメニューから`,22,y,16,theme.muted);
+    if(shortened.length>8)text(`ほか${shortened.length-8}件の長い予定名は下のメニューから`,left,y,16,theme.muted);
   }
-  if(timed){text('時刻は開始時刻・色は予定の目印です',22,height-48,16,theme.muted);text('薄字は前後の月・詳細はその月へ移動',22,height-28,16,theme.muted);}
-  else text('薄字は前後の月・色は目印・詳細はその月へ移動',22,height-31,20,theme.muted);
-  return {buffer:encodePng(pixels,width,height,{palette,lookup}),width,height,layout,geometry:{top,weekHeight:week,bandTop,bandHeight,laneGap,rich,timed,wrapped,titleKeyCount:titleKey.length,shortenedCount:shortened.length,keyHeight}};
+  text('薄字は前後の月・詳細は各月の一覧から',left,height-29,16,theme.muted);
+  return {buffer:encodePng(pixels,width,height,{palette,lookup,exact}),width,height,layout,geometry:{top,left,cellWidth:cell,weeks,gridBottom:bottom,rich,timed,wrapped,titleKeyCount:titleKey.length,shortenedCount:shortened.length,keyHeight}};
 }
 export function calendarAlt(layout){
   const describe=c=>`${c.today?'（今日）':''}${c.selected?'（選択中）':''}: ${c.items.length}件、${c.items.map(e=>`${time(e.start)} ${e.title}${e.endDate?`（${e.date}〜${e.endDate}）`:''}`).join('、')}`;

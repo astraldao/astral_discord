@@ -53,19 +53,19 @@ test('recurrence inherits chosen colors while ICS import duplicate detection ign
 function pixel(png,x,y){let offset=8,palette,parts=[],width;while(offset<png.length){const length=png.readUInt32BE(offset),kind=png.toString('ascii',offset+4,offset+8),chunk=png.subarray(offset+8,offset+8+length);if(kind==='IHDR')width=chunk.readUInt32BE(0);if(kind==='PLTE')palette=chunk;if(kind==='IDAT')parts.push(chunk);offset+=length+12;}const raw=inflateSync(Buffer.concat(parts)),row=raw.subarray(y*(width+1),(y+1)*(width+1));assert.equal(row[0],1);let index=0;for(let n=0;n<=x;n++)index=(index+row[n+1])&255;return [...palette.subarray(index*3,index*3+3)];}
 test('explicit colors reach real PNG pixels and unchanged automatic colors remain deterministic',()=>{
   const e={id:'e',...scheduleEvent(input({date:'2026/10/01'}))},expected=[[208,239,252],[210,244,229],[255,223,222],[233,223,251],[255,239,202],[223,233,244]];
-  Object.keys(scheduleColors).forEach((color,n)=>{const image=calendarImage('2026-10',[{...e,color}]);assert.deepEqual(pixel(image.buffer,580,image.geometry.top+image.geometry.bandTop+image.geometry.bandHeight-3),expected[n]);});assert.deepEqual(calendarImage('2026-10',[e]).buffer,calendarImage('2026-10',[{...e}]).buffer);
+  Object.keys(scheduleColors).forEach((color,n)=>{const image=calendarImage('2026-10',[{...e,color}]);assert.deepEqual(pixel(image.buffer,580,image.geometry.weeks[0].top+image.geometry.weeks[0].bandTop+image.geometry.weeks[0].bandHeight-3),expected[n]);});assert.deepEqual(calendarImage('2026-10',[e]).buffer,calendarImage('2026-10',[{...e}]).buffer);
 });
 test('sparse months shrink unused vertical space without merging separate same-name events',()=>{
   const events=Array.from({length:4},(_,n)=>({id:`day-${n}`,...scheduleEvent(input({title:'定例の卓',date:`2026/11/0${n+4}`}))}));
-  const result=calendarImage('2026-11',events);assert.equal(result.height,556);assert.equal(result.layout.count,4);assert.equal(result.layout.spans.length,4);assert.equal(result.geometry.rich,true);assert.equal(result.geometry.wrapped,false);assert.deepEqual(result.layout.spans.map(s=>s.event.id),events.map(e=>e.id));assert.ok(result.buffer.length<150000);
+  const result=calendarImage('2026-11',events);assert.ok(result.height<556);assert.ok(result.geometry.weeks[1].height<result.geometry.weeks[0].height);assert.equal(result.layout.count,4);assert.equal(result.layout.spans.length,4);assert.equal(result.geometry.rich,true);assert.equal(result.geometry.wrapped,false);assert.deepEqual(result.layout.spans.map(s=>s.event.id),events.map(e=>e.id));assert.ok(result.buffer.length<150000);
 });
 test('a sparse month reserves two title lines and a start-time line when needed, without changing stored times',()=>{
   const events=[{id:'long',...scheduleEvent(input({title:'オンライン交流セッション',date:'2026/10/21',time:'20:30-23:00'}))},{id:'short',...scheduleEvent(input({title:'定例会',date:'2026/10/16',time:'21:00'}))}];
-  const before=structuredClone(events),result=calendarImage('2026-10',events);assert.equal(result.geometry.wrapped,true);assert.equal(result.geometry.timed,true);assert.ok(result.geometry.bandHeight>=60);assert.ok(result.height<1000);assert.deepEqual(events,before);assert.equal(result.width,840);assert.equal(result.buffer.readUInt32BE(20),result.height);
+  const before=structuredClone(events),result=calendarImage('2026-10',events);assert.equal(result.geometry.wrapped,true);assert.equal(result.geometry.timed,true);assert.ok(result.geometry.weeks.some(week=>week.wrapped&&week.timed&&week.bandHeight>=60));assert.ok(result.height<1000);assert.deepEqual(events,before);assert.equal(result.width,840);assert.equal(result.buffer.readUInt32BE(20),result.height);
 });
 test('dense months keep their three lanes, stable dimensions and honest overflow instead of wrapping into other rows',()=>{
   const events=Array.from({length:200},(_,n)=>({id:`dense-${n}`,...scheduleEvent(input({date:'2026/08/01',title:'長い予定名'.repeat(10),time:'20:00',color:'red'}))}));
-  const result=calendarImage('2026-08',events);assert.equal(result.geometry.rich,false);assert.equal(result.geometry.timed,false);assert.equal(result.height,1008+result.geometry.keyHeight);assert.equal(result.layout.cells.find(c=>c.date==='2026-08-01').hidden,197);assert.ok(result.buffer.length<150000);
+  const result=calendarImage('2026-08',events);assert.equal(result.geometry.rich,false);assert.equal(result.geometry.timed,false);assert.ok(result.height<1008+result.geometry.keyHeight);assert.equal(result.geometry.weeks[0].lanes,3);assert.equal(result.layout.cells.find(c=>c.date==='2026-08-01').hidden,197);assert.ok(result.buffer.length<150000);
 });
 test('day choices use exact month dates, leap days and interval counts without other calendars',async()=>{
   const f=await fixture();await f.add({date:'2026/09/30〜2026/10/02'});await f.add({title:'深夜',date:'2026/10/02',time:'23:00-01:00'});await f.store.putEvent(f.other,null,input({title:'秘密'}));
@@ -146,7 +146,7 @@ test('truncated names get bounded full-title keys without merging same-name even
   const long='オンライン交流セッション'.repeat(4),first={id:'a',date:'2026-10-01',endDate:'2026-10-31',start:null,title:long};
   const second={...first,id:'b',date:'2026-10-22',endDate:undefined};
   const result=calendarImage('2026-10',[first,second,{...first,id:'adjacent',date:'2026-11-01',endDate:undefined}]);
-  assert.equal(result.geometry.shortenedCount,3);assert.equal(result.geometry.titleKeyCount,3);assert.equal(result.layout.count,2);assert.ok(result.geometry.keyHeight>100);assert.equal(result.geometry.bandTop,40);
+  assert.equal(result.geometry.shortenedCount,3);assert.equal(result.geometry.titleKeyCount,3);assert.equal(result.layout.count,2);assert.ok(result.geometry.keyHeight>100);assert.ok(result.geometry.weeks.every(week=>week.bandTop===40));
   const short=calendarImage('2026-10',[{date:'2026-10-21',start:null,title:'会議'}]);assert.equal(short.geometry.keyHeight,0);
 });
 test('many long titles and astral Unicode keep the image bounded and retain honest hidden counts',()=>{
@@ -155,5 +155,5 @@ test('many long titles and astral Unicode keep the image bounded and retain hone
 });
 
 test('a six-character Japanese title fits a single readable line instead of an orphan character',()=>{
-  const result=calendarImage('2026-10',[{date:'2026-10-21',start:null,title:'ホームシック'}]);assert.equal(result.geometry.wrapped,false);assert.equal(result.geometry.bandHeight,25);assert.equal(result.geometry.titleKeyCount,0);
+  const result=calendarImage('2026-10',[{date:'2026-10-21',start:null,title:'ホームシック'}]);assert.equal(result.geometry.wrapped,false);assert.equal(result.geometry.weeks[3].bandHeight,30);assert.equal(result.geometry.titleKeyCount,0);
 });

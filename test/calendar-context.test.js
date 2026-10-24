@@ -42,8 +42,8 @@ test('a month-crossing event keeps one lane when split into current and faded po
 
 test('adjacent bands and text are visually faded while current-month colors remain unchanged',()=>{
   const image=calendarImage('2026-10',[event('会議','2026-10-18',{color:'blue'}),event('会議','2026-11-01',{color:'blue'})]),pixel=decoder(image.buffer),g=image.geometry;
-  const sample=row=>pixel(124,g.top+row*g.weekHeight+g.bandTop+g.bandHeight-3),current=sample(3),next=sample(5);assert.deepEqual(current,[208,239,252]);assert.ok(next.reduce((a,b)=>a+b,0)>current.reduce((a,b)=>a+b,0));
-  const darkest=row=>{let min=255;for(let y=g.top+row*g.weekHeight+g.bandTop;y<g.top+row*g.weekHeight+g.bandTop+g.bandHeight;y++)for(let x=22;x<90;x++)min=Math.min(min,pixel(x,y)[0]);return min;};
+  const sample=row=>pixel(124,g.weeks[row].top+g.weeks[row].bandTop+g.weeks[row].bandHeight-3),current=sample(3),next=sample(5);assert.deepEqual(current,[208,239,252]);assert.ok(next.reduce((a,b)=>a+b,0)>current.reduce((a,b)=>a+b,0));
+  const darkest=row=>{let min=255;for(let y=g.weeks[row].top+g.weeks[row].bandTop;y<g.weeks[row].top+g.weeks[row].bandTop+g.weeks[row].bandHeight;y++)for(let x=22;x<90;x++)min=Math.min(min,pixel(x,y)[0]);return min;};
   assert.ok(darkest(5)>darkest(3)+40);
 });
 
