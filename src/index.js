@@ -1,3 +1,4 @@
+import {createChatDice,configureDiceContent} from './chat-dice.js';
 import {createVoiceBenchmark} from './voice-benchmark.js';
 import {createBenchmarkController} from './voice-benchmark-ui.js';
 import {createRestartController} from './restart-ui.js';
@@ -10,7 +11,7 @@ import {lobbyEntryGuide} from './vc-entry-ui.js';
 import {createUpdateClient} from './update-client.js';
 import {createVersionController} from './version-ui.js';
 import {createUpdateCapacity} from './update-capacity.js';
-import {Client, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
+import {Client, REST, Routes, GatewayIntentBits, PermissionFlagsBits as P, ActionRowBuilder,
   StringSelectMenuBuilder, MessageFlags} from 'discord.js';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createUpdateLifecycle,updateBusy} from './update-lifecycle.js';
@@ -57,7 +58,7 @@ const trpgStore=await new TrpgStore('data/trpg.json').load();
 const scheduleStore=await new ScheduleStore('data/schedules.json').load();
 const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
 const backupEnabled=env.ASTRAL_BACKUP_TTS==='1';
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates,...(backupEnabled?[GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]:[])],presence:{status:env.ASTRAL_UPDATING==='1'||env.ASTRAL_RESTARTING==='1'?'dnd':'idle'}});
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates,GatewayIntentBits.GuildMessages,...(backupEnabled?[GatewayIntentBits.MessageContent]:[])],presence:{status:env.ASTRAL_UPDATING==='1'||env.ASTRAL_RESTARTING==='1'?'dnd':'idle'}});
 const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1',restarting:env.ASTRAL_RESTARTING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
@@ -65,7 +66,7 @@ const updateClient=createUpdateClient({version:botVersion});
 const versions=createVersionController({updater:updateClient,estimateCapacity:createUpdateCapacity(),access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(voiceProbe?.busy)throw new EntryError('処理速度を測定中です。中断または完了後に更新してください。');if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,interactionHandlers,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,chatDice,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,interactionHandlers,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -183,6 +184,7 @@ client.once('clientReady', async () => {
     guild = await client.guilds.fetch(env.GUILD_ID);
     await guild.channels.fetch(); await guild.members.fetchMe();
     voiceProbe=createVoiceBenchmark({version:botVersion,onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info)),canStart:()=>{if(backupReader?.active||pending.size||queue.size||resourcePresence.activeCount>1)throw new EntryError('読み上げ・VC入室・別の操作が進行中です。終了後に測定してください。');},activity:()=>resourcePresence.activity()});
+    chatDice=createChatDice({guild,enabled:()=>ready&&!stopping&&settings.get().chatDice!==false});
     speedMeasurements=createBenchmarkController({guild,probe:voiceProbe,onDiagnostic:info=>console.warn('速度測定の操作:',`v${botVersion}`,JSON.stringify(info))});
     backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>voiceProbe.busy||pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity(),onDiagnostic:failure=>console.warn('読み上げ停止:',failure.code,`v${botVersion}`,JSON.stringify(failure.info??{}))});
     const bannerState=user=>({key:user.banner??null,url:user.bannerURL({extension:'png',size:1024})??null});
@@ -276,7 +278,7 @@ client.on('interactionCreate', async interaction => {
     console.error('操作:',error.code ?? error.name,'機能:',source);
   }finally{finishActivity();}
 });
-client.on('messageCreate',message=>{if(ready&&!stopping)backupReader?.onMessage(message);});
+client.on('messageCreate',message=>{if(ready&&!stopping){backupReader?.onMessage(message);void chatDice?.onMessage(message);}});
 client.on('channelUpdate',()=>{void backupReader?.revalidate();});
 client.on('channelDelete',channel=>{void backupReader?.onChannelDelete(channel);});
 client.on('guildMemberUpdate',()=>{void backupReader?.revalidate();});
@@ -309,4 +311,6 @@ for (const signal of ['SIGTERM','SIGINT']) process.once(signal,() => {
   const force=setTimeout(()=>process.exit(0),12000);force.unref();
   void (async()=>{while(resourcePresence.activeCount>0)await delay(50);await drain();process.exit(0);})().catch(()=>process.exit(1));
 });
+const fullDiceContent=await configureDiceContent(client,()=>new REST({timeout:3000,retries:0}).setToken(env.DISCORD_TOKEN).get(Routes.oauth2CurrentApplication()));
+if(!fullDiceContent)console.info('チャットダイス：メンション付き投稿に対応。通常投稿への反応にはMessage Content Intentを有効化後、Botを再起動してください。');
 client.login(env.DISCORD_TOKEN).catch(error => {console.error('ログイン:',error.code ?? error.name);process.exitCode=1;});

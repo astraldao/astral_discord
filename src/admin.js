@@ -22,7 +22,7 @@ export function changeSettings(c,action,value) {
   } else if(action==='seconds' || action==='volume') {
     if(!/^\d+$/.test(value))throw new Error('整数を入力してください。待機は3〜15秒、音量は10〜60%です。');
     c[action]=Number(value);
-  } else if(action==='voice' || action==='enforce')c[action]=value;
+  } else if(action==='voice' || action==='enforce'||action==='chatDice')c[action]=value;
   else if(action==='word-add' || action==='word-remove' || action==='word-edit') {
     const surface=String(value.surface).normalize('NFKC').trim();
     if(!surface || surface.length>32 || !/^[\p{L}\p{N} ー]+$/u.test(surface))throw new Error('単語は32文字以内の文字・数字・空白で入力してください。');
@@ -111,7 +111,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     components=[row(button(s,'install-panel',c.panel?.channelId===c.lobbyId?'パネルを更新':'パネルを設置',ButtonStyle.Primary).setDisabled(!c.lobbyId)),back()];
   } else if(s.view==='overview') {
     title='✦  現在の設定';description=summary(c)+'\n\n**入室先VC**\n'+(c.targetIds.slice(0,25).map(id=>`<#${id}>`).join('\n')||'未登録')+(c.targetIds.length>25?`\nほか ${c.targetIds.length-25}件`:'')+`\n\n**読み方辞書** ${c.words.length}件\n設定の保存後は、再起動せずに反映されます。`;
-    components=[back()];
+    description+=`\n\n**チャットダイス** ${c.chatDice!==false?'ON':'OFF'}\n1D100などの依頼に返信します。説明・質問・引用は見送ります。通常投稿にはMessage Content Intentが必要です。`;components=[row(button(s,'toggle-dice',c.chatDice!==false?'ダイス返信をOFF':'ダイス返信をON')),back()];
   } else if(s.view.startsWith('pick-')) {
     const action=s.view.slice(5);
     title={lobby:'✦  ロビーVCを選択',add:'✦  入室先VCを追加',remove:'✦  入室先VCを削除'}[action];
@@ -229,6 +229,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       else {
         const c=settings.get();let operation=action,value,description;
         if(['lobby','add','remove'].includes(action)) {value=interaction.values[0];description=`**${{lobby:'ロビー変更',add:'行き先追加',remove:'行き先削除'}[action]}**\n<#${value}>`;s.view='vc';}
+        else if(action==='toggle-dice'){operation='chatDice';value=c.chatDice===false;description=`チャットダイス **${value?'ON':'OFF'}** に変更`;}
         else if(action==='toggle-voice'){operation='voice';value=!c.voice;description=`音声告知 **${c.voice?'ON → OFF':'OFF → ON'}**`;}
         else if(action==='toggle-enforce'){operation='enforce';value=!c.enforce;description=`直接入室を **${value?'検出後ロビーへ戻す':'許可する'}** に変更`;}
         else if(action==='word-remove'){value={surface:interaction.values[0]};description=`読み方 **${text(value.surface)}** を削除`;}

@@ -9,6 +9,7 @@ export function validateSettings(c) {
     new Set(c.targetIds).size !== c.targetIds.length || c.targetIds.includes(c.lobbyId) ||
     !Number.isInteger(c.seconds) || c.seconds < 3 || c.seconds > 15 ||
     typeof c.voice !== 'boolean' || typeof c.enforce !== 'boolean') throw new Error('設定ファイルの形式が不正です。');
+  if(c.chatDice!==undefined&&typeof c.chatDice!=='boolean')throw new Error('チャットダイス設定の形式が不正です。');
   c.volume ??=30;
   if(!Number.isInteger(c.volume) || c.volume<10 || c.volume>60)throw new Error('音量は10〜60です。');
   c.words??=[];
