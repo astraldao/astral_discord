@@ -264,8 +264,8 @@ test('reading operation cards keep warnings visible and expose reversible detail
   assert.ok(normalBody.includes('2件を読み飛ばしています'));assert.ok(!normalBody.includes('権限確認と合成'));assert.ok(!normalBody.includes('300ms超過'));
   const details=Object.assign(i('unused'),{customId:`read:details:${s.id}`});await f.reader.handle(details);const detailed=details.replies.at(-1),detailBody=detailed.embeds[0].toJSON().description;
   assert.ok(detailBody.includes('まだ再生開始の記録がありません'));assert.ok(detailBody.includes('300ms超過'));assert.ok(detailBody.includes('停止・再起動'));
-  const back=detailed.components.flatMap(row=>row.toJSON().components).find(c=>c.label==='操作画面へ');assert.equal(back.custom_id,'read:status');const returnClick=Object.assign(i('unused'),{customId:back.custom_id});await f.reader.handle(returnClick);assert.ok(!returnClick.replies.at(-1).embeds[0].toJSON().description.includes('内訳：'));
+  const back=detailed.components.flatMap(row=>row.toJSON().components).find(c=>c.label==='操作画面へ');assert.equal(back.custom_id,`read:status:${s.id}`);const returnClick=Object.assign(i('unused'),{customId:back.custom_id});await f.reader.handle(returnClick);assert.ok(!returnClick.replies.at(-1).embeds[0].toJSON().description.includes('内訳：'));
   assert.equal(s.metrics.started,0);assert.equal(f.reader.state,s);assert.equal(s.paused,false);assert.equal(s.mode,'raw');
-  for(const message of [normal,detailed]){assert.ok(message.components.length<=5);assert.ok(message.embeds[0].toJSON().description.length<=4096);for(const row of message.components)assert.ok(row.toJSON().components.length<=5);}
+  for(const message of [normal,detailed]){const ids=message.components.flatMap(row=>row.toJSON().components).map(c=>c.custom_id).filter(Boolean);assert.equal(new Set(ids).size,ids.length);assert.ok(message.components.length<=5);assert.ok(message.embeds[0].toJSON().description.length<=4096);for(const row of message.components)assert.ok(row.toJSON().components.length<=5);}
   await f.reader.close();
 });
