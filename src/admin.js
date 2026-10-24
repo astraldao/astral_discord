@@ -1,11 +1,11 @@
 import {randomUUID} from 'node:crypto';
-import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
+import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
 import {payload,text,menuHomeButton,restartButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 export {adminCategories} from './admin-navigation.js';
-import {securityScreen} from './security-ui.js';
-import {diagnosticsScreen} from './diagnostics.js';
+import {securityScreen,securityReport,securityScopes} from './security-ui.js';
+import {diagnosticsScreen,diagnosticsHelpScreen} from './diagnostics.js';
 import {validateSettings} from './settings.js';
 
 export function changeSettings(c,action,value) {
@@ -81,6 +81,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     description+='\n\n**カテゴリを選ぶ**\n目的に近いボタンを選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
     components=[
       row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理'),restartButton()),
+      row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder('設定名・目的から直接開く').addOptions(...adminDestinations.map(d=>({label:`${d.categoryLabel} / ${d.label}`,description:d.description,value:d.action})))),
       ...Array.from({length:2},(_,index)=>row(...adminCategories.slice(index*2,index*2+2).map(category=>button(s,`nav-category-${category.id}`,category.label)))),
       row(menuHomeButton()),
     ];
@@ -138,7 +139,7 @@ export function adminModal(s,kind,c) {
 }
 export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,diagnose,securityScan,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});if(!canConfigure(member.permissions))return false;const channel=await guild.channels.fetch(i.channelId,{force:true});return channel?.permissionsFor(member)?.has(P.ViewChannel)===true;}}) {
   const sessions=new AdminSessions();
-  const screen=(s,note='')=>({...(s.view==='security'?securityScreen(s):s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
+  const screen=(s,note='')=>({...(s.view==='diagnostics-help'?diagnosticsHelpScreen(s):s.view==='security'?securityScreen(s):s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
     if(!['lobby','add'].includes(action))return;
     const channel=await guild.channels.fetch(value);
@@ -183,9 +184,10 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }else{
         const parts=interaction.customId.split(':');action=parts[2];token=parts[3];s=sessions.get(parts[1],interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       }
+      if(action==='destination'){if(interaction.values?.length!==1||!adminDestinations.some(d=>d.action===interaction.values[0]))throw new Error('一覧から管理操作を選び直してください。');action=interaction.values[0];}
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
-      if(action==='measure-voice'){if(s.view!=='diagnostics'||!openPerformance)throw new Error('動作診断から処理速度の測定を開いてください。');await openPerformance(interaction);return;}
+      if(action==='measure-voice'){if(!['diagnostics','diagnostics-help'].includes(s.view)||!openPerformance)throw new Error('動作診断から処理速度の測定を開いてください。');await openPerformance(interaction);return;}
       if(action==='open-restart'){if(!openRestart)throw new Error('再起動を利用できません。');await openRestart(interaction);return;}
       if(action==='open-runtime'){if(!openRuntime)throw new Error('起動設定を利用できません。');await openRuntime(interaction);return;}
       if(action==='open-banner'){if(!openBanner)throw new Error('バナー設定を利用できません。');await openBanner(interaction);return;}
@@ -203,7 +205,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(action.startsWith('form-')) {await interaction.showModal(adminModal(s,action.slice(5),settings.get()));return;}
       if(!interaction.deferred&&!interaction.replied){if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();}
       if(!await access(interaction))throw new Error('管理者権限がありません。');
-      let note='';
+      let note='',securityDownload;
       if(action==='category'){
         if(interaction.values?.length!==1||!adminCategories.some(c=>c.id===interaction.values[0]))throw new Error('カテゴリを選び直してください。');
         s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=`category-${interaction.values[0]}`;s.page=0;
@@ -213,10 +215,13 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         if(s.view!=='security'||!securityScan)throw new Error('脆弱性診断を開き直してください。');sessions.get(s.id,s.userId);
         const result=await securityScan.run();if(!await access(interaction))throw new Error('管理者権限がありません。');sessions.get(s.id,s.userId);s.security=result;s.page=0;
       }
+      else if(action==='security-scope'){if(s.view!=='security'||s.security?.status!=='complete'||interaction.values?.length!==1||!Object.hasOwn(securityScopes,interaction.values[0]))throw new Error('診断結果から対象を選び直してください。');s.securityScope=interaction.values[0];s.page=0;}
+      else if(action==='security-export'){if(s.view!=='security')throw new Error('脆弱性診断から保存してください。');securityDownload=securityReport(s.security);}
       else if(action==='security-prev'||action==='security-next'){
         if(s.view!=='security'||s.security?.status!=='complete')throw new Error('脆弱性診断を開き直してください。');
         s.page+=action==='security-prev'?-1:1;
       }
+      else if(action==='diagnostics-help'){if(s.view!=='diagnostics'||!s.diagnostics)throw new Error('動作診断から対処の手順を開いてください。');s.view='diagnostics-help';}
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
       else if(action.endsWith('-prev') || action.endsWith('-next'))s.page+=action.endsWith('-prev')?-1:1;
       else if(action==='install-panel'){await refreshPanel(true);note='✓ パネルを設置・更新しました。';}
@@ -239,7 +244,8 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         if(pendingCount() || ['lobby','remove','word-remove'].includes(operation))s.stage.description+=`\n\n現在の入室予約：${pendingCount()}件`;else note=await save(s,interaction);
       }
       if(s.view==='security')sessions.get(s.id,s.userId);
-      await interaction.editReply(screen(s,note));
+      if(securityDownload){if(!await access(interaction))throw new Error('管理者権限がありません。');sessions.get(s.id,s.userId);}
+      const message=screen(s,note);if(securityDownload)message.files=[new AttachmentBuilder(securityDownload,{name:'astral-security-report.json'})];await interaction.editReply(message);
     } catch(error) {
       const note=`操作できませんでした：${text(error.message)}`;
       const recovery=s?[row(button(s,'home','管理メニューへ'),...(s.formDraft?[button(s,`form-${s.formDraft.kind}`,'入力を修正')]:s.view==='diagnostics'?[button(s,'diagnose','診断をやり直す')]:[]))]:[];
