@@ -19,3 +19,19 @@ export const menuTroubleshooting={
 
 export const menuGuideTopics={...menuDestinations,dice:{label:'チャットダイス',summary:'投稿した1D100などへ結果を返信',guide:'このチャンネルへ 1D100・1D4,3D10・ダメージ 3D10 などを投稿します。結果は元の投稿への返信です。意味を尋ねる質問・説明・引用・否定には反応しません。外部AIへ本文を送りません。'}};
 menuTroubleshooting.dice='通常投稿で反応しない場合は @Bot 1D100 を試してください。管理者が動作診断で通常投稿への対応状況とON/OFFを確認できます。';
+
+// Keep runtime guidance to three booleans; no arbitrary service state enters a card.
+export function menuCapabilities(value){
+  const raw=value??{};
+  return Object.fromEntries(['readingEnabled','diceEnabled','diceFullContent'].filter(key=>typeof raw[key]==='boolean').map(key=>[key,raw[key]]));
+}
+export function menuCapabilityNote(topic,value){
+  const state=menuCapabilities(value);
+  if(topic==='read'&&state.readingEnabled===false)return '**現在は未有効です。** 管理者に有効化を依頼してください。';
+  if(topic==='dice'){
+    if(state.diceEnabled===false)return '**現在はOFFです。** 管理者が設定でダイス返信をONにすると利用できます。';
+    if(state.diceFullContent===false)return '**現在はBotへのメンションが必要です。** @Bot 1D100 のように投稿してください。';
+    if(state.diceFullContent===true)return '**通常の投稿から利用できます。** Botをメンションする必要はありません。';
+  }
+  return '';
+}

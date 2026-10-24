@@ -28,8 +28,13 @@ const shortDate=date=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',mon
 const dateLabel=e=>`${shortDate(e.date)}${e.endDate?`〜${e.endDate.slice(0,4)!==e.date.slice(0,4)?`${e.endDate.slice(0,4)}年 `:''}${shortDate(e.endDate)}`:''}`;
 const hasRange=s=>s.period==='week'||s.period==='upcoming';
 const rangeLabel=s=>`${s.rangeStart.slice(0,4)}年 ${shortDate(s.rangeStart)}〜${s.rangeEnd.slice(0,4)!==s.rangeStart.slice(0,4)?`${s.rangeEnd.slice(0,4)}年 `:''}${shortDate(s.rangeEnd)}`;
+const searchScope=s=>JSON.stringify([s.calendarId,s.month,s.date,s.period,s.rangeStart,s.rangeEnd,s.display]);
+function clearSearch(s,restorePage=false){
+  const page=restorePage&&s.searchReturn?.scope===searchScope(s)?s.searchReturn.page:0;
+  delete s.query;delete s.searchReturn;if(restorePage)s.page=page;
+}
 const clearRange=s=>{delete s.period;delete s.rangeStart;delete s.rangeEnd;};
-const chooseRange=(s,period,range)=>{Object.assign(s,{period,...range,month:range.rangeStart.slice(0,7),page:0});delete s.date;delete s.query;};
+const chooseRange=(s,period,range)=>{Object.assign(s,{period,...range,month:range.rangeStart.slice(0,7),page:0});delete s.date;clearSearch(s);};
 const viewOptions=[{value:'month-calendar',label:'月カレンダー',description:'月全体を画像で見る'},{value:'month-list',label:'月の一覧',description:'月の予定を日付順に読む'},{value:'week',label:'週間',description:'日曜日から土曜日の予定を見る'},{value:'upcoming',label:'今日から30日',description:'今日を含む30日分をまとめて見る'}];
 function pickerDays(s,c){const picker=s.dayPicker,all=scheduleDays(c,picker.month,s.today,{onlyEvents:picker.onlyEvents}),count=Math.max(1,Math.ceil(all.length/25));picker.page=Math.max(0,Math.min(picker.page,count-1));return {all,count,items:all.slice(picker.page*25,(picker.page+1)*25)};}
 function recurrenceSource(s,store){
@@ -88,7 +93,7 @@ export function scheduleScreen(s,store,note=''){
       m=payload('📅  追加する予定を確認',`${intro}**${safe(stage.title)} · ${stage.label} · 追加 ${stage.inputs.length}件**\n${eventTime(stage.source)} · 日本時間${stage.source.place?`\n場所：${safe(stage.source.place)}`:''}\n\n${lines}\n\n元の予定は追加件数に含めません。${stage.overlaps?`\n既存の予定と日付・時刻が重なる候補が **${stage.overlaps}件** あります。重複して追加しないか確認してください。`:''}\nこの日付を独立した予定としてまとめて保存します。あとから自動では増やしません。`,{components:[row(button(s,'repeat-save',`この${stage.inputs.length}件を追加`,ButtonStyle.Primary),button(s,'repeat-settings','条件を変更')),row(button(s,'event-back','追加せず戻る'))]});
     }else if(s.view==='tools'){
       const events=selectedScheduleEvents(c,s),scope=s.query?`検索「${safe(s.query)}」· 全期間`:hasRange(s)?`${s.period==='week'?'週間':'今日から30日'} · ${rangeLabel(s)}`:s.date?`${s.date} の予定`:`${monthName(s.month)} の予定`;
-      m=payload(admin?'📅  予定の検索・整理':'📅  検索・取り出し',`${intro}**${safe(c.title)}**\n${scope} · **${events.length}件**\n\n予定名・場所・説明を全期間から検索できます。\nカレンダーファイルは、この範囲の全ページの予定を含みます。端末へ保存し、対応アプリで読み込んでください。自動同期はしません。${admin?'\n\n「整理・復元」で、日付の一括移動・変更履歴・時間の重なりを確認できます。':''}`,{components:[
+      m=payload(admin?'📅  予定の検索・整理':'📅  検索・取り出し',`${intro}**${safe(c.title)}**\n${scope} · **${events.length}件**\n\n予定名・場所・説明を全期間から検索できます。\n日付:2026/10/17 や 月:2026/10 で絞り込み、スペースで条件を組み合わせられます。\nカレンダーファイルは、この範囲の全ページの予定を含みます。端末へ保存し、対応アプリで読み込んでください。自動同期はしません。${admin?'\n\n「整理・復元」で、日付の一括移動・変更履歴・時間の重なりを確認できます。':''}`,{components:[
         row(button(s,'search','予定を検索',ButtonStyle.Primary),...(s.query?[button(s,'search-clear','検索を解除')]:[]),button(s,'export','カレンダーファイルを作る').setDisabled(!events.length)),
         ...(admin?[row(button(s,'publish','チャンネルに送る（月表示）'),button(s,'publications','投稿を管理'),button(s,'organize','整理・復元'))]:[]),
         ...(admin?[row(button(s,'import','ICSファイルから取り込む',ButtonStyle.Primary),button(s,'rename','予定表の名前を変更'),button(s,'home','予定表の管理へ'))]:[]),
@@ -111,7 +116,7 @@ export function scheduleScreen(s,store,note=''){
     }else{
       const all=selectedScheduleEvents(c,s),p=pages(s,all,8),range=hasRange(s),textView=range||s.display==='list'||!!s.query;
       const day=s.date?` · ${Number(s.date.slice(5,7))}/${Number(s.date.slice(8))}`:'';
-      const empty=s.query?'一致する予定がありません。「検索・取り出し」から検索語を変えるか解除してください。':range?'この期間の予定はまだありません。':s.date?'この日の予定はまだありません。':'この月の予定はまだありません。';
+      const empty=s.query?'一致する予定がありません。下の「検索語を変える」か「検索を解除」を使ってください。':range?'この期間の予定はまだありません。':s.date?'この日の予定はまだありません。':'この月の予定はまだありません。';
       const details=p.items.map(e=>`**${s.query||range?`${e.date.slice(0,4)}年 `:''}${dateLabel(e)} · ${eventTime(e)}**\n${e.color?`${scheduleColors[e.color].emoji} `:''}${safe(e.title)}${range&&!s.query&&e.date<s.rangeStart?'\n期間前から続く予定':''}`).join('\n\n');
       const body=textView||s.date?details:(p.items.length?'予定を選ぶと、時刻・場所・説明を確認できます。':'');
       const selectedView=range?s.period:s.display==='list'?'month-list':'month-calendar';
@@ -119,7 +124,7 @@ export function scheduleScreen(s,store,note=''){
       m=payload(`📅  ${safe(c.title)} · ${s.query?'予定の検索':range?s.period==='week'?'週間':'今日から30日':`${monthName(s.month)}${day}`}`,`${textView?intro:''}${s.query?`検索「${safe(s.query)}」· 全期間 · **${all.length}件**\n\n`:range?`**${rangeLabel(s)} · ${all.length}件**${s.period==='upcoming'?'\n表示開始日を含む最大30日分です。':''}\n\n`:''}${body||empty}\n\n${s.date&&!s.query?`${all.length}件 · `:''}日本時間${p.count>1?` · ${s.page+1}/${p.count}ページ`:''}`,{components:[
         row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:period`).setPlaceholder('表示を切り替える').addOptions(...viewOptions.map(option=>({...option,default:!s.query&&option.value===selectedView})))),
         ...(p.items.length?[row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:event`).setPlaceholder(s.date&&!s.query?'この日の予定を開く':'予定の詳細を開く').addOptions(...p.items.map(e=>({label:e.title,value:e.id,description:`${scheduleInputDate(e)} · ${eventTime(e)}`}))))]:[]),
-        row(...navigation),
+        row(...navigation,...(!s.query?[button(s,'search','予定を検索')]:[])),
         ...(p.count>1?[row(button(s,'prev','前のページ').setDisabled(s.page===0),button(s,'next','次のページ').setDisabled(s.page===p.count-1))]:[]),
         row(button(s,'day-today','今日の予定'),...(!range?[button(s,'days','日付から探す')]:[]),...(s.date&&!s.query?[button(s,'day-clear','月全体に戻る')]:[]),button(s,'tools',admin?'検索・整理':'検索・取り出し'),...(admin?[button(s,'new-event',s.date&&!s.query?'この日に予定を追加':'予定を追加',ButtonStyle.Primary)]:[]),...(s.viaMenu?[new ButtonBuilder().setCustomId('menu:calendar').setLabel('予定表を選ぶ').setStyle(ButtonStyle.Secondary)]:[])),
       ]});
@@ -134,7 +139,7 @@ function modal(s,kind,store,today){
   if(kind==='event')m.addComponents(input('title','予定名',80,s.eventDraft?.title??e?.title??''),input('date','日付 YYYY/MM/DD（終日は〜で範囲・最大31日）',21,s.eventDraft?.date??(e?scheduleInputDate(e):defaultDate)),input('time','日本時間 HH:MM-HH:MM（終了が早い場合は翌日）',20,s.eventDraft?.time??(e?.start===null||!e?'':`${clock(e.start)}${e.end===null?'':`-${clock(e.end)}`}`),false),input('place','場所・VC・リンク（任意）',100,s.eventDraft?.place??e?.place??'',false),input('description','説明（任意）',500,s.eventDraft?.description??e?.description??'',false,true));
   else if(kind==='bulk-days')m.addComponents(input('value','後へ移動は7、前へ移動は-7（前後365日まで）',4,String(s.bulk.days)));
   else if(kind==='repeat-count')m.addComponents(input('value','元の予定を除く追加件数（1〜26）',2,String(s.repeat.count)));
-  else if(kind==='search')m.addComponents(input('value','検索語（空欄で解除・スペースで絞り込み）',80,s.query??'',false));
+  else if(kind==='search'){const field=input('value','検索語（空欄で解除・スペースで絞り込み）',80,s.query??'',false);field.components[0].setPlaceholder('例：図書館 / 日付:2026/10/17 / 月:2026/10 図書館');m.addComponents(field);}
   else if(kind==='recover')m.addComponents(input('value','この予定表の投稿URL',200));
   else if(kind==='navigate')m.addComponents(input('value','表示月（YYYY/MM）',7,s.month));
   else if(kind==='day')m.addComponents(input('value','日付（YYYY/MM/DD）',10,defaultDate));
@@ -196,7 +201,12 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       if(f.kind==='bulk-days'){
         if(s.view!=='bulk-select'||s.bulk?.id!==f.bulkId)throw new ScheduleError('移動対象を選び直してください。');bulkCandidates(s,store.calendar(s.calendarId));const value=i.fields.getTextInputValue('value').trim();if(!/^[+-]?[1-9]\d{0,2}$/.test(value)||Math.abs(Number(value))>365)throw new ScheduleError('日数は0以外の前後365日以内で入力してください。');s.bulk.days=Number(value);
       }
-      else if(f.kind==='search'){s.query=scheduleQuery(i.fields.getTextInputValue('value'));s.page=0;s.view='list';}
+      else if(f.kind==='search'){
+        const query=scheduleQuery(i.fields.getTextInputValue('value'));
+        if(query){if(!s.query)s.searchReturn={scope:searchScope(s),page:s.page??0};s.query=query;s.page=0;}
+        else clearSearch(s,!!s.query);
+        s.view='list';
+      }
       else if(f.kind==='import'){
         if(!['tools','import-preview','import-detail'].includes(s.view))throw new ScheduleError('ファイル選択から操作してください。');
         const files=i.fields.getUploadedFiles('calendar-file',true);if(files.size!==1)throw new ScheduleError('ICSファイルを1つ選んでください。');
@@ -217,9 +227,9 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
         if(s.view!=='repeat-settings')throw new ScheduleError('繰り返しの条件から操作してください。');recurrenceSource(s,store);
         const value=i.fields.getTextInputValue('value').trim();if(!/^(?:[1-9]|1\d|2[0-6])$/.test(value))throw new ScheduleError('追加件数は1〜26の整数で入力してください。');s.repeat.count=Number(value);
       }
-      else if(f.kind==='navigate'){s.month=scheduleMonth(i.fields.getTextInputValue('value'));clearRange(s);delete s.query;s.page=0;s.view='list';delete s.date;}
-      else if(f.kind==='day'){const date=scheduleDate(i.fields.getTextInputValue('value'));clearRange(s);delete s.query;delete s.dayPicker;s.date=date;s.month=s.date.slice(0,7);s.page=0;s.view='list';}
-      else if(f.kind==='calendar'){s.calendarId=await store.create(i.fields.getTextInputValue('value'),check);clearRange(s);s.view='list';s.page=0;s.month=currentScheduleMonth(now());delete s.date;delete s.query;}
+      else if(f.kind==='navigate'){s.month=scheduleMonth(i.fields.getTextInputValue('value'));clearRange(s);clearSearch(s);s.page=0;s.view='list';delete s.date;}
+      else if(f.kind==='day'){const date=scheduleDate(i.fields.getTextInputValue('value'));clearRange(s);clearSearch(s);delete s.dayPicker;s.date=date;s.month=s.date.slice(0,7);s.page=0;s.view='list';}
+      else if(f.kind==='calendar'){s.calendarId=await store.create(i.fields.getTextInputValue('value'),check);clearRange(s);s.view='list';s.page=0;s.month=currentScheduleMonth(now());delete s.date;clearSearch(s);}
       else if(f.kind==='rename'){await store.rename(s.calendarId,i.fields.getTextInputValue('value'),f.revision,check);s.view='list';}
       else if(f.kind==='event'){
         const input={...Object.fromEntries(['title','date','time','place','description'].map(k=>[k,i.fields.getTextInputValue(k)])),...(f.sourceColor?{color:f.sourceColor}:{})};
@@ -249,12 +259,12 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       const stage=s.importStage;if(s.view!=='import-preview'||!stage||!stage.events.length)throw new ScheduleError('新しく取り込む予定を確認してください。');
       const saveCheck=async()=>{await importCheck(stage);if(s.view!=='import-preview'||String(s.turn)!==turn)throw new ScheduleError('取り込みの確認画面が変更されました。選び直してください。');};
       const result=await store.importEvents(s.calendarId,stage.inputs,stage.calendarRevision,saveCheck);
-      clearRange(s);s.month=stage.events[0].date.slice(0,7);delete s.importStage;delete s.importPage;delete s.importIndex;delete s.form;delete s.query;delete s.date;s.page=0;s.view='list';note=`✓ ${result.added}件を取り込みました。同じ内容 ${result.duplicates}件は追加していません。\n${await refreshed(s.calendarId)}`;
+      clearRange(s);s.month=stage.events[0].date.slice(0,7);delete s.importStage;delete s.importPage;delete s.importIndex;delete s.form;clearSearch(s);delete s.date;s.page=0;s.view='list';note=`✓ ${result.added}件を取り込みました。同じ内容 ${result.duplicates}件は追加していません。\n${await refreshed(s.calendarId)}`;
     }else if(action==='tools'){if(!['list','tools'].includes(s.view))throw new ScheduleError('一覧から操作してください。');s.view='tools';}
     else if(action==='export'){if(s.view!=='tools')throw new ScheduleError('検索・取り出しから操作してください。');if(!selectedScheduleEvents(store.calendar(s.calendarId),s).length)throw new ScheduleError('取り出す予定がありません。');s.view='tools';download=true;note='✓ ファイルを用意しました。再取り込み時の重複は、利用するアプリで確認してください。';}
-    else if(action==='search-clear'){if(!['list','tools'].includes(s.view))throw new ScheduleError('一覧から操作してください。');delete s.query;s.page=0;s.view='list';}
-    else if(action==='home'){s.view='home';s.page=0;delete s.query;delete s.calendarId;delete s.form;delete s.publishStage;delete s.repeat;delete s.repeatStage;delete s.importStage;delete s.importPage;delete s.importIndex;}
-    else if(action==='calendar'){if(s.view!=='home'||i.values?.length!==1)throw new ScheduleError('予定表を選び直してください。');store.calendar(i.values[0]);clearRange(s);s.calendarId=i.values[0];s.view='list';s.page=0;s.month=currentScheduleMonth(now());delete s.date;delete s.query;delete s.form;delete s.importStage;delete s.importPage;delete s.importIndex;}
+    else if(action==='search-clear'){if(!['list','tools'].includes(s.view))throw new ScheduleError('一覧から操作してください。');clearSearch(s,true);s.view='list';}
+    else if(action==='home'){s.view='home';s.page=0;clearSearch(s);delete s.calendarId;delete s.form;delete s.publishStage;delete s.repeat;delete s.repeatStage;delete s.importStage;delete s.importPage;delete s.importIndex;}
+    else if(action==='calendar'){if(s.view!=='home'||i.values?.length!==1)throw new ScheduleError('予定表を選び直してください。');store.calendar(i.values[0]);clearRange(s);s.calendarId=i.values[0];s.view='list';s.page=0;s.month=currentScheduleMonth(now());delete s.date;clearSearch(s);delete s.form;delete s.importStage;delete s.importPage;delete s.importIndex;}
     else if(action==='organize'){s.view='organize';delete s.bulk;delete s.bulkStage;delete s.restoreStage;delete s.form;}
     else if(action==='history'||action==='event-history'){
       if(!['organize','event','history','history-detail','restore-confirm'].includes(s.view))throw new ScheduleError('整理メニューか予定の詳細から操作してください。');
@@ -321,7 +331,7 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       if(s.view!=='days'||!s.dayPicker)throw new ScheduleError('日付の選択から操作してください。');s.today=new Date(now()+9*3600000).toISOString().slice(0,10);const picker=s.dayPicker;
       if(action==='days-date'){
         if(i.values?.length!==1||!pickerDays(s,store.calendar(s.calendarId)).items.some(day=>day.date===i.values[0]))throw new ScheduleError('表示中の日付から選び直してください。');
-        clearRange(s);delete s.query;s.date=i.values[0];s.month=s.date.slice(0,7);s.page=0;s.view='list';delete s.dayPicker;
+        clearRange(s);clearSearch(s);s.date=i.values[0];s.month=s.date.slice(0,7);s.page=0;s.view='list';delete s.dayPicker;
       }else if(action==='days-toggle'){picker.onlyEvents=!picker.onlyEvents;picker.page=0;}
       else if(action==='days-prev'||action==='days-next')picker.page+=action==='days-next'?1:-1;
       else{picker.month=action==='days-month-current'?currentScheduleMonth(now()):shiftScheduleMonth(picker.month,action==='days-month-next'?1:-1);picker.page=0;}
@@ -343,7 +353,7 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       const value=i.values[0],today=new Date(now()+9*3600000).toISOString().slice(0,10);s.today=today;
       if(value==='week'){const anchor=s.date??(hasRange(s)?s.rangeStart:s.month===today.slice(0,7)?today:`${s.month}-01`);chooseRange(s,'week',scheduleWeek(anchor));}
       else if(value==='upcoming')chooseRange(s,'upcoming',scheduleUpcoming(today));
-      else{clearRange(s);s.display=value==='month-list'?'list':'calendar';delete s.date;delete s.query;s.page=0;}
+      else{clearRange(s);s.display=value==='month-list'?'list':'calendar';delete s.date;clearSearch(s);s.page=0;}
     }
     else if(['week-prev','week-next','week-current'].includes(action)){
       if(s.view!=='list'||s.period!=='week'||s.query)throw new ScheduleError('週間表示から操作してください。');
@@ -353,10 +363,10 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       if(s.view!=='list'||s.period!=='upcoming'||s.query)throw new ScheduleError('今日から30日の表示から操作してください。');
       s.today=new Date(now()+9*3600000).toISOString().slice(0,10);chooseRange(s,'upcoming',scheduleUpcoming(s.today));
     }
-    else if(action==='day-today'){if(!['list','days'].includes(s.view))throw new ScheduleError('カレンダーから操作してください。');clearRange(s);delete s.query;delete s.dayPicker;s.view='list';s.date=new Date(now()+9*3600000).toISOString().slice(0,10);s.today=s.date;s.month=s.date.slice(0,7);s.page=0;}
+    else if(action==='day-today'){if(!['list','days'].includes(s.view))throw new ScheduleError('カレンダーから操作してください。');clearRange(s);clearSearch(s);delete s.dayPicker;s.view='list';s.date=new Date(now()+9*3600000).toISOString().slice(0,10);s.today=s.date;s.month=s.date.slice(0,7);s.page=0;}
     else if(action==='day-clear'){if(s.view!=='list')throw new ScheduleError('一覧から操作してください。');delete s.date;s.page=0;}
     else if(action==='display'){if(s.view!=='list')throw new ScheduleError('カレンダーから操作してください。');clearRange(s);s.display=s.display==='list'?'calendar':'list';}
-    else if(['month-prev','month-next','month-current'].includes(action)){if(s.view!=='list')throw new ScheduleError('一覧から操作してください。');s.month=action==='month-current'?currentScheduleMonth(now()):shiftScheduleMonth(s.month,action==='month-next'?1:-1);clearRange(s);s.page=0;delete s.date;delete s.query;}
+    else if(['month-prev','month-next','month-current'].includes(action)){if(s.view!=='list')throw new ScheduleError('一覧から操作してください。');s.month=action==='month-current'?currentScheduleMonth(now()):shiftScheduleMonth(s.month,action==='month-next'?1:-1);clearRange(s);s.page=0;delete s.date;clearSearch(s);}
     else if(action==='prev'||action==='next'){if(!['home','list'].includes(s.view))throw new ScheduleError('一覧から操作してください。');s.page+=action==='next'?1:-1;}
     else if(action==='delete-event'){if(s.view!=='event')throw new ScheduleError('予定から操作してください。');s.deleteStage=store.calendar(s.calendarId).events.find(e=>e.id===s.eventId);if(!s.deleteStage)throw new ScheduleError('予定が見つかりません。');s.view='delete-confirm';}
     else if(action==='repeat'){
@@ -379,7 +389,7 @@ export function createScheduleController({guild,store,now=()=>Date.now(),readImp
       const stage=s.repeatStage;if(s.view!=='repeat-preview'||!stage)throw new ScheduleError('追加する日付を確認してください。');
       const saveCheck=async()=>{await check();if(s.repeatStage!==stage||s.view!=='repeat-preview'||String(s.turn)!==turn||s.calendarId!==stage.calendarId)throw new ScheduleError('確認画面が変更されました。日付を確認し直してください。');const {e}=recurrenceSource(s,store);if(e.id!==stage.sourceId||e.revision!==stage.sourceRevision)throw new ScheduleError('元の予定が変更されました。予定から選び直してください。');};
       const ids=await store.putEvents(stage.calendarId,stage.inputs,stage.calendarRevision,saveCheck);
-      clearRange(s);delete s.repeatStage;delete s.repeat;delete s.form;delete s.query;delete s.date;s.month=stage.inputs[0].date.slice(0,7);s.page=0;s.view='list';note=`✓ ${ids.length}件の予定を追加しました。元の予定は残しています。\n${await refreshed(s.calendarId)}`;
+      clearRange(s);delete s.repeatStage;delete s.repeat;delete s.form;clearSearch(s);delete s.date;s.month=stage.inputs[0].date.slice(0,7);s.page=0;s.view='list';note=`✓ ${ids.length}件の予定を追加しました。元の予定は残しています。\n${await refreshed(s.calendarId)}`;
     }
     else if(action==='confirm-delete'){if(s.view!=='delete-confirm'||!s.deleteStage)throw new ScheduleError('削除確認から操作してください。');await store.removeEvent(s.calendarId,s.deleteStage.id,s.deleteStage.revision,check);delete s.deleteStage;s.view='list';note=await refreshed(s.calendarId);}
     else if(action==='event-back'){s.view='event';delete s.deleteStage;delete s.repeat;delete s.repeatStage;delete s.form;}

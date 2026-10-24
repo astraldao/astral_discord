@@ -64,3 +64,31 @@ test('maximum stored calendar exports within the attachment budget without losin
   const buffer=scheduleExport(c,c.events);assert.ok(buffer.length<1024*1024);
   assert.equal(unfold(buffer).split('BEGIN:VEVENT\r\n').length-1,200);
 });
+
+test('explicit date and month search overlaps periods and overnight tails, with all terms combined',async()=>{
+  const c=await calendar([
+    {title:'卓 継続',date:'2026/09/30〜2026/10/02',time:''},
+    {title:'卓 深夜',date:'2026/10/02',time:'23:00-01:00'},
+    {title:'卓 零時終了',date:'2026/10/02',time:'23:00-00:00'},
+    {title:'別の予定',date:'2026/10/03'},
+    {title:'卓 翌月',date:'2026/11/01'},
+  ]);
+  const titles=query=>selectedScheduleEvents(c,{query,month:'2099-01',date:'2099-01-01'}).map(e=>e.title);
+  assert.deepEqual(titles('日付:2026/10/01 卓'),['卓 継続']);
+  assert.deepEqual(titles('日付:2026/10/03 卓'),['卓 深夜']);
+  assert.deepEqual(titles('月:2026/10 卓'),['卓 継続','卓 深夜','卓 零時終了']);
+  assert.deepEqual(titles('月:2026/10 日付:2026-10-03 卓'),['卓 深夜']);
+  assert.deepEqual(titles('月:2026/11 日付:2026-10-03'),[]);
+  assert.deepEqual(titles('月：２０２６／１０ 日付：２０２６／１０／０３'),['卓 深夜','別の予定']);
+  assert.deepEqual(titles('2026/10/03'),[]); // Bare dates remain literal title/place/description text.
+});
+
+test('date search validates leap days and supported years before filtering or exporting',async()=>{
+  const c=await calendar([{date:'2028/02/29',time:''},{date:'2000/01/01',time:''},{date:'2099/12/31',time:''}]);
+  for(const query of ['日付:2027/02/29','日付:2026/10/32','日付:1999/12/31','日付:2100/01/01','月:2026/13','月:','日付:']){
+    assert.throws(()=>scheduleQuery(query));assert.throws(()=>selectedScheduleEvents(c,{query}));
+  }
+  for(const query of ['日付:2028/02/29','月:2028/02','日付:2000/01/01','月:2099/12'])assert.equal(selectedScheduleEvents(c,{query}).length,1);
+  const exportText=unfold(scheduleExport(c,selectedScheduleEvents(c,{query:'月:2028/02'})));
+  assert.equal((exportText.match(/BEGIN:VEVENT/g)??[]).length,1);assert.ok(exportText.includes('DTSTART;VALUE=DATE:20280229'));
+});

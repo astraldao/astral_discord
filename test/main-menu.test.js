@@ -125,3 +125,20 @@ test('calendar has one menu button and delegates its direct shortcut without ope
   for(const action of ['calendar','menu:calendar']){const i=interaction(action,true);await c.handle(i);assert.equal(i.acks.length,1);}
   assert.deepEqual(calls,[true,true]);
 });
+
+test('guidance shows live capability booleans and does not expose arbitrary runtime fields',async()=>{
+  let state={readingEnabled:false,diceEnabled:false,diceFullContent:false,token:'PRIVATE_CONFIG_SENTINEL'};
+  const c=createMainMenu({access:async()=>({admin:false}),capabilities:()=>state}),run=async(action,values)=>{const i=Object.assign(interaction(action,true),{values});await c.handle(i);return JSON.stringify(i.result);};
+  let menu=await run('menu:open');assert.ok(menu.includes('未有効'));assert.ok(menu.includes('現在OFF'));assert.ok(!menu.includes('メンションして使えます'));assert.ok(!menu.includes('PRIVATE_CONFIG'));
+  let guide=await run('menu:help-topic',['dice']);assert.ok(guide.includes('現在はOFF'));assert.ok(!guide.includes('メンションが必要'));
+  state={readingEnabled:true,diceEnabled:true,diceFullContent:false};menu=await run('menu:open');assert.ok(menu.includes('@Bot 1D100'));assert.ok(!menu.includes('未有効'));guide=await run('menu:help-topic',['dice']);assert.ok(guide.includes('現在はBotへのメンションが必要'));
+  state={diceEnabled:true,diceFullContent:true};guide=await run('menu:help-topic',['dice']);assert.ok(guide.includes('通常の投稿から利用できます'));assert.ok(!guide.includes('PRIVATE_CONFIG'));
+  for(const value of ['false',0,null])assert.ok(!JSON.stringify(mainMenuScreen({capabilities:{diceEnabled:value,readingEnabled:value}})).includes('現在OFF'));
+});
+
+test('live capability reads occur only after access checks and never execute or modify a feature',async()=>{
+  let allowed=false,reads=0;const c=createMainMenu({access:async()=>allowed?{admin:false}:false,capabilities:()=>{reads++;return {readingEnabled:false};},openRead:async(_i,action)=>assert.equal(action,'status')});
+  await c.handle(interaction('menu:open',true));assert.equal(reads,0);
+  allowed=true;await c.handle(interaction('menu:read',true));assert.equal(reads,0);
+  await c.handle(Object.assign(interaction('menu:help-topic',true),{values:['read']}));assert.equal(reads,1);
+});

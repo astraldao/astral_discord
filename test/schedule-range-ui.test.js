@@ -136,3 +136,32 @@ test('dense monthly, daily, weekly, upcoming and search screens fit native Disco
     }
   }
 });
+
+test('search is directly available, returns to the previous page and retains that origin when changing terms',async()=>{
+  const f=await fixture();for(let n=0;n<24;n++)await f.add(`卓 ${n}`,'2026/10/14');await f.act('period',['month-list']);await f.act('next');await f.act('next');assert.equal(f.s.page,2);
+  assert.equal(controls(f.screen()).filter(c=>c.custom_id?.endsWith(':search')).length,1);
+  const first=await f.act('search');assert.ok(first.modal.toJSON().components[0].components[0].placeholder.includes('日付:'));
+  await f.submit(first,{value:'日付:2026/10/14 卓'});assert.equal(eventOptions(f.screen()).length,8);assert.equal(f.s.page,0);
+  const change=await f.act('search');await f.submit(change,{value:'月:2026/10 卓'});await f.act('next');await f.act('search-clear');assert.equal(f.s.page,2);assert.equal(f.s.query,undefined);assert.equal(f.s.searchReturn,undefined);
+  const again=await f.act('search');await f.submit(again,{value:'卓'});const blank=await f.act('search');await f.submit(blank,{value:''});assert.equal(f.s.page,2);
+});
+
+test('invalid date search preserves results, and changing the view discards the old page origin',async()=>{
+  const f=await fixture();for(let n=0;n<20;n++)await f.add(`卓 ${n}`,'2026/10/14');await f.act('next');
+  let form=await f.act('search');await f.submit(form,{value:'卓'});const origin=structuredClone(f.s.searchReturn),before=structuredClone(f.store.data);
+  form=await f.act('search');const rejected=await f.submit(form,{value:'日付:2026/02/30'});assert.ok(body(rejected.replies.at(-1)).includes('存在する日付'));assert.equal(f.s.query,'卓');assert.deepEqual(f.s.searchReturn,origin);assert.deepEqual(f.store.data,before);
+  await f.act('period',['week']);assert.equal(f.s.searchReturn,undefined);form=await f.act('search');await f.submit(form,{value:'卓'});assert.equal(f.s.searchReturn.page,0);await f.act('search-clear');assert.equal(f.s.page,0);assert.equal(f.s.period,'week');
+});
+
+test('search page restoration clamps after removal and avoids an old page after the upcoming date range changes',async()=>{
+  const f=await fixture('2026-10-14T14:59:59Z');for(let n=0;n<18;n++)await f.add(`卓 ${n}`,'2026/10/14');await f.act('period',['upcoming']);await f.act('next');await f.act('next');
+  let form=await f.act('search');await f.submit(form,{value:'卓'});
+  for(const e of f.store.calendar(f.id).events.slice(1))await f.store.removeEvent(f.id,e.id,e.revision);
+  await f.act('search-clear');assert.equal(f.s.page,0);
+  form=await f.act('search');await f.submit(form,{value:'卓'});f.setNow('2026-10-14T15:00:00Z');await f.controller.openAdmin(interaction());await f.act('search-clear');assert.equal(f.s.page,0);assert.equal(f.s.rangeStart,'2026-10-15');
+});
+
+test('an empty search submitted from an unfiltered page keeps the page and does not mutate data',async()=>{
+  const f=await fixture();for(let n=0;n<12;n++)await f.add(`予定${n}`,'2026/10/14');await f.act('next');const before=structuredClone(f.store.data);
+  const form=await f.act('search');await f.submit(form,{value:''});assert.equal(f.s.page,1);assert.equal(f.s.query,undefined);assert.deepEqual(f.store.data,before);
+});

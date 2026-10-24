@@ -2,11 +2,12 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Messa
 import {payload,menuHomeButton,adminHomeButton} from './ui.js';
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`menu:${action}`).setLabel(label).setStyle(style);
-import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting,menuGuideTopics} from './menu-catalog.js';
+import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting,menuGuideTopics,menuCapabilities,menuCapabilityNote} from './menu-catalog.js';
 class MenuUiError extends Error{}
-export function mainMenuScreen({admin=false,recent=[]}={}){
-  const items=[...new Set(recent.filter(destination))].slice(0,3);
-  return {...payload('メニュー','**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · このチャンネルの投稿を、参加中のVCで聞く\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n初めての操作は「使い方」で確認できます。チャットダイスは1D100などを投稿して使えます。',{components:[
+export function mainMenuScreen({admin=false,recent=[],capabilities}={}){
+  const items=[...new Set(recent.filter(destination))].slice(0,3),state=menuCapabilities(capabilities);
+  const diceHint=state.diceEnabled===false?'チャットダイスは現在OFFです。':state.diceFullContent===false?'チャットダイスは @Bot 1D100 のようにメンションして使えます。':'チャットダイスは1D100などを投稿して使えます。';
+  return {...payload('メニュー',`**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · ${state.readingEnabled===false?'現在は未有効 · 使い方で手順を確認':'このチャンネルの投稿を、参加中のVCで聞く'}\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n初めての操作は「使い方」で確認できます。${diceHint}`,{components:[
     row(button('vc','VCに入る',ButtonStyle.Primary),button('read','読み上げ'),button('game','ゲーム'),button('calendar','予定表')),
     row(new StringSelectMenuBuilder().setCustomId('menu:find').setPlaceholder('目的・説明から機能を探す').addOptions(...Object.entries(destinations).map(([value,d])=>({value,label:d.label,description:d.summary})))),
     row(button('profile','自分の読み方'),button('wallet','自分のチップ'),button('help','使い方')),
@@ -14,14 +15,15 @@ export function mainMenuScreen({admin=false,recent=[]}={}){
     ...(admin?[row(adminHomeButton())]:[]),
   ]}),attachments:[]};
 }
-export function mainMenuGuideScreen(topic){
-  const selected=typeof topic==='string'&&Object.hasOwn(menuGuideTopics,topic)?menuGuideTopics[topic]:null;
-  return {...payload(selected?`使い方 · ${selected.label}`:'使い方',selected?`${selected.guide}\n\n**うまく動かないとき**\n${menuTroubleshooting[topic]}`:'操作の手順を選んでください。\n\n普段は **/menu**、管理者の設定は **/admin** から開きます。\nどの機能も、まず画面で内容を確認できます。',{components:[
+export function mainMenuGuideScreen(topic,capabilities){
+  const selected=typeof topic==='string'&&Object.hasOwn(menuGuideTopics,topic)?menuGuideTopics[topic]:null,note=menuCapabilityNote(topic,capabilities),state=menuCapabilities(capabilities);
+  const trouble=topic==='dice'&&state.diceEnabled===false?'管理者にダイス返信の有効化を依頼してください。ON/OFFは動作診断でも確認できます。':topic==='read'&&state.readingEnabled===false?'管理者が読み上げ設定を有効にしてBotを再起動すると利用できます。':menuTroubleshooting[topic];
+  return {...payload(selected?`使い方 · ${selected.label}`:'使い方',selected?`${note?`${note}\n\n`:''}${selected.guide}\n\n**うまく動かないとき**\n${trouble}`:'操作の手順を選んでください。\n\n普段は **/menu**、管理者の設定は **/admin** から開きます。\nどの機能も、まず画面で内容を確認できます。',{components:[
     row(new StringSelectMenuBuilder().setCustomId('menu:help-topic').setPlaceholder('知りたい操作を選ぶ').addOptions(...Object.entries(menuGuideTopics).map(([value,item])=>({value,label:item.label,description:item.summary,default:value===topic})))),
     row(...(selected&&destination(topic)?[button(topic,`${selected.label}を開く`,ButtonStyle.Primary)]:[]),menuHomeButton()),
   ]}),attachments:[]};
 }
-export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openWallet,openCalendar,now=()=>Date.now(),access=async i=>{
+export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openWallet,openCalendar,capabilities=()=>({}),now=()=>Date.now(),access=async i=>{
   const [member,channel]=await Promise.all([guild.members.fetch({user:i.user.id,force:true}),guild.channels.fetch(i.channelId,{force:true})]);
   if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new MenuUiError('このチャンネルの閲覧権限を確認してください。');
   return {admin:member.permissions.has(P.Administrator)};
@@ -48,12 +50,13 @@ export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openW
       if(i.values?.length!==1||!history(i).includes(i.values[0]))throw new MenuUiError('最近使った機能の表示が変わりました。メニューを開き直してください。');
       action=i.values[0];
     }
+    const state=['open','help','help-topic'].includes(action)?menuCapabilities(capabilities()):undefined;
     if(destination(action))recovery=action;
-    if(action==='open')await i.editReply(mainMenuScreen({...permission,recent:history(i)}));
-    else if(action==='help')await i.editReply(mainMenuGuideScreen());
+    if(action==='open')await i.editReply(mainMenuScreen({...permission,recent:history(i),capabilities:state}));
+    else if(action==='help')await i.editReply(mainMenuGuideScreen(undefined,state));
     else if(action==='help-topic'){
       if(i.values?.length!==1||!(typeof i.values[0]==='string'&&Object.hasOwn(menuGuideTopics,i.values[0])))throw new MenuUiError('知りたい操作を選び直してください。');
-      await i.editReply(mainMenuGuideScreen(i.values[0]));
+      await i.editReply(mainMenuGuideScreen(i.values[0],state));
     }
     else if(action==='vc')await openVc(i);
     else if(action==='game')await openGame(i);

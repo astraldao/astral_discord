@@ -48,3 +48,16 @@ test('default access permits only administrators with channel visibility for man
 test('personal history filter applies only within the latest 20 and never expands its scope',async()=>{
   const f=await fixture();await f.wallet.transfer('other','owner',10,'one');await f.wallet.playCasino('owner',{kind:'roulette',choice:'red',bet:10},()=>1);await f.c.handle(click(f.s,'history'));await f.c.handle(Object.assign(click(f.s,'filter'),{values:['games']}));assert.equal(chipAccountScreen(f.s,f.wallet).embeds[0].toJSON().fields.length,1);await f.c.handle(Object.assign(click(f.s,'filter'),{values:['gifts']}));assert.ok(JSON.stringify(chipAccountScreen(f.s,f.wallet)).includes('チップ受取'));const before=f.s.historyFilter;await f.c.handle(Object.assign(click(f.s,'filter'),{values:['__proto__']}));assert.equal(f.s.historyFilter,before);
 });
+
+test('history explains empty filters and keeps its acquisition timestamp until an explicit refresh',async()=>{
+  const f=await fixture();f.clock(1000);await f.c.handle(click(f.s,'history'));assert.equal(f.s.historyCheckedAt,1000);
+  f.clock(5000);await f.wallet.transfer('other','owner',10,'later');await f.c.handle(Object.assign(click(f.s,'filter'),{values:['gifts']}));let m=chipAccountScreen(f.s,f.wallet);
+  assert.ok(m.embeds[0].toJSON().description.includes('この種類の履歴はありません'));assert.ok(m.embeds[0].toJSON().description.includes('<t:1:R>'));assert.ok(m.embeds[0].toJSON().description.includes('3,010'));assert.equal(m.embeds[0].toJSON().fields?.length??0,0);
+  await f.c.handle(click(f.s,'refresh'));m=chipAccountScreen(f.s,f.wallet);assert.equal(f.s.historyCheckedAt,5000);assert.ok(m.embeds[0].toJSON().description.includes('<t:5:R>'));assert.equal(m.embeds[0].toJSON().fields.length,1);assert.ok(!m.embeds[0].toJSON().description.includes('この種類の履歴はありません'));
+  f.allow(false);f.clock(6000);await f.c.handle(click(f.s,'refresh'));assert.equal(f.s.historyCheckedAt,5000);
+});
+
+test('empty administrator audit retains its check time and refresh updates the same bounded snapshot',async()=>{
+  const f=await fixture(true);f.clock(1000);await f.c.handle(click(f.s,'audit'));assert.equal(f.s.auditCheckedAt,1000);assert.ok(JSON.stringify(chipAccountScreen(f.s,f.wallet)).includes('<t:1:R>'));
+  f.clock(3000);await f.c.handle(click(f.s,'refresh'));assert.equal(f.s.auditCheckedAt,3000);assert.equal(f.s.auditSnapshot.length,0);assert.ok(JSON.stringify(chipAccountScreen(f.s,f.wallet)).includes('調整履歴はありません'));
+});
