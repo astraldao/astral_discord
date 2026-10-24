@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inflateSync} from 'node:zlib';
 import {calendarLayout,calendarImage,calendarAlt} from '../src/calendar-image.js';
-test('calendar grid uses Sunday start and exact dates for four, five and six week months',()=>{
-  for(const [month,days,offset,rows] of [['2026-02',28,0,4],['2026-10',31,4,5],['2026-08',31,6,6],['2028-02',29,2,5]]){
+test('calendar grid uses Sunday start and exact dates with a visible following month and at most six weeks',()=>{
+  for(const [month,days,offset,rows] of [['2026-02',28,0,5],['2026-10',31,4,6],['2026-08',31,6,6],['2028-02',29,2,5]]){
     const g=calendarLayout(month,[]);assert.equal(g.cells.length,days);assert.equal(g.cells[0].col,offset);assert.equal(g.rows,rows);assert.equal(g.cells.at(-1).date,`${month}-${days}`);assert.ok(g.cells.every(c=>c.row<rows&&c.col>=0&&c.col<7));
   }
   for(const month of ['2026-00','2026-13','1999-12','2100-01','2026/10','x'])assert.throws(()=>calendarLayout(month,[]));

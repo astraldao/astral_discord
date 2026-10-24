@@ -61,7 +61,7 @@ test('sparse months shrink unused vertical space without merging separate same-n
 });
 test('a sparse month reserves two title lines and a start-time line when needed, without changing stored times',()=>{
   const events=[{id:'long',...scheduleEvent(input({title:'オンライン交流セッション',date:'2026/10/21',time:'20:30-23:00'}))},{id:'short',...scheduleEvent(input({title:'定例会',date:'2026/10/16',time:'21:00'}))}];
-  const before=structuredClone(events),result=calendarImage('2026-10',events);assert.equal(result.geometry.wrapped,true);assert.equal(result.geometry.timed,true);assert.ok(result.geometry.bandHeight>=60);assert.ok(result.height<866);assert.deepEqual(events,before);assert.equal(result.width,840);assert.equal(result.buffer.readUInt32BE(20),result.height);
+  const before=structuredClone(events),result=calendarImage('2026-10',events);assert.equal(result.geometry.wrapped,true);assert.equal(result.geometry.timed,true);assert.ok(result.geometry.bandHeight>=60);assert.ok(result.height<1000);assert.deepEqual(events,before);assert.equal(result.width,840);assert.equal(result.buffer.readUInt32BE(20),result.height);
 });
 test('dense months keep their three lanes, stable dimensions and honest overflow instead of wrapping into other rows',()=>{
   const events=Array.from({length:200},(_,n)=>({id:`dense-${n}`,...scheduleEvent(input({date:'2026/08/01',title:'長い予定名'.repeat(10),time:'20:00',color:'red'}))}));
@@ -145,8 +145,8 @@ test('dense new screens fit native limits, readonly screens lack edit controls a
 test('truncated names get bounded full-title keys without merging same-name events or repeating week spans',()=>{
   const long='オンライン交流セッション'.repeat(4),first={id:'a',date:'2026-10-01',endDate:'2026-10-31',start:null,title:long};
   const second={...first,id:'b',date:'2026-10-22',endDate:undefined};
-  const result=calendarImage('2026-10',[first,second,{...first,id:'private',date:'2026-11-01',endDate:undefined}]);
-  assert.equal(result.geometry.shortenedCount,2);assert.equal(result.geometry.titleKeyCount,2);assert.equal(result.layout.count,2);assert.ok(result.geometry.keyHeight>100);assert.equal(result.geometry.bandTop,40);
+  const result=calendarImage('2026-10',[first,second,{...first,id:'adjacent',date:'2026-11-01',endDate:undefined}]);
+  assert.equal(result.geometry.shortenedCount,3);assert.equal(result.geometry.titleKeyCount,3);assert.equal(result.layout.count,2);assert.ok(result.geometry.keyHeight>100);assert.equal(result.geometry.bandTop,40);
   const short=calendarImage('2026-10',[{date:'2026-10-21',start:null,title:'会議'}]);assert.equal(short.geometry.keyHeight,0);
 });
 test('many long titles and astral Unicode keep the image bounded and retain honest hidden counts',()=>{
