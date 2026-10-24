@@ -1,3 +1,4 @@
+import {selectedAction} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,AttachmentBuilder,escapeMarkdown,PermissionFlagsBits as P} from 'discord.js';
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
@@ -5,7 +6,7 @@ import {canConfigure} from './commands.js';
 import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {visibleCharacters,searchScenarios,iacharaUrl,characterRevision} from './trpg-store.js';
 import {createTrpgRepair,trpgPanelTarget} from './trpg-repair.js';
-import {tableScreen} from './tables-ui.js';
+import {tableScreen,tableActions,tableActionKey} from './tables-ui.js';
 import {backupScreen,createTrpgBackups} from './trpg-backup.js';
 import {createIacharaClient} from './iachara.js';
 const row=(...x)=>new ActionRowBuilder().addComponents(...x);
@@ -162,7 +163,8 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         if(direct)await i.showModal(form(s,'register'));else await i.editReply(screen(s));
         return;
       }
-      s=sessions.get(parts[1],i.user.id);if(s.originChannelId && s.originChannelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');const action=parts[2];if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
+      s=sessions.get(parts[1],i.user.id);if(s.originChannelId && s.originChannelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');let action=parts[2];if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
+      if(action==='table-actions'){if(s.entry!=='admin'||s.view!=='table')throw new Error('管理用の卓セットから操作してください。');const t=store.table(s.tableId);if(parts[3]!==tableActionKey(t))throw new Error('卓セットが変わりました。開き直して確認してください。');action=selectedAction(i.values,tableActions(t));if(!action)throw new Error('この卓の操作一覧から選び直してください。');}
       if(action.startsWith('form-')){s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(s.entry==='admin'||s.tableReturn)requireAdmin(s);const kind=action.slice(5);if(!['register','pc-search'].includes(kind))requireAdmin(s);if(['register','pc-search'].includes(kind) && !s.panelId)throw new Error('パネルから開いてください。');if(kind==='repair-result'){const p=store.metadata().panels.find(x=>x.id===s.repairId);if(!p?.repairPending)throw new Error('未確認の復旧処理はありません。');s.repairStage={id:p.id,channelId:p.repairPending.channelId,revision:JSON.stringify(p)};}if(kind==='scenario'){s.view='scenarios';if(s.scenarioDraftId)delete s.scenarioDraft;s.scenarioDraftId=null;}if(kind==='scenario-edit'){const id=s.scenario?.id;if(s.scenarioDraftId!==id)delete s.scenarioDraft;s.scenario=store.metadata().scenarios.find(x=>x.id===id);if(!s.scenario)throw new Error('ベース卓を選んでください。');s.scenarioDraftId=id;}if(kind==='table'){if(s.tableEditId)delete s.tableDraft;s.tableForm=null;s.tableEditId=null;}if(kind==='table-copy'){const source=store.table(s.tableId);if(s.copySource?.id!==source.id)delete s.copyName;s.copySource=source;}if(kind==='table-edit'){s.tableForm=store.table(s.tableId);s.tableEditId=s.tableId;}await i.showModal(form(s,kind));return;}
       // Always create a private response, including forged/public component requests.
       if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(s.entry==='admin'||s.tableReturn)requireAdmin(s);let note='';const checkAdmin=()=>authorizeSave(i,s,{admin:true});

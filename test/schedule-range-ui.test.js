@@ -139,7 +139,7 @@ test('dense monthly, daily, weekly, upcoming and search screens fit native Disco
 
 test('search is directly available, returns to the previous page and retains that origin when changing terms',async()=>{
   const f=await fixture();for(let n=0;n<24;n++)await f.add(`卓 ${n}`,'2026/10/14');await f.act('period',['month-list']);await f.act('next');await f.act('next');assert.equal(f.s.page,2);
-  assert.equal(controls(f.screen()).filter(c=>c.custom_id?.endsWith(':search')).length,1);
+  assert.equal(controls(f.screen()).flatMap(c=>c.options??[]).filter(o=>o.value==='search').length,1);
   const first=await f.act('search');assert.ok(first.modal.toJSON().components[0].components[0].placeholder.includes('日付:'));
   await f.submit(first,{value:'日付:2026/10/14 卓'});assert.equal(eventOptions(f.screen()).length,8);assert.equal(f.s.page,0);
   const change=await f.act('search');await f.submit(change,{value:'月:2026/10 卓'});await f.act('next');await f.act('search-clear');assert.equal(f.s.page,2);assert.equal(f.s.query,undefined);assert.equal(f.s.searchReturn,undefined);

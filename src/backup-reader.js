@@ -1,3 +1,4 @@
+import {actionPicker,selectedAction} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelType,PermissionFlagsBits as P,MessageFlags,StringSelectMenuBuilder} from 'discord.js';
 import {randomUUID} from 'node:crypto';
 import {backupText,backupTextModes} from './backup-text.js';
@@ -10,9 +11,14 @@ import {payload,menuHomeButton} from './ui.js';
 const guide=()=>new ButtonBuilder().setLabel('設定・困ったとき').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md');
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`read:${action}`).setLabel(label).setStyle(style);
 const refresh=()=>button('status','状態を更新');
+export const readerActions=s=>[
+  {value:'status',label:'状態を更新・操作画面へ',description:'現在の読み上げ状態を取得する'},
+  {value:'details',label:'処理状況・内訳',description:'開始待ちと累計・読み飛ばしを確認する'},
+  ...(s.ready&&s.queue.length?[{value:'clear',label:'待機分を消去…',description:'現在の音声を残して、次の画面で確認する'}]:[]),
+];
 export function backupReaderScreen(s,enabled,{details=false,failure,note=''}={}){
   if(!enabled)return payload('バックアップ読み上げ','**まだ有効になっていません**\n管理者に読み上げの有効化を依頼してください。設定手順は下のリンクから確認できます。',{state:'warning',components:[new ActionRowBuilder().addComponents(refresh(),guide(),menuHomeButton())]});
-  if(!s)return payload('バックアップ読み上げ',`${failure?`${backupFailureSummary(failure)}\n\n`:''}**停止中**\n1. 聞きたいVCに参加する\n2. 読み上げたいテキストチャンネルで「このチャンネルで開始」を押す\n\n開始後の投稿を、本文50文字＋「以下略」で順番に読みます。開始時のモードは「そのまま」です。`,{state:failure?'warning':'normal',components:[new ActionRowBuilder().addComponents(button('start','このチャンネルで開始',ButtonStyle.Primary),refresh(),guide(),menuHomeButton())]});
+  if(!s)return payload('バックアップ読み上げ',`${failure?`${backupFailureSummary(failure)}\n\n`:''}**停止中**\n1. 聞きたいVCに参加する\n2. 読み上げたいテキストチャンネルで「このチャンネルで開始」を押す\n\n開始後の投稿を、本文50文字＋「以下略」で順番に読みます。開始時のモードは「そのまま」です。`,{state:failure?'warning':'normal',components:[new ActionRowBuilder().addComponents(button('start','このチャンネルで開始',ButtonStyle.Primary),refresh()),new ActionRowBuilder().addComponents(guide(),menuHomeButton())]});
   const m=s.metrics;
   const phase=!s.ready?'接続と音声を準備しています':s.paused?(s.currentJob?'現在の文章の後で一時停止します':'一時停止中'):s.phase==='playing'?'読み上げ中':s.phase==='processing'?'次の音声を準備しています':'投稿を待っています';
   const parts=m.lastParts;
@@ -20,9 +26,10 @@ export function backupReaderScreen(s,enabled,{details=false,failure,note=''}={})
   const warning=m.dropped?`\n⚠ 待ち行列の上限で ${m.dropped}件を読み飛ばしています。「処理状況・内訳」で確認できます。`:'';
   const intent=s.clearIntent,revision=s.controlRevision??0,mode=s.mode??'raw';
   return payload('バックアップ読み上げ',`${note?`${note}\n\n`:''}**${phase}**\n読む場所 <#${s.textId}>\n聞く場所 ${s.voiceId?`<#${s.voiceId}>`:'確認中'}\n\n${s.paused?'新しい投稿は最大8件まで待機します。「読み上げを再開」で投稿順に続けます。':s.ready?`${mode==='chat'?'整形後の本文':'本文'}50文字を超えると「以下略」を付けます。投稿順に最後まで読み上げます。`:'準備完了後の新しい投稿から読みます。準備中も停止できます。'}\n**読み方** ${backupTextModes[mode]}${mode==='chat'?' · リンク・コード・伏せ字・絵文字を短く整形':''}\n**待ち** ${s.queue.length}件 / 8件\n**直近の開始待ち** ${m.lastMs===null?'未計測':`${m.lastMs}ms`}${warning}${detail}${intent?`\n\n**確認時に待っていた ${intent.ids.length}件を消去しますか？**\n今の文章は最後まで読みます。すでに再生へ進んだ文章と、この確認後の新しい投稿は残します。30秒以内に確定してください。`:''}\n\nVOICEVOX:ずんだもん`,{components:[
-    new ActionRowBuilder().addComponents(refresh(),button(`${s.paused?'resume':'pause'}:${s.id}:${revision}`,s.paused?'読み上げを再開':'一時停止',s.paused?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(!s.ready),button(`stop:${s.id}`,'読み上げを停止',ButtonStyle.Danger)),
+    new ActionRowBuilder().addComponents(button(`${s.paused?'resume':'pause'}:${s.id}:${revision}`,s.paused?'読み上げを再開':'一時停止',s.paused?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(!s.ready),button(`stop:${s.id}`,'読み上げを停止',ButtonStyle.Danger)),
     new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(`read:mode:${s.id}:${revision}`).setPlaceholder('読み方を選ぶ').setDisabled(!s.ready).addOptions(Object.entries(backupTextModes).map(([value,label])=>({value,label,description:value==='raw'?'本文をそのまま読みます':'リンク・コード・伏せ字・絵文字を短く整形',default:mode===value})))),
-    new ActionRowBuilder().addComponents(button(`clear:${s.id}:${revision}`,'待機分を消去').setDisabled(!s.ready||!s.queue.length),details?button(`status:${s.id}`,'操作画面へ'):button(`details:${s.id}`,'処理状況・内訳'),guide(),menuHomeButton()),
+    actionPicker(`read:actions:${s.id}:${revision}`,readerActions(s),'状態・内訳・待機分の操作'),
+    new ActionRowBuilder().addComponents(guide(),menuHomeButton()),
     ...(intent?[new ActionRowBuilder().addComponents(button(`confirm-clear:${s.id}:${revision}`,'確認時の待機分を消去',ButtonStyle.Danger),button(`cancel-clear:${s.id}:${revision}`,'消去せず戻る'))]:[]),
   ]});
 }
@@ -108,15 +115,16 @@ export function createBackupReader({guild,enabled=false,worker=createPersistentV
   return {get active(){return session!==null;},get state(){return session;},get lastFailure(){return lastFailure?structuredClone(lastFailure):null;},idle:()=>running??Promise.resolve(),close:()=>stop(),
     async handle(i,requestedAction){try{
       if(requestedAction!==undefined&&!['status','stop'].includes(requestedAction))throw new Error('読み上げ操作を確認してください。');
-      const click=requestedAction?null:i.customId?.match(/^read:(start|stop|status|details|pause|resume|mode|clear|confirm-clear|cancel-clear)(?::([a-f0-9]{12}))?(?::(\d+))?$/);
-      const revisionActions=['pause','resume','mode','clear','confirm-clear','cancel-clear'];
+      const click=requestedAction?null:i.customId?.match(/^read:(start|stop|status|details|pause|resume|mode|clear|confirm-clear|cancel-clear|actions)(?::([a-f0-9]{12}))?(?::(\d+))?$/);
+      const revisionActions=['pause','resume','mode','clear','confirm-clear','cancel-clear','actions'];
       if(!i.deferred&&!i.replied){
         if(click&&['status','details',...revisionActions].includes(click[1])&&i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();
         else await i.deferReply({flags:MessageFlags.Ephemeral});
       }
       if(i.customId&&!requestedAction&&(!click||['stop','details',...revisionActions].includes(click[1])&&(!click[2]||click[2]!==session?.id)))throw new Error('この画面は終了しています。「状態を更新」から開き直してください。');
       if(click&&(revisionActions.includes(click[1])?click[3]!==String(session?.controlRevision):click[3]!==undefined))throw new Error('この画面は更新されています。「状態を更新」から開き直してください。');
-      const action=requestedAction??(click?click[1]:i.options.getSubcommand());
+      let action=requestedAction??(click?click[1]:i.options.getSubcommand());
+      if(action==='actions'){action=selectedAction(i.values,readerActions(session));if(!action)throw new Error('この画面の操作一覧から選び直してください。');}
       if(action==='stop'){if(session){const current=session;await control(i,current,{stop:true});sameSession(current);await stop();}await i.editReply(backupReaderScreen(null,enabled));return;}
       if(revisionActions.includes(action)){
         const current=session;if(!current)throw new Error('読み上げは停止しています。');

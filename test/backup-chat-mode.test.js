@@ -12,7 +12,7 @@ async function fixture({onPlay,onStream,canControl,...options}={}){
   const spoken=[],played=[],diagnostics=[];let now=0,closed=0,reader;
   reader=createBackupReader({guild:{id:'guild'},enabled:true,now:()=>now,resolveTargets:async()=>({text:{send:async()=>({async edit(){}})},voice:{id:'voice'}}),authorize:async()=>{},canControl:canControl??(async i=>{if(!['owner','admin'].includes(i.user.id))throw new Error('owner');}),onDiagnostic:value=>diagnostics.push(value),worker:()=>({ready:Promise.resolve(),async stream(text,signal,chunk){spoken.push(text);if(onStream)await onStream(text,signal,chunk);else chunk(wave());},close(){closed++;}}),speaker:async()=>({healthy:()=>true,close(){},async play(_source,options){played.push(reader.state.currentJob.text);options.onStart();await onPlay?.(reader.state.currentJob.text);}}),...options});
   await reader.handle(interaction('start'));assert.equal(reader.state?.ready,true);
-  const id=action=>controls(backupReaderScreen(reader.state,true)).find(c=>c.custom_id?.split(':')[1]===action)?.custom_id??`read:${action}:${reader.state.id}:${reader.state.controlRevision}`;
+  const id=action=>controls(backupReaderScreen(reader.state,true)).find(c=>c.custom_id?.split(':')[1]===action)?.custom_id??(action==='status'?'read:status':`read:${action}:${reader.state.id}:${reader.state.controlRevision}`);
   const handle=async(customId,extra={})=>{const i=interaction('unused',{customId,...extra});await reader.handle(i);return i;};
   const act=(action,extra)=>handle(id(action),extra);
   return {reader,spoken,played,diagnostics,id,handle,act,closed:()=>closed,setTime:value=>now=value,message:content=>reader.onMessage({guildId:'guild',channelId:reader.state.textId,content,author:{bot:false}})};
@@ -155,8 +155,17 @@ test('default controls recheck current source visibility for owner and administr
 test('warming and empty queues disable controls, and UI never contains queued message text',async()=>{
   let ready;const reader=createBackupReader({guild:{id:'guild'},enabled:true,resolveTargets:async()=>({text:{send:async()=>({async edit(){}})},voice:{id:'voice'}}),authorize:async()=>{},canControl:async()=>{},worker:()=>({ready:new Promise(resolve=>ready=resolve),close(){}}),speaker:async()=>({close(){}})});
   const start=interaction('start'),pending=reader.handle(start);await tick();
-  const screen=backupReaderScreen(reader.state,true),items=controls(screen);for(const action of ['mode','clear']){assert.equal(items.find(item=>item.custom_id?.split(':')[1]===action).disabled,true);await reader.handle(interaction('unused',{customId:`read:${action}:${reader.state.id}:${reader.state.controlRevision}`,values:['chat']}));}
+  const screen=backupReaderScreen(reader.state,true),items=controls(screen);assert.equal(items.find(item=>item.custom_id?.split(':')[1]==='mode').disabled,true);assert.ok(!items.find(item=>item.custom_id?.startsWith('read:actions:')).options.some(o=>o.value==='clear'));for(const action of ['mode','clear']){await reader.handle(interaction('unused',{customId:`read:${action}:${reader.state.id}:${reader.state.controlRevision}`,values:['chat']}));}
   assert.equal(reader.state.mode,'raw');assert.equal(reader.state.clearIntent,undefined);ready();await pending;await reader.close();
-  const f=await fixture();assert.equal(controls(backupReaderScreen(f.reader.state,true)).find(c=>c.custom_id?.split(':')[1]==='clear').disabled,true);await f.act('pause');f.message('PRIVATE_POST_TEXT');await f.act('clear');
+  const f=await fixture();assert.ok(!controls(backupReaderScreen(f.reader.state,true)).find(c=>c.custom_id?.startsWith('read:actions:')).options.some(o=>o.value==='clear'));await f.act('pause');f.message('PRIVATE_POST_TEXT');await f.act('clear');
   const value=backupReaderScreen(f.reader.state,true,{details:true});assert.ok(!JSON.stringify(value).includes('PRIVATE_POST_TEXT'));assert.ok(value.components.length<=5);for(const row of value.components)assert.ok(row.toJSON().components.length<=5);for(const e of value.embeds)assert.ok(e.toJSON().description.length<=4096);await f.reader.close();
+});
+
+test('compact reading picker preserves confirmation, ownership, revision and explicit clear semantics',async()=>{
+  const f=await fixture();await f.act('pause');f.message('PRIVATE_WAITING_TEXT');
+  const pick=async(values,extra={})=>{const menu=controls(backupReaderScreen(f.reader.state,true)).find(c=>c.custom_id?.startsWith('read:actions:'));return f.handle(menu.custom_id,{values,...extra});};
+  for(const values of [[],['clear','details'],['confirm-clear'],['mode'],['stop'],['__proto__']]){await pick(values);assert.equal(f.reader.state.queue.length,1);assert.equal(f.reader.state.clearIntent,undefined);}
+  await pick(['clear'],{user:{id:'other'}});assert.equal(f.reader.state.clearIntent,undefined);await pick(['clear']);assert.equal(f.reader.state.queue.length,1);assert.equal(f.reader.state.clearIntent.ids.length,1);
+  const old=controls(backupReaderScreen(f.reader.state,true)).find(c=>c.custom_id?.startsWith('read:actions:')).custom_id;await f.act('cancel-clear');await f.handle(old,{values:['clear']});assert.equal(f.reader.state.clearIntent,undefined);
+  const details=await pick(['details']);assert.ok(!JSON.stringify(details.result).includes('PRIVATE_WAITING_TEXT'));assert.equal(f.reader.state.queue.length,1);assert.equal(f.reader.state.paused,true);await f.reader.close();
 });

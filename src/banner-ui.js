@@ -17,7 +17,7 @@ export function bannerScreen(s,note=''){
   if(!preview&&!remove)body+='\n\n画像を選ぶ → プレビュー → 適用\nPNG・JPEG、4MiB以内。横長600×240px以上を推奨。';
   if(note)body=`${note}\n\n${body}`;
   const controls=preview?row(button(s,'apply','この画像を適用',ButtonStyle.Primary).setDisabled(!!s.uncertain),button(s,'upload','画像を選び直す'),button(s,'cancel',s.uncertain?'候補を閉じる':'変更せず戻る')):remove?row(button(s,'apply','バナーを解除',ButtonStyle.Danger).setDisabled(!!s.uncertain),button(s,'cancel',s.uncertain?'確認して戻る':'変更せず戻る')):row(button(s,'upload',s.current.key?'別の画像を選ぶ':'画像を選ぶ',ButtonStyle.Primary),button(s,'remove','バナーを解除').setDisabled(!s.current.key));
-  const m={...payload('Botのバナー',body,{state:s.uncertain||remove?'warning':'normal',components:[controls,row(button(s,'refresh','現在を確認'),adminSectionButton('appearance'),adminHomeButton(),button(s,'close','操作を終了'))]}),attachments:[]};
+  const m={...payload('Botのバナー',body,{state:s.uncertain||remove?'warning':'normal',components:[controls,row(button(s,'refresh','現在を確認'),adminSectionButton('appearance'),button(s,'close','操作を終了'))]}),attachments:[]};
   if(s.current.url)m.embeds[0].setImage(s.current.url);
   if(preview&&s.draft){
     m.embeds.push(card(s.uncertain?'適用候補の画像 · 結果を確認中':'変更後のプレビュー · 未適用',`${s.draft.width} × ${s.draft.height}px · ${(s.draft.buffer.length/1024/1024).toFixed(2)}MiB\nプロフィールでは横長に表示されます。実際の切り抜きはDiscordの表示に従います。`).setImage(`attachment://banner-preview.${s.draft.extension}`));

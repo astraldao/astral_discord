@@ -322,9 +322,9 @@ test('old base room forms cannot change a different selection or overwrite concu
 
 test('table guidance follows setup progress and selected scenario survives search pagination',async t=>{
   const {store}=await fixture(t);const {tableScreen}=await import('../src/tables-ui.js');const id=await store.saveTable(null,'新しい卓','');
-  let s={id:'session',view:'table',tableId:id,page:0},result=tableScreen(s,store.metadata());assert.ok(result.body.includes('「シナリオを選ぶ」で'));const controls=()=>result.components.flatMap(r=>r.toJSON().components);assert.equal(controls().find(c=>c.custom_id?.endsWith(':table-remove-pcs')).disabled,true);
+  let s={id:'session',view:'table',tableId:id,page:0},result=tableScreen(s,store.metadata());assert.ok(result.body.includes('「シナリオを選ぶ」で'));const controls=()=>result.components.flatMap(r=>r.toJSON().components);assert.ok(!controls().some(c=>c.options?.some(o=>o.value==='table-remove-pcs')));
   const scenario=await store.scenario('ベース卓','https://ccfolia.com/rooms/base');await store.setTableScenario(id,scenario);result=tableScreen(s,store.metadata());assert.ok(result.body.includes('「参加PCを追加」で'));assert.equal(controls().find(c=>c.custom_id?.endsWith(':table-pcs')).style,1);
-  await store.changeTableCharacters(id,[store.metadata().characters[0].id]);result=tableScreen(s,store.metadata());assert.ok(result.body.includes('日程調整を使う場合'));assert.equal(controls().find(c=>c.custom_id?.endsWith(':table-remove-pcs')).disabled,false);
+  await store.changeTableCharacters(id,[store.metadata().characters[0].id]);result=tableScreen(s,store.metadata());assert.ok(result.body.includes('日程調整を使う場合'));assert.ok(controls().some(c=>c.options?.some(o=>o.value==='table-remove-pcs')));
   s.view='table-scenario';result=tableScreen(s,store.metadata());assert.equal(result.components[0].toJSON().components[0].options.find(x=>x.value===scenario).default,true);
   s.view='table-pcs';s.tableAddQuery='存在しない';result=tableScreen(s,store.metadata());assert.ok(result.body.includes('検索を解除'));for(const r of result.components)r.toJSON();assert.ok(result.body.length<4096);
 });
@@ -367,4 +367,15 @@ test('administrator table state controls persist and return to the chosen list f
 });
 test('legacy table flags remain active and malformed or excessive pins fail on reload',async t=>{
   const {store}=await fixture(t);await store.saveTable(null,'旧卓','');await store.update(d=>{delete d.tables[0].pinned;delete d.tables[0].completed;});const old=await new TrpgStore(store.path).load();const {tableScreen}=await import('../src/tables-ui.js');assert.ok(JSON.stringify(tableScreen({id:'s',view:'tables',page:0},old.metadata())).includes('旧卓'));await store.update(d=>{d.tables[0].pinned='true';});await assert.rejects(new TrpgStore(store.path).load());await store.update(d=>{d.tables[0].pinned=false;});for(let n=0;n<5;n++)await store.saveTable(null,`追加${n}`,'');await store.update(d=>{for(const t of d.tables)t.pinned=true;});await assert.rejects(new TrpgStore(store.path).load());
+});
+
+test('compact table actions open edit forms and deletion confirmation, but reject stale snapshots and forged writes',async t=>{
+  const {store}=await fixture(t),id=await store.saveTable(null,'架空の卓','');let allowed=true;
+  const c=createTrpgController({store,access:async()=>allowed,guild:{channels:{cache:new Map()}}}),s=c.sessions.create('admin');Object.assign(s,{entry:'admin',view:'table',tableId:id,page:0});
+  const {tableScreen}=await import('../src/tables-ui.js'),menu=()=>tableScreen(s,store.metadata()).components.flatMap(r=>r.toJSON().components).find(c=>c.custom_id?.includes(':table-actions:'));
+  const choose=async(values,customId=menu().custom_id)=>{const i=interaction(customId,'admin',true);i.values=values;await c.handle(i);return i;};const before=store.get();
+  for(const values of [[],['confirm-delete-table'],['complete-table'],['form-table-edit','delete-table'],['__proto__']]){await choose(values);assert.deepEqual(store.get(),before);}
+  const edit=await choose(['form-table-edit']);assert.ok(edit.replies.at(-1).toJSON().title.includes('編集'));assert.deepEqual(store.get(),before);
+  const old=menu().custom_id;await store.saveTable(id,'変更された卓','',JSON.stringify(store.table(id)));const changed=store.get();const stale=await choose(['form-table-copy'],old);assert.ok(JSON.stringify(stale.replies).includes('変わりました'));assert.deepEqual(store.get(),changed);
+  allowed=false;await choose(['delete-table']);assert.equal(s.view,'table');assert.deepEqual(store.get(),changed);allowed=true;await choose(['delete-table']);assert.equal(s.view,'delete-table');assert.deepEqual(store.get(),changed);
 });

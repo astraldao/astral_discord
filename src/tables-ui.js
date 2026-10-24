@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {actionPicker} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder} from 'discord.js';
 import {text} from './ui.js';
 import {searchScenarios} from './trpg-store.js';
@@ -12,6 +14,15 @@ const nav=(s,items,size)=>{
   const pages=Math.max(1,Math.ceil(items.length/size));s.page=Math.max(0,Math.min(s.page,pages-1));
   return {part:items.slice(s.page*size,s.page*size+size),label:`${items.length}件 · ${s.page+1}/${pages}ページ`,buttons:pages>1?[row(button(s,'prev','前のページ').setDisabled(s.page===0),button(s,'next','次のページ').setDisabled(s.page===pages-1))]:[]};
 };
+export const tableActionKey=t=>createHash('sha256').update(JSON.stringify(t)).digest('hex');
+export function tableActions(t){
+  return [
+    ...(t.characterIds.length?[{value:'table-remove-pcs',label:'参加PCを確認・外す',description:'PC登録・TXTの控えは保持する'}]:[]),
+    {value:'form-table-edit',label:'卓名・伝助を編集',description:'入力フォームで修正する'},
+    {value:'form-table-copy',label:'この卓を複製',description:'元の卓を残して複製名を入力する'},
+    {value:'delete-table',label:'卓セットを削除…',description:'次の画面で削除を確認する'},
+  ];
+}
 export function tableScreen(s,d){
   let title='✦  卓セット',body='',components=[];
   if(s.view==='tables'){
@@ -32,7 +43,7 @@ export function tableScreen(s,d){
       if(next)body+=`\n\n**次の操作**\n${next}`;
       body+=`\n\n**シナリオ**\n${scenario?`${text(scenario.name)}\n${scenario.url}`:'未選択'}\n\n**伝助**\n${t.answerUrl||'未登録'}\n\n**参加PC** ${pcs.length}件\n${pcs.slice(0,5).map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||'未登録'}${pcs.length>5?`\nほか ${pcs.length-5}件 · 「参加PCを確認・外す」で確認`:''}`;
       const links=[...(scenario?[link('ベース卓を開く',scenario.url)]:[]),...(t.answerUrl?[link('伝助を開く',t.answerUrl)]:[])];if(links.length)components.push(row(...links));
-      components.push(row(button(s,'table-scenario',scenario?'シナリオを変更':'シナリオを選ぶ',scenario?ButtonStyle.Secondary:ButtonStyle.Primary),button(s,'table-pcs','参加PCを追加',scenario&&!pcs.length?ButtonStyle.Primary:ButtonStyle.Secondary)),row(button(s,'table-remove-pcs','参加PCを確認・外す').setDisabled(!pcs.length),button(s,'form-table-edit','卓名・伝助を編集'),button(s,'form-table-copy','この卓を複製')),row(button(s,t.pinned?'unpin-table':'pin-table',t.pinned?'固定を解除':'この卓を固定'),button(s,t.completed?'reopen-table':'complete-table',t.completed?'進行中に戻す':'完了にする')),row(button(s,'delete-table','卓セットを削除',ButtonStyle.Danger),button(s,'tables','卓セット一覧へ')));
+      components.push(row(button(s,'table-scenario',scenario?'シナリオを変更':'シナリオを選ぶ',scenario?ButtonStyle.Secondary:ButtonStyle.Primary),button(s,'table-pcs','参加PCを追加',scenario&&!pcs.length?ButtonStyle.Primary:ButtonStyle.Secondary)),actionPicker(`trpg:${s.id}:table-actions:${tableActionKey(t)}`,tableActions(t),'確認・編集・その他の操作'),row(button(s,t.pinned?'unpin-table':'pin-table',t.pinned?'固定を解除':'この卓を固定'),button(s,t.completed?'reopen-table':'complete-table',t.completed?'進行中に戻す':'完了にする')),row(button(s,'tables','卓セット一覧へ')));
     }else if(s.view==='table-scenario'){
       title='✦  シナリオを選択';const n=nav(s,searchScenarios(d.scenarios,s.tableScenarioQuery??''),25);body+=`\n\n${n.label}${s.tableScenarioQuery?`\n検索：**${text(s.tableScenarioQuery)}**`:''}\n現在：**${scenario?text(scenario.name):'未選択'}**\nベース卓の登録から選んでください。`;
       if(n.part.length)components.push(row(menu(s,'table-set-scenario','シナリオを選ぶ',n.part.map(x=>({label:x.name,value:x.id,default:x.id===t.scenarioId})))));

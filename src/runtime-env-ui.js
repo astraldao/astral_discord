@@ -2,7 +2,7 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Modal
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
 import {runtimeVariables} from './runtime-env.js';
-import {payload,acknowledgePrivate,adminSectionButton,adminHomeButton,adminFeatureButton,restartButton} from './ui.js';
+import {payload,acknowledgePrivate,adminSectionButton,adminFeatureButton,restartButton} from './ui.js';
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`runtime:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function runtimeEnvScreen(s,store,note=''){
@@ -10,7 +10,7 @@ export function runtimeEnvScreen(s,store,note=''){
   const description=stage?`**${d.label}**\n${d.key}\n次回起動時：${state.effective[d.key]} → ${stage.value??'外部設定・既定値に戻す'}\n\n${d.help}\n\n保存後、「Botを再起動」から再起動すると反映します。`:runtimeVariables.map(d=>`**${d.label}**\n${d.key}\n稼働中 **${state.running[d.key]}** → 次回起動時 **${state.effective[d.key]}**`).join('\n\n')+`\n\n${state.pending?'**保存済みの変更があります。Botを再起動して反映してください。**':'項目を選んで変更できます。'}\n保存値は外部の環境変数より優先します。空欄で保存すると外部設定・既定値へ戻します。\nトークンは表示・編集しません。`;
   return {...payload(stage?'起動設定の変更を確認':'ENV・起動設定',`${note?`${note}\n\n`:''}${description}`,{state:stage||state.pending?'warning':'normal',components:stage?[row(button(s,'save','変更を保存',ButtonStyle.Primary),button(s,'cancel','変更せず戻る'))]:[
     row(new StringSelectMenuBuilder().setCustomId(`runtime:${s.id}:${s.turn}:edit`).setPlaceholder('変更する起動設定を選ぶ').addOptions(...runtimeVariables.map(d=>({label:d.label,value:d.key,description:d.key})))),
-    row(button(s,'refresh','状態を更新'),restartButton(),adminSectionButton('operations'),adminHomeButton()),
+    row(button(s,'refresh','状態を更新'),restartButton(),adminSectionButton('operations')),
   ]}),attachments:[]};
 }
 export function createRuntimeEnvController({guild,store,access=async i=>{const [m,c]=await Promise.all([guild.members.fetch({user:i.user.id,force:true}),guild.channels.fetch(i.channelId,{force:true})]);if(!m.permissions.has(P.Administrator)||!c?.permissionsFor(m)?.has(P.ViewChannel))throw new Error('起動設定は管理者専用です。現在の管理者権限と閲覧権限を確認してください。');}}){

@@ -1,7 +1,8 @@
+import {actionPicker} from './compact-controls.js';
 import {stat,readdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,PermissionFlagsBits as P,ChannelType} from 'discord.js';
-import {payload,menuHomeButton} from './ui.js';
+import {payload} from './ui.js';
 import {systemCapacity,capacitySummary} from './system-capacity.js';
 import {safeBackupFailure,backupFailureSummary} from './backup-fault.js';
 const exists=async(path,kind)=>{try{const s=await stat(path);return kind==='file'?s.isFile():s.isDirectory();}catch{return false;}};
@@ -29,6 +30,11 @@ export function createDiagnostics({settings,guild,version,pendingCount,component
     return {checkedAt:Date.now(),version,node:process.version,uptime:Math.floor(process.uptime()/60),pending:pendingCount(),...(dice?{dice:{enabled:dice.enabled===true,fullContent:dice.fullContent===true}}:{}),voiceEnabled:c.voice,voice,channels,capacity:spec,backup:{enabled:backup.enabled===true,active:backup.active===true,...(lastFailure?{lastFailure}:{})}};
   };
 }
+export function diagnosticActions(s){
+  if(s.view==='diagnostics')return [{value:'diagnostics-help',label:'対処の手順',description:'確認結果から次の操作を探す'},{value:'open-security',label:'脆弱性診断',description:'依存パッケージの診断画面を開く'}];
+  if(s.view==='diagnostics-help')return [{value:'nav-vc',label:'VC設定',description:'ロビーと行き先を確認する'},{value:'nav-audio',label:'音声設定',description:'参加告知・音量・導入手順'},{value:'open-runtime',label:'ENV・起動設定',description:'読み上げの有効化・スレッド数'}];
+  return [];
+}
 export function diagnosticsScreen(s){
   const d=s.diagnostics;if(!d)throw new Error('診断を開き直してください。');
   const pages=Math.max(1,Math.ceil(d.channels.length/15));s.page=Math.max(0,Math.min(s.page,pages-1));
@@ -37,7 +43,12 @@ export function diagnosticsScreen(s){
   const dice=d.dice?`\n\n**チャットダイス** ${d.dice.enabled?'ON':'OFF'} · ${d.dice.fullContent?'通常投稿に対応':'Botメンション付き投稿に対応'}\n${!d.dice.fullContent?'通常投稿への対応には、PortalでMessage Content Intentを有効化後にBotを再起動します。':''}`:'';
   const body=`${d.checkedAt?`確認 <t:${Math.floor(d.checkedAt/1000)}:R>\n`:''}**Bot** v${d.version} · Node ${d.node}\n**稼働時間** ${d.uptime}分 · **入室予約** ${d.pending}件\n\n${d.capacity?`**実行環境**\n${capacitySummary(d.capacity)}\n\n`:''}**音声告知** ${d.voiceEnabled?'ON':'OFF'}\nPython実行ファイル · ${badge(d.voice.python)}\n音声ランタイム · ${badge(d.voice.runtime)}\nずんだもんモデル · ${badge(d.voice.model)}\n日本語辞書 · ${badge(d.voice.dictionary)}${backup}${dice}${d.backup?.lastFailure?`\n\n**読み上げの直前の停止**\n${backupFailureSummary(d.backup.lastFailure)}`:''}\n\n**設定済みVC** ${d.channels.length}件 · ${s.page+1}/${pages}ページ\n${d.channels.slice(s.page*15,s.page*15+15).map(c=>`${c.lobby?'ロビー':'入室先'} <#${c.id}> · ${c.status}`).join('\n')||'未設定'}\n\nファイルの存在と権限の確認結果です。処理速度の測定は下のボタンから実行できます。VCの接続試験は行いません。PythonをPATHから使う構成は未確認と表示されます。`;
   const button=(a,label)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${a}`).setLabel(label).setStyle(ButtonStyle.Secondary);
-  return payload('✦  動作診断',body,{components:[new ActionRowBuilder().addComponents(button('diagnose','診断を更新'),button('measure-voice','処理速度を測る').setStyle(ButtonStyle.Primary),...(pages>1?[button('diagnostics-prev','前のページ').setDisabled(s.page===0),button('diagnostics-next','次のページ').setDisabled(s.page===pages-1)]:[])),new ActionRowBuilder().addComponents(button('diagnostics-help','対処の手順'),button('open-security','脆弱性診断'),button('nav-category-operations','運用・管理へ'),button('home','管理メニューへ'),menuHomeButton())]});
+  return payload('✦  動作診断',body,{components:[
+    new ActionRowBuilder().addComponents(button('diagnose','診断を更新'),button('measure-voice','速度を測る').setStyle(ButtonStyle.Primary)),
+    ...(pages>1?[new ActionRowBuilder().addComponents(button('diagnostics-prev','前のページ').setDisabled(s.page===0),button('diagnostics-next','次のページ').setDisabled(s.page===pages-1))]:[]),
+    actionPicker(`admin:${s.id}:diagnostics-action`,diagnosticActions({...s,view:'diagnostics'}),'対処・関連する診断を選ぶ'),
+    new ActionRowBuilder().addComponents(button('nav-category-operations','運用・管理へ')),
+  ]});
 }
 
 export function diagnosticsHelpScreen(s){
@@ -51,5 +62,9 @@ export function diagnosticsHelpScreen(s){
   if(d.dice?.enabled&&!d.dice.fullContent)findings.push('**ダイスが通常投稿に反応しない場合**\nBotをメンションして試してください。通常投稿へ対応するには、Developer PortalでMessage Content Intentを有効化し、Botを再起動してください。設定を確認から返信のON/OFFも変更できます。');
   if(!findings.length)findings.push('**確認項目に不足は見つかりませんでした**\n音声が遅い場合は処理速度を測定し、確認後に動作診断を更新してください。ファイルや権限の確認だけで実際の接続や再生を保証するものではありません。');
   const b=(a,label)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${a}`).setLabel(label).setStyle(ButtonStyle.Secondary);
-  return payload('動作診断 / 対処の手順',findings.join('\n\n')+'\n\nこの画面では設定変更や再起動を実行しません。必要な設定を開いて内容を確認してください。',{components:[new ActionRowBuilder().addComponents(b('nav-vc','VC設定'),b('nav-audio','音声設定'),b('open-runtime','ENV・起動設定')),new ActionRowBuilder().addComponents(b('measure-voice','処理速度を測る'),b('diagnose','診断を更新')),new ActionRowBuilder().addComponents(b('nav-category-operations','運用・管理へ'),b('home','管理メニューへ'),menuHomeButton())]});
+  return payload('動作診断 / 対処の手順',findings.join('\n\n')+'\n\n必要な設定を選択欄から開き、内容を確認してください。',{components:[
+    new ActionRowBuilder().addComponents(b('measure-voice','速度を測る').setStyle(ButtonStyle.Primary),b('diagnose','診断を更新')),
+    actionPicker(`admin:${s.id}:diagnostics-action`,diagnosticActions({...s,view:'diagnostics-help'}),'確認したい設定を選ぶ'),
+    new ActionRowBuilder().addComponents(b('nav-diagnostics','診断へ戻る')),
+  ]});
 }

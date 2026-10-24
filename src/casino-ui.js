@@ -1,3 +1,4 @@
+import {shortButtonRows} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {wagerRow,wagerChoice,chipDelta} from './game-ui.js';
 import {cardName} from './blackjack.js';
@@ -25,11 +26,11 @@ function resultText(r){
 export function casinoScreen(s,note='',{retained}={}){
   const r=s.results[s.kind],choices=casinoChoices(s.kind);
   const components=[wagerRow('casino',s,s.balance)];
-  for(let start=0;start<choices.length;start+=['roulette','race'].includes(s.kind)?2:5){
-    const group=choices.slice(start,start+(['roulette','race'].includes(s.kind)?2:5));
+  for(let start=0;start<choices.length;start+=s.kind==='race'?2:3){
+    const group=choices.slice(start,start+(s.kind==='race'?2:3));
     components.push(row(...group.map(action=>{const payout=winningPayout(s.kind,action,s.bet,s.card);return button(s,action,s.kind==='slots'?`${s.bet}枚でスピン`:`${label(s.kind,action)}｜${format(payout)}枚`,s.kind==='slots'?ButtonStyle.Primary:ButtonStyle.Secondary).setDisabled(s.balance<s.bet||!payout);}))); 
   }
-  components.push(row(button(s,'rules','遊び方・配当'),...(s.balance<s.bet?[button(s,'refresh','残高を更新')]:[]),...(s.balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('ニワトリを捕まえる').setStyle(ButtonStyle.Secondary)]:[]),home()));
+  components.push(...shortButtonRows([row(button(s,'rules','遊び方・配当'),...(s.balance<s.bet?[button(s,'refresh','残高を更新')]:[]),...(s.balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('無料で遊ぶ').setStyle(ButtonStyle.Secondary)]:[]),home())]));
   const prompt=s.kind==='highlow'?`**基準カード ${rankName(s.card)}** · 次の大小を予想`:s.kind==='race'?'1着になる動物を選ぶ':s.kind==='slots'?'絵柄を揃える':'予想を選ぶ';
   const description=`${note?`${note}\n\n`:''}**残高 ${format(s.balance)} チップ**${s.balance<10?'\n無料のお手伝いでチップを獲得できます。':s.balance<s.bet?'\n残高以内の掛けチップに変更してください。':''}\n\n${prompt}\n${format(s.bet)}チップで開始${s.kind==='slots'?' · 3つ一致20倍 / 2つ一致1倍':' · ボタンの枚数は当選時の払い戻し'}${s.kind==='baccarat'?'\nバンカー6点勝利は1.5倍 · 同点時は両側の掛けを返却':''}${r?`\n\n${resultText(r)}`:''}`;
   const m=payload(`✦  ${casinoNames[s.kind]}`,description,{state:r?.delta>0?'success':'normal',components});

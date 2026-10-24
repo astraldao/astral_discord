@@ -1,3 +1,5 @@
+import {actionPicker} from './compact-controls.js';
+import {scheduleActions} from './schedule-actions.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,escapeMarkdown} from 'discord.js';
 import {scheduleColors} from './schedule-colors.js';
 import {payload} from './ui.js';
@@ -13,13 +15,13 @@ export function bulkCandidates(s,c){
 export function organizeScreen(s,c,{time,date,note=''}){
   if(s.scope!=='admin')throw new ScheduleError('予定表の整理と履歴は管理者専用です。');
   const button=(a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`schedule:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style),row=(...v)=>new ActionRowBuilder().addComponents(...v);
-  const intro=note?`${note}\n\n`:'',back=row(button('organize','整理・復元へ'),button('list','予定の一覧へ'));
+  const intro=note?`${note}\n\n`:'',back=row(button('organize','整理・復元へ'));
   const page=(value,size,at)=>{const count=Math.max(1,Math.ceil(value.length/size)),index=Math.max(0,Math.min(at??0,count-1));return {count,index,items:value.slice(index*size,index*size+size)};};
   const eventLine=e=>`**${safe(short(e.title))}**\n${date(e)} · ${time(e)}`;
   let title='予定表の整理・復元',body='',components=[];
   if(s.view==='organize'){
     body=`**${safe(c.title)}**\n登録済み ${c.events.length}件 · 編集・削除履歴 ${(c.history??[]).length}件\n\n**日付をまとめて移動**\n現在の表示範囲・検索結果から最大26件を選び、保存前に移動前後を確認します。\n\n**変更履歴・復元**\n編集前・削除前の内容を確認し、後から変更されていない予定を復元できます。\n\n**時間の重なりを確認**\n予定表全体の同時刻の予定を確認します。重なっていても自動削除はしません。`;
-    components=[row(button('bulk-open','日付をまとめて移動',ButtonStyle.Primary),button('history','変更履歴・復元')),row(button('conflicts','時間の重なりを確認')),row(button('tools','検索・取り出しへ'),button('list','予定の一覧へ'))];
+    components=[actionPicker(`schedule:${s.id}:${s.turn}:actions`,scheduleActions(s,c),'整理・復元の操作を選ぶ'),row(button('list','一覧へ戻る'))];
   }else if(s.view==='history'){
     title='編集・削除の履歴';const all=historyItems(s,c),p=page(all,5,s.historyPage);s.historyPage=p.index;
     body=`${s.historyEventId?'この予定の履歴':'この予定表の履歴'} ${all.length}件 · ${p.index+1}/${p.count}ページ\n\n${p.items.map(h=>`**${historyLabels[h.kind]} · ${h.before.length}件**${h.restored?'（復元済み）':''}\n<t:${Math.floor(h.at/1000)}:f> · ${safe(short(h.before[0].title))}`).join('\n\n')||'編集・削除の履歴はまだありません。'}\n\n保存は予定表ごとに直近20操作、全体50操作・512KiBまでです。上限や保存容量に応じて古い履歴を削除します。新規登録・取り込みは記録しません。バックアップの代わりにはなりません。`;

@@ -20,9 +20,9 @@ test('admin home highlights setup first, then the common calendar action, while 
     const m=adminScreen({id:'id',view:'home'},missing?{...config,lobbyId:null}:config),b=buttons(m);
     assert.equal(b.find(b=>b.style===1).custom_id,`admin:id:${missing?'nav-vc':'open-schedule'}`);
     const destinations=adminCategories.flatMap(category=>buttons(adminScreen({id:'id',view:`category-${category.id}`},config)));
-    assert.equal(b.filter(b=>b.type===2).length,8);assert.equal(b.filter(b=>b.type===3).length,1);assert.equal(b.find(b=>b.type===3).options.length,15);
-    for(const category of adminCategories)assert.ok(b.some(b=>b.custom_id===`admin:id:nav-category-${category.id}`));
-    for(const action of ['open-banner','open-trpg','open-densuke','nav-vc','nav-audio','nav-panel','open-forum','open-chips','diagnose','nav-overview','open-updates'])assert.ok(destinations.some(b=>b.custom_id.endsWith(':'+action)));
+    assert.equal(b.filter(b=>b.type===2).length,3);assert.equal(b.filter(b=>b.type===3).length,2);assert.equal(b.find(b=>b.type===3).options.length,15);
+    for(const category of adminCategories)assert.ok(b.find(b=>b.custom_id==='admin:id:category').options.some(o=>o.value===category.id));
+    for(const action of ['open-banner','open-trpg','open-densuke','nav-vc','nav-audio','nav-panel','open-forum','open-chips','diagnose','nav-overview','open-updates'])assert.ok(destinations.some(b=>b.options?.some(o=>o.value===action)));
   }
 });
 test('failed version checks retain a usable retry and management home, but not after permission loss',async()=>{

@@ -4,11 +4,11 @@ import {MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {mainMenuScreen,mainMenuGuideScreen,createMainMenu} from '../src/main-menu.js';
 const controls=m=>m.components.flatMap(r=>r.toJSON().components);
 function interaction(action,privateScreen=false){return {customId:action?.startsWith('menu:')?action:undefined,user:{id:'owner'},channelId:'text',options:{getString:name=>{assert.equal(name,'操作');return action?.startsWith('menu:')?null:action;}},message:privateScreen?{flags:{has:flag=>flag===MessageFlags.Ephemeral}}:undefined,acks:[],async deferReply(p){this.deferred=true;this.acks.push(['reply',p]);},async deferUpdate(){this.deferred=true;this.acks.push(['update']);},async editReply(p){this.result=p;},async reply(p){this.result=p;}};}
-test('hub exposes four purposes and personal shortcuts, with admin controls only for administrators',()=>{
+test('hub keeps two common buttons and every purpose in a picker, with admin controls only for administrators',()=>{
   for(const admin of [false,true]){
     const m=mainMenuScreen({admin}),b=controls(m);
-    assert.deepEqual(b.slice(0,4).map(c=>c.custom_id),['menu:vc','menu:read','menu:game','menu:calendar']);
-    for(const id of ['menu:profile','menu:wallet','menu:help'])assert.ok(b.some(c=>c.custom_id===id));
+    assert.deepEqual(b.slice(0,2).map(c=>c.custom_id),['menu:vc','menu:calendar']);
+    assert.ok(b.some(c=>c.custom_id==='menu:help'));const purposes=b.find(c=>c.custom_id==='menu:find').options.map(o=>o.value);assert.deepEqual(purposes,['vc','read','game','calendar','profile','wallet']);assert.equal(b.filter(c=>c.type===2).length,admin?4:3);
     assert.equal(b.some(c=>c.custom_id==='admin:open'),admin);
     assert.equal(b.filter(c=>c.style===1).length,1);
     assert.deepEqual(m.attachments,[]);assert.deepEqual(m.allowedMentions.parse,[]);

@@ -1,6 +1,6 @@
 # 開発・運用の引き継ぎ
 
-2026-10-24 更新。現行のコマンド構成はv5.4.0。過去の調査・検証記録は各版の節を参照。
+2026-10-24 更新。現行のコマンド構成はv5.5.0。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 
 ## 更新先と検証
@@ -586,3 +586,21 @@ searchReturnはsession内に有限の表示条件キーと元pageのみ保持。
 共通メニューはreadingEnabled/diceEnabled/diceFullContentのbool3項目のみを使用し、未有効/OFF/メンション限定を案内。権限確認後のみ取得し、機能を開く通常操作では状態取得を追加しない。tokenや任意のruntime情報は表示しない。2コマンド/15管理ショートカット、依存、ENV、supervisorは維持。本番反映は手動更新。
 
 検証：構文・実行ポリシー検査、Nodeテスト1081件、npm audit 0件。検索の閏日/端年/日跨ぎ/不正条件、復帰ページ/条件変更/件数減少、メニュー状態の白リストと権限前拒否、読み上げ内訳の往復、履歴取得時刻の保持と更新を確認。実Discord・本番音声での検証は未実施。
+
+
+## v5.5.0 ボタンを減らしPC・スマホ共通の配置へ
+
+ユーザーがボタン過多と見た目を明示し、スマホ利用も考慮したPC用の配置へ変更する指示。Discordでは端末別配置やCSSを指定できないため、主要画面のボタンを1行3個以内、native action rowを5行以内にする。12ui draftは認証サービスに接続できず、既存のDiscord nativeコンポーネントで整理した。画像デザインを承認済みとは扱わない。
+
+mainMenuScreenはVC/予定表2ボタン、既存6機能の目的セレクト、最近の機能、使い方/管理の下段に集約。管理者表示8→4ボタン、一般3ボタン。adminホームは8→3ボタン、全15 destinationと4 categoryを別セレクト。カテゴリ画面はそのカテゴリのdestinationだけを表示し、サーバーでもviewと値を照合する。戻る先の重複を削減。動作診断/対処画面の補助リンクも有限セレクトへ。
+
+compact-controls.jsはactionPicker/selectedAction/shortButtonRows。任意customIdの転送はせず、コントローラーの有限アクションだけを選ぶ。schedule-actions.jsがlist/event/tools/daysの選択肢を管理scopeごとに生成。owner/channel/TTL/busyを確認後に解決し、従来のfresh access/turn/readonly/保存ガードへ渡す。フォームを開く値はdefer前に解決してshowModal、保存系は選択肢に出さない。削除は確認画面を開くだけ。旧ボタンactionは互換のため保持。
+
+読み上げはpause/resumeとstopを手前に残し、状態更新・内訳・消去確認をread:actions:session:revisionへ集約。modeセレクトを分離、消去確認は別行。既存の本人/管理者・閲覧権限、ID/版再照合、FIFOと確認時snapshotを保持し、空の待機分消去を選択肢に出さない。
+
+ゲーム共通wagerRowを1セレクトにし、残高で使える10/50/100枚だけを候補へ。10枚未満はdisabled。選択だけでは抽選/課金しない。旧bet-N actionも受け付ける。game:accountはwallet/transferのみを現在の権限確認後に開き、openWallet/openTransfer callbackをindexから渡す。予想ボタンや残高更新・無料ゲームへの導線は保持し、rouletteは3列、footerは最大3列へ分割する。コマンド/依存/ENV/保存形式/supervisorは変更せず、本番は手動更新。[操作場所](docs/COMPACT_UI.md)。
+
+
+卓セットの非保存操作をtable-actionsへ集約。trpg sessionのentry/viewと、現在のtableのSHA-256をcustomIdの64桁hashと照合してから有限actionへ解決する。customIdは96文字。フォーム/削除確認だけを選択肢とし、確定削除・固定/完了の保存は含めない。旧ボタンと保存直前の権限/競合確認は維持する。整理・復元の入口も有限セレクトへ、バナー/起動設定は重複する上位画面リンクを除去する。
+
+検証：構文・実行ポリシー検査、Nodeテスト1090件、npm audit 0件、ローカル文書リンク137件を確認。1行3ボタン以内/5行以内/ID重複なしを主要画面と残高・閲覧権限・密な予定の組合せで検証。新セレクトの偽造値/権限失効/古い画面/フォームACK/消去と削除の未確定保持/ゲームの非課金ナビゲーション/卓変更後のhash不一致を確認。実Discord端末幅での検証は未実施。

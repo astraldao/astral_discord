@@ -200,7 +200,7 @@ client.once('clientReady', async () => {
     rps=createRpsController({guild});
     chipTools=createChipTools({guild,wallet:gameWallets});
     casino=createCasinoController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i)});
-    blackjack=createBlackjackController({guild,wallet:gameWallets,openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
+    blackjack=createBlackjackController({guild,wallet:gameWallets,openWallet:i=>chipAccount.openSelf(i),openTransfer:i=>chipTools.openTransfer(i),openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
     mainMenu=createMainMenu({guild,capabilities:()=>({readingEnabled:backupEnabled,diceEnabled:settings.get().chatDice!==false,diceFullContent:client.options.intents.has(GatewayIntentBits.MessageContent)}),openVc:i=>choose(i),openRead:(i,action)=>backupReader.handle(i,action),openGame:i=>blackjack.lobby(i),openProfile:i=>profile.open(i),openWallet:i=>chipAccount.openSelf(i),openCalendar:i=>sharedSchedules.open(i)});
     trpg=createTrpgController({store:trpgStore,guild});

@@ -137,7 +137,7 @@ test('foreign owners, channels, expired controls and permission loss cannot show
   }
 });
 test('dense new screens fit native limits, readonly screens lack edit controls and resume does not replay downloads',async()=>{
-  const f=await fixture(),event=await f.add({title:'*'.repeat(80),description:'*'.repeat(500),color:'purple'});await f.act('event',[event]);const message=f.screen();assert.equal(message.components.length,5);for(const row of message.components)assert.ok(row.toJSON().components.length<=5);assert.ok(message.embeds.every(e=>e.toJSON().description.length<=4096));assert.deepEqual(message.allowedMentions.parse,[]);
+  const f=await fixture(),event=await f.add({title:'*'.repeat(80),description:'*'.repeat(500),color:'purple'});await f.act('event',[event]);const message=f.screen();assert.equal(message.components.length,4);for(const row of message.components)assert.ok(row.toJSON().components.length<=5);assert.ok(message.embeds.every(e=>e.toJSON().description.length<=4096));assert.deepEqual(message.allowedMentions.parse,[]);
   await f.act('export-event');await f.controller.openAdmin(interaction());assert.equal(f.s.view,'event');assert.equal(f.screen().files,undefined);await f.act('list');await f.act('days');const old=f.click('days-toggle');await f.controller.openAdmin(interaction());assert.equal(f.s.view,'days');await f.controller.handle(old);assert.equal(f.s.dayPicker.onlyEvents,true);assert.ok(f.screen().components.length<=5);assert.ok(controls(f.screen()).filter(c=>c.type===3).every(c=>c.options.length<=25));
 });
 

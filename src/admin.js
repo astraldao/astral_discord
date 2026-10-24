@@ -1,11 +1,12 @@
+import {selectedAction} from './compact-controls.js';
 import {randomUUID} from 'node:crypto';
 import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text,menuHomeButton,restartButton,acknowledgePrivate} from './ui.js';
+import {payload,text,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 export {adminCategories} from './admin-navigation.js';
 import {securityScreen,securityReport,securityScopes} from './security-ui.js';
-import {diagnosticsScreen,diagnosticsHelpScreen} from './diagnostics.js';
+import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions} from './diagnostics.js';
 import {validateSettings} from './settings.js';
 
 export function changeSettings(c,action,value) {
@@ -68,7 +69,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   let title='✦  管理メニュー',description='',components=[];
   const back=()=>{
     const parent=s.view.startsWith('pick-')?['nav-vc','VC設定へ']:['vc','audio','panel'].includes(s.view)?['nav-category-voice','入室・音声へ']:['overview','diagnostics'].includes(s.view)?['nav-category-operations','運用・管理へ']:null;
-    return row(...(parent?[button(s,...parent)]:[]),button(s,'home','管理メニューへ'),menuHomeButton());
+    return row(...(parent?[button(s,...parent)]:[]),button(s,'home','管理メニューへ'),...(!parent?[menuHomeButton()]:[]));
   };
   const pagination=(prefix,page,pages)=>pages>1?[button(s,`${prefix}-prev`,'前のページ').setDisabled(page===0),button(s,`${prefix}-next`,'次のページ').setDisabled(page>=pages-1)]:[];
   if(s.stage) {
@@ -77,19 +78,18 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     components=[row(button(s,'save',destructive?'削除を確定':'変更を保存',destructive?ButtonStyle.Danger:ButtonStyle.Primary),button(s,`nav-${s.view}`,'変更せず戻る'))];
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
-    description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表・Botの更新・再起動は、下のボタンから直接開けます。';
-    description+='\n\n**カテゴリを選ぶ**\n目的に近いボタンを選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
+    description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表・Botの更新は下のボタンから、再起動などは選択欄から開けます。';
+    description+='\n\n**カテゴリを選ぶ**\nカテゴリか設定名を選択欄から選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
     components=[
-      row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理'),restartButton()),
+      row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理')),
       row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder('設定名・目的から直接開く').addOptions(...adminDestinations.map(d=>({label:`${d.categoryLabel} / ${d.label}`,description:d.description,value:d.action})))),
-      ...Array.from({length:2},(_,index)=>row(...adminCategories.slice(index*2,index*2+2).map(category=>button(s,`nav-category-${category.id}`,category.label)))),
+      row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:category`).setPlaceholder('カテゴリから絞って探す').addOptions(...adminCategories.map(c=>({value:c.id,label:c.label,description:c.description})))),
       row(menuHomeButton()),
     ];
   } else if(s.view.startsWith('category-')) {
     const category=adminCategories.find(value=>s.view===`category-${value.id}`);if(!category)throw new Error('カテゴリを選び直してください。');
     title=`管理 / ${category.label}`;description=category.actions.map(([,label,help])=>`**${label}** · ${help}`).join('\n');
-    for(let start=0;start<category.actions.length;start+=2)components.push(row(...category.actions.slice(start,start+2).map(([action,label],index)=>button(s,action,label,start===0&&index===0?ButtonStyle.Primary:ButtonStyle.Secondary))));
-    components.push(back());
+    components=[row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder(`${category.label}の操作を選ぶ`).addOptions(...category.actions.map(([value,label,description])=>({value,label,description})))),row(button(s,'home','管理メニューへ'))];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
@@ -184,7 +184,8 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }else{
         const parts=interaction.customId.split(':');action=parts[2];token=parts[3];s=sessions.get(parts[1],interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       }
-      if(action==='destination'){if(interaction.values?.length!==1||!adminDestinations.some(d=>d.action===interaction.values[0]))throw new Error('一覧から管理操作を選び直してください。');action=interaction.values[0];}
+      if(action==='diagnostics-action'){action=selectedAction(interaction.values,diagnosticActions(s));if(!action)throw new Error('この画面の操作一覧から選び直してください。');}
+      if(action==='destination'){const category=adminCategories.find(c=>s.view===`category-${c.id}`),choices=category?category.actions.map(([action])=>action):s.view==='home'?adminDestinations.map(d=>d.action):[];if(interaction.values?.length!==1||!choices.includes(interaction.values[0]))throw new Error('一覧から管理操作を選び直してください。');action=interaction.values[0];}
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='measure-voice'){if(!['diagnostics','diagnostics-help'].includes(s.view)||!openPerformance)throw new Error('動作診断から処理速度の測定を開いてください。');await openPerformance(interaction);return;}
