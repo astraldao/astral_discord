@@ -4,7 +4,7 @@ import {encodePng} from './sprite-image.js';
 import {scheduleColors,validScheduleColor} from './schedule-colors.js';
 const font=JSON.parse(readFileSync(new URL('../assets/calendar-font.json',import.meta.url),'utf8'));
 const atlas=inflateSync(Buffer.from(font.pixels,'base64'),{maxOutputLength:8*1024*1024});
-const theme={paper:[255,255,255],ink:[38,43,49],muted:[118,125,132],line:[232,235,238],weekend:[250,251,252],selected:[234,246,253],today:[38,43,49],sunday:[201,70,78],saturday:[43,111,177],white:[255,255,255]};
+const theme={paper:[255,255,255],ink:[38,43,49],muted:[90,98,106],line:[232,235,238],weekend:[250,251,252],selected:[234,246,253],today:[38,43,49],sunday:[201,70,78],saturday:[43,111,177],white:[255,255,255]};
 const bands=[[208,239,252],[210,244,229],[255,223,222],[233,223,251],[255,239,202],[223,233,244]];
 const backgrounds=[...Object.values(theme),...bands];
 const adjacentPaper=[248,249,251],adjacentBands=bands.map(color=>color.map(value=>Math.round(value*0.4+255*0.6)));
