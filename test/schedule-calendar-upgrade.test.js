@@ -65,7 +65,7 @@ test('a sparse month reserves two title lines and a start-time line when needed,
 });
 test('dense months keep their three lanes, stable dimensions and honest overflow instead of wrapping into other rows',()=>{
   const events=Array.from({length:200},(_,n)=>({id:`dense-${n}`,...scheduleEvent(input({date:'2026/08/01',title:'長い予定名'.repeat(10),time:'20:00',color:'red'}))}));
-  const result=calendarImage('2026-08',events);assert.equal(result.geometry.rich,false);assert.equal(result.geometry.timed,false);assert.ok(result.height<1008+result.geometry.keyHeight);assert.equal(result.geometry.weeks[0].lanes,3);assert.equal(result.layout.cells.find(c=>c.date==='2026-08-01').hidden,197);assert.ok(result.buffer.length<150000);
+  const result=calendarImage('2026-08',events);assert.equal(result.geometry.rich,false);assert.equal(result.geometry.timed,true);assert.ok(result.height<1008+result.geometry.keyHeight);assert.equal(result.geometry.weeks[0].lanes,3);assert.equal(result.layout.cells.find(c=>c.date==='2026-08-01').hidden,197);assert.ok(result.buffer.length<150000);
 });
 test('day choices use exact month dates, leap days and interval counts without other calendars',async()=>{
   const f=await fixture();await f.add({date:'2026/09/30〜2026/10/02'});await f.add({title:'深夜',date:'2026/10/02',time:'23:00-01:00'});await f.store.putEvent(f.other,null,input({title:'秘密'}));
@@ -151,9 +151,9 @@ test('truncated names get bounded full-title keys without merging same-name even
 });
 test('many long titles and astral Unicode keep the image bounded and retain honest hidden counts',()=>{
   const events=Array.from({length:200},(_,n)=>({id:String(n),date:`2026-10-${String(n%31+1).padStart(2,'0')}`,start:null,title:'🪐𠮷'.repeat(40)}));
-  const result=calendarImage('2026-10',events);assert.equal(result.geometry.titleKeyCount,8);assert.ok(result.geometry.shortenedCount>8);assert.ok(result.height<1800);assert.ok(result.buffer.length<150000);assert.equal(result.layout.count,200);assert.equal(result.layout.cells.reduce((n,c)=>n+c.hidden,0),200-result.layout.spans.length);
+  const result=calendarImage('2026-10',events);assert.equal(result.geometry.titleKeyCount,3);assert.ok(result.geometry.shortenedCount>3);assert.ok(result.geometry.keyHeight<=228);assert.ok(result.height<1800);assert.ok(result.buffer.length<150000);assert.equal(result.layout.count,200);assert.equal(result.layout.cells.reduce((n,c)=>n+c.hidden,0),200-result.layout.spans.length);
 });
 
 test('a six-character Japanese title fits a single readable line instead of an orphan character',()=>{
-  const result=calendarImage('2026-10',[{date:'2026-10-21',start:null,title:'ホームシック'}]);assert.equal(result.geometry.wrapped,false);assert.equal(result.geometry.weeks[3].bandHeight,30);assert.equal(result.geometry.titleKeyCount,0);
+  const result=calendarImage('2026-10',[{date:'2026-10-21',start:null,title:'ホームシック'}]);assert.equal(result.geometry.wrapped,false);assert.equal(result.geometry.weeks[3].bandHeight,48);assert.equal(result.geometry.titleKeyCount,0);
 });

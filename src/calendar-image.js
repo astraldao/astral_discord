@@ -76,8 +76,9 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
   let bottom=top;
   const weeks=Array.from({length:layout.rows},(_,row)=>{
     const spans=allSpans.filter(span=>span.row===row),lanes=spans.reduce((n,span)=>Math.max(n,span.lane+1),0),rich=lanes<=1;
-    const timed=rich&&spans.some(span=>Number.isInteger(span.event.start)),wrapped=rich&&spans.some(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-16).lines.length>1);
-    const bandTop=40,bandHeight=rich?(wrapped?52:30)+(timed?18:0):28,laneGap=bandHeight+4,hidden=layout.gridCells.slice(row*7,row*7+7).some(c=>c.hidden);
+    // Every visible card has a metadata row, including crowded and all-day weeks.
+    const timed=lanes>0,wrapped=rich&&spans.some(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-16).lines.length>1);
+    const bandTop=40,bandHeight=(rich?(wrapped?52:30):28)+(timed?18:0),laneGap=bandHeight+4,hidden=layout.gridCells.slice(row*7,row*7+7).some(c=>c.hidden);
     const contentBottom=lanes?bandTop+(lanes-1)*laneGap+bandHeight:30,height=Math.max(58,contentBottom+(hidden?28:14));
     const week={row,top:bottom,height,lanes,rich,timed,wrapped,bandTop,bandHeight,laneGap,overflowY:contentBottom+3};bottom+=height;return week;
   });
@@ -85,8 +86,9 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
   // Only expand titles actually shortened in a visible card. Object identity keeps
   // distinct same-title events separate while deduplicating week-crossing spans.
   const shortened=[...new Set(allSpans.filter(span=>cardTitle(span.event.title,(span.endCol-span.col+1)*cell-16).lines.length>(weeks[span.row].wrapped?2:1)).map(span=>span.event))].sort((a,b)=>Number(!currentEvents.has(a))-Number(!currentEvents.has(b))||a.date.localeCompare(b.date)||(a.start??-1)-(b.start??-1)||a.title.localeCompare(b.title));
-  const titleKey=shortened.slice(0,8).map(event=>({event,lines:titleLines(event.title,668)}));
-  const keyHeight=titleKey.length?34+titleKey.reduce((n,item)=>n+Math.max(44,item.lines.length*24+8),0)+(shortened.length>8?26:0):0;
+  const titleKey=shortened.slice(0,3).map(event=>({event,lines:titleLines(event.title,668)}));
+  const keyMore=shortened.length>titleKey.length||titleKey.some(item=>item.lines.length>2);
+  const keyHeight=titleKey.length?34+titleKey.reduce((n,item)=>n+Math.max(44,Math.min(item.lines.length,2)*24+8),0)+(keyMore?26:0):0;
   const footer=42,height=bottom+keyHeight+footer,pixels=Buffer.alloc(width*height*4,255);
   function rect(x,y,w,h,color){for(let j=Math.max(0,y);j<Math.min(height,y+h);j++)for(let i=Math.max(0,x);i<Math.min(width,x+w);i++){const at=(j*width+i)*4;for(let c=0;c<3;c++)pixels[at+c]=color[c];}}
   function circle(x,y,r,color){for(let j=-r;j<=r;j++)for(let i=-r;i<=r;i++)if(i*i+j*j<=r*r)rect(x+i,y+j,1,1,color);}
@@ -142,13 +144,13 @@ export function calendarImage(month,events,{today,selectedDate,title=''}={}){
     let y=bottom+8;text('省略した予定名',left,y,20,theme.muted);y+=28;
     for(const {event,lines} of titleKey){
       const outside=!currentEvents.has(event),ink=outside?theme.muted:theme.ink;
-      rect(left,y+4,3,Math.max(28,lines.length*24),(outside?adjacentBands:bands)[calendarEventColor(event)]);
+      rect(left,y+4,3,Math.max(28,Math.min(lines.length,2)*24),(outside?adjacentBands:bands)[calendarEventColor(event)]);
       text(event.date.slice(5).replace('-','/'),left+12,y,20,ink,90);
       text(time(event.start),left+12,y+24,16,theme.muted,90);
-      lines.forEach((line,index)=>text(line,144,y+index*24,20,ink,668));
-      y+=Math.max(44,lines.length*24+8);
+      text(lines[0],144,y,20,ink,668);if(lines.length>1)text(lines.slice(1).join(''),144,y+24,20,ink,668);
+      y+=Math.max(44,Math.min(lines.length,2)*24+8);
     }
-    if(shortened.length>8)text(`ほか${shortened.length-8}件の長い予定名は下のメニューから`,left,y,16,theme.muted);
+    if(keyMore)text(`全${shortened.length}件の予定名は各月の一覧から`,left,y,16,theme.muted);
   }
   text('薄字は前後の月・詳細は各月の一覧から',left,height-29,16,theme.muted);
   return {buffer:encodePng(pixels,width,height,{palette,lookup,exact}),width,height,layout,geometry:{top,left,cellWidth:cell,weeks,gridBottom:bottom,rich,timed,wrapped,titleKeyCount:titleKey.length,shortenedCount:shortened.length,keyHeight}};

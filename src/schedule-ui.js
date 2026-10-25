@@ -30,6 +30,16 @@ const shortDate=date=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',mon
 const dateLabel=e=>`${shortDate(e.date)}${e.endDate?`〜${e.endDate.slice(0,4)!==e.date.slice(0,4)?`${e.endDate.slice(0,4)}年 `:''}${shortDate(e.endDate)}`:''}`;
 const hasRange=s=>s.period==='week'||s.period==='upcoming';
 const rangeLabel=s=>`${s.rangeStart.slice(0,4)}年 ${shortDate(s.rangeStart)}〜${s.rangeEnd.slice(0,4)!==s.rangeStart.slice(0,4)?`${s.rangeEnd.slice(0,4)}年 `:''}${shortDate(s.rangeEnd)}`;
+function eventList(items,s){
+  const groups=[];let previous;
+  for(const e of items){
+    // Keep different multi-day ranges separate even when their start day matches.
+    const date=`${s.query||hasRange(s)?`${e.date.slice(0,4)}年 `:''}${dateLabel(e)}`;
+    if(date!==previous){groups.push(`**${date}**`);previous=date;}
+    groups[groups.length-1]+=`\n**${eventTime(e)}** · ${e.color?`${scheduleColors[e.color].emoji} `:''}${safe(e.title)}${hasRange(s)&&!s.query&&e.date<s.rangeStart?'\n期間前から続く予定':''}`;
+  }
+  return groups.join('\n\n');
+}
 const searchScope=s=>JSON.stringify([s.calendarId,s.month,s.date,s.period,s.rangeStart,s.rangeEnd,s.display]);
 function clearSearch(s,restorePage=false){
   const page=restorePage&&s.searchReturn?.scope===searchScope(s)?s.searchReturn.page:0;
@@ -119,7 +129,7 @@ export function scheduleScreen(s,store,note=''){
       const all=selectedScheduleEvents(c,s),p=pages(s,all,8),range=hasRange(s),textView=range||s.display==='list'||!!s.query;
       const day=s.date?` · ${Number(s.date.slice(5,7))}/${Number(s.date.slice(8))}`:'';
       const empty=s.query?'一致する予定がありません。下の「検索語を変える」か「検索を解除」を使ってください。':range?'この期間の予定はまだありません。':s.date?'この日の予定はまだありません。':'この月の予定はまだありません。';
-      const details=p.items.map(e=>`**${s.query||range?`${e.date.slice(0,4)}年 `:''}${dateLabel(e)} · ${eventTime(e)}**\n${e.color?`${scheduleColors[e.color].emoji} `:''}${safe(e.title)}${range&&!s.query&&e.date<s.rangeStart?'\n期間前から続く予定':''}`).join('\n\n');
+      const details=eventList(p.items,s);
       const body=textView||s.date?details:(p.items.length?'予定を選ぶと、時刻・場所・説明を確認できます。':'');
       const selectedView=range?s.period:s.display==='list'?'month-list':'month-calendar';
       const navigation=s.query?[button(s,'search','検索語を変える'),button(s,'search-clear','検索を解除')]:s.period==='week'?[button(s,'week-prev','前の週').setDisabled(shiftScheduleWeek(s.rangeStart,-1).rangeStart===s.rangeStart),button(s,'week-current','今週'),button(s,'week-next','次の週').setDisabled(shiftScheduleWeek(s.rangeStart,1).rangeStart===s.rangeStart)]:s.period==='upcoming'?[button(s,'upcoming-current','今日から更新')]:[button(s,'month-prev','前の月').setDisabled(s.month==='2000-01'),button(s,'month-current','今月'),button(s,'month-next','次の月').setDisabled(s.month==='2099-12')];
