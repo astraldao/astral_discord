@@ -67,7 +67,7 @@ const trpgStore=await new TrpgStore('data/trpg.json').load();
 const scheduleStore=await new ScheduleStore('data/schedules.json').load();
 const gameWallets=await new GameWalletStore('data/game-wallets.json').load();
 const backupEnabled=env.ASTRAL_BACKUP_TTS==='1';
-const diceJudge=createBeatApiDiceJudge({apiKey:env.BEATAPI_API_KEY,model:env.BEATAPI_JEV_MODEL||'jev-1.14-free'});
+const diceJudge=createBeatApiDiceJudge({apiKey:env.BEATAPI_API_KEY,model:env.BEATAPI_JEV_MODEL||'jev-1.14-free',paidFallback:env.BEATAPI_JEV_PAID_FALLBACK!=='0'});
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates,GatewayIntentBits.GuildMessages,...(backupEnabled?[GatewayIntentBits.MessageContent]:[])],presence:{status:env.ASTRAL_UPDATING==='1'||env.ASTRAL_RESTARTING==='1'?'dnd':'idle'}});
 const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')).version;
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1',restarting:env.ASTRAL_RESTARTING==='1'});
