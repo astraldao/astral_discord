@@ -1,33 +1,21 @@
 import {randomInt} from 'node:crypto';
 import {rollReply} from './roll-ui.js';
+import {requestSource,rollWords,declaredRoll} from './roll-intent.js';
 export {rollDice,rollSaize} from './roll-ui.js';
 import {PermissionFlagsBits as P,GatewayIntentBits,ApplicationFlagsBitField} from 'discord.js';
-// Deliberately conservative intent rules, not language understanding. No text is
-// retained or sent to an external service. Ambiguous prose is left alone.
-function requestSource(content){
-  if(typeof content!=='string'||content.length>1000)return null;
-  let source=content.normalize('NFKC').replace(/```[\s\S]*?(?:```|$)|`[^`]*(?:`|$)|\|\|[\s\S]*?(?:\|\||$)/g,' ').split('\n').filter(line=>!/^\s*>/.test(line)).join(' ').replace(/https?:\/\/\S+/g,' ').trim();
-  if(/[?？]/u.test(source)){if(/(?:振って|ロールして)(?:くれる|もらえる)[?？]$/u.test(source)&&[...source.matchAll(/[?？]/gu)].length===1)source=source.slice(0,-1);else return null;}
-  if(/[「」『』"“”]/u.test(source))return null;
-  if(!source||/[?？]/u.test(source)||/(?:ない|ません|なかった|なくて|なければ|振らな|振りませ|振るな|振らず|振らなく|ロールしな|回さな|しない|しなく|不要|禁止|やめ|例|説明|ルール|期待値|平均|確率|意味|とは|って何|場合|なら|仮に|と言|とい[うわ]|らしい|そうです|でした|振った|振りました|振っても|できる|可能|コード|not\b|don't\b|example\b|what\b|how\b)/iu.test(source))return null;
-  return source;
-}
 export function saizeRequest(content){
   const source=requestSource(content)?.replace(/<@!?\d{17,20}>/g,' ').trim();
-  const match=source?.match(/^(?:(?:じゃあ|では|次は|今回は|ちょっと|もう一度)\s*)?(!?)サイゼロール(?:\s*を?\s*(?:お願い(?:します)?|よろしく(?:お願いします)?|(?:して|振って|回して)(?:ください|くれる|もらえる)?|する|します))?[!！。、\s]*$/u);
-  if(!match)return null;
+  const match=source?.match(/^(?:(?:じゃあ|では|次は|今回は|ちょっと|もう一度)\s*)?(!?)サイゼロール(.*)$/u);
+  if(!match||!rollWords(match[2],{saize:true}))return null;
   return match[1]==='!'?{kind:'saize',showMenu:true}:{kind:'saize'};
 }
 function chatRequest(content){return saizeRequest(content)??diceRequest(content);}
 export function diceRequest(content){
   const source=requestSource(content);if(!source)return null;
-  const matches=[...source.matchAll(/(?<![A-Za-z0-9_])([0-9]{1,7})[dD]([0-9]{1,7})(?:\s*([+-])\s*([0-9]{1,7}))?(?![A-Za-z0-9_])/gu)];
+  const matches=[...source.matchAll(/(?<![A-Za-z0-9_])([0-9]{1,7})[dD]([0-9]{1,7})(?:\s*([+-])\s*([0-9]{1,7}))?(?:(?![A-Za-z0-9_])|(?=(?:cm|km|kg|hp|mp|san|m|g)(?:[\s!。]|$)))/giu)];
   if(!matches.length)return null;
   let rest=source;for(const m of matches)rest=rest.replace(m[0],' ');
-  rest=rest.replace(/<@!?\d{17,20}>/g,' ').replace(/[\s,、。!！:：・/\[\]()「」『』]+/g,' ').trim();
-  const bare=!rest;
-  const request=/^(?:(?:ダイス|サイコロ|ロール|判定|ダメージ|回復|幸運|SAN|技能|目星|聞き耳|図書館|アイデア|知識|回避|応急手当|説得|信用|心理学|隠密|探索|命中|攻撃|チェック|sanチェック|SANチェック|正気度|成功判定|を|で|の|に|は|じゃあ|では|次は|今回は|ちょっと|もう一度|お願い|お願いします|振って|振ってください|振る|振ります|ロールして|くれる|もらえる|結果|教えて|出して|よろしく|ください|して|する|します|roll|please)\s*)+$/iu.test(rest);
-  if(!bare&&!request)return null;
+  if(!rollWords(rest)&&!declaredRoll(source,matches))return null;
   const rolls=matches.map(m=>({count:Number(m[1]),sides:Number(m[2]),modifier:m[3]?(m[3]==='-'?-1:1)*Number(m[4]):0}));
   if(rolls.length>5||rolls.some(r=>r.count<1||r.count>100||r.sides<2||r.sides>1000000||Math.abs(r.modifier)>1000000)||rolls.reduce((n,r)=>n+r.count,0)>200)return {error:'ダイスは1回1〜100個、面数2〜1000000、最大5式・合計200個、補正は±1000000までです。'};
   return {rolls};
