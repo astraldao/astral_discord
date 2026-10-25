@@ -1,7 +1,8 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,MessageFlags,ChannelType,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
-import {payload,menuHomeButton} from './ui.js';
+import {themed,menuHomeButton} from './ui.js';
 import {ScheduleError} from './schedule-errors.js';
+const {payload}=themed('schedule');
 
 const failure=message=>new ScheduleError(message);
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);

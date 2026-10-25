@@ -1,9 +1,10 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
-import {payload} from './ui.js';
+import {themed} from './ui.js';
 import {newFour,playFour} from './four.js';
 import {fourImage,fourAlt} from './four-art.js';
 import {gameImage,editGameImage} from './game-images.js';
+const {payload}=themed('game','🟡');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`four:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style);
 const home=()=>new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary);

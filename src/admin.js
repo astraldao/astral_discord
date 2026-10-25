@@ -2,13 +2,14 @@ import {selectedAction} from './compact-controls.js';
 import {randomUUID} from 'node:crypto';
 import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {canConfigure} from './commands.js';
-import {payload,text,menuHomeButton,acknowledgePrivate} from './ui.js';
+import {themed,text,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 import {adminGuideFor,adminGuideDescription} from './feature-guides.js';
 export {adminCategories} from './admin-navigation.js';
 import {securityScreen,securityReport,securityScopes} from './security-ui.js';
 import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions} from './diagnostics.js';
 import {validateSettings} from './settings.js';
+const {payload}=themed('admin');
 
 export function changeSettings(c,action,value) {
   if(action==='lobby') {

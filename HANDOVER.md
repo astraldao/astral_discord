@@ -1,14 +1,14 @@
 # 開発・運用の引き継ぎ
 
-2026-10-25 更新。現行のコマンド構成はv6.0.0。過去の調査・検証記録は各版の節を参照。
+2026-10-25 更新。現行はv6.1.0（コマンド構成はv6.0.0から変更なし）。過去の調査・検証記録は各版の節を参照。
 この文書はコードと既存ドキュメントから確認した内容をまとめる。本番の稼働確認とは区別する。
 Codex と Claude Code で共用する。エージェント向けの作業ルール・検証手順・リリース慣例は [AGENTS.md](AGENTS.md) にまとめた（Claude Code は `CLAUDE.md` から読み込む）。
 
 ## 現在の状況（2026-10-25 引き継ぎ確認）
 
-- 機能コードは `5e3da00`（v6.0.0）。Claude の共用ガイド追加 `242517e` を取り込み、ユーザーの許可により Codex / Claude Code の双方が main を使用する。最新のコミットと未完了作業は、着手前にリモートの履歴とこの文書で確認する。
-- 新しい作業環境で `npm ci` → `npm run check` 成功、`npm test` 1124件すべて成功、Python テスト2ファイル成功、`npm audit` 0件。通常の git clone も成功した。
-- 本番（Quaxly）の稼働版・Discord実画面・音声・保存データは引き続き未確認。v6.0.0 を本番へ反映するかは管理者の手動更新次第。
+- main は v6.1.0（見た目の統一）。Claude の共用ガイド追加 `242517e` を取り込み、ユーザーの許可により Codex / Claude Code の双方が main を使用する。最新のコミットと未完了作業は、着手前にリモートの履歴とこの文書で確認する。
+- 新しい作業環境で `npm ci` → `npm run check` 成功、`npm test` 1132件すべて成功（v6.1.0時点）、Python テスト2ファイル成功、`npm audit` 0件。通常の git clone も成功した。
+- 本番（Quaxly）の稼働版・Discord実画面・音声・保存データは引き続き未確認。v6.1.0 を本番へ反映するかは管理者の手動更新次第。
 - v6.0.0 の節にある `/workspace/artifacts/usability-v6/screens.json` は当時の作業環境のファイルで、リポジトリには含まれない。
 
 ## 更新先と検証
@@ -676,3 +676,15 @@ settingChangeDescriptionは既存changeSettingsをcloneに適用し、許可さ�
 ユーザーが双方のmain利用を許可。Claudeの共通ガイド追加 `242517e3894eb68b3b05910168ae1d203d028f30` とmain共用ルール追加 `e5010db` がmainへ反映されたことを確認。Codex側の重複候補 `codex/shared-main-guide` / `6f24346` は未採用とし、ClaudeのAGENTS.mdをそのまま使う。作業ブランチは `codex/shared-main-handoff`、引き継ぎコミットの題名は `docs: record shared main handoff after Claude update`。以降は双方mainで作業でき、反映前に相手の最新変更を取り込んで検証する。
 
 検証：新規依存導入 npm ci、構文/実行ポリシー検査、Node1124件、Python音声資産4件/バックアップ検索15件、npm audit0件、文書リンク170件を確認。機能コードと版はv6.0.0のまま。本番Discord・音声・Quaxlyは未確認で、更新は引き続き管理者の手動適用。
+
+## v6.1.0 カード・ボタン・ゲーム画像の見た目を統一
+
+ui.jsにthemes（menu/voice/schedule/densuke/trpg/game/adminの記号と色）とthemed(feature,icon)を追加し、payloadを使う全26画面ファイルの先頭で機能を固定。card()は既知の旧記号（✦✧♠✊🐔📅と各テーマ記号）だけを外して付け直し、利用者が付けた名前の絵文字は残す。success/warning/errorの色は機能色より優先。予定表の色はカレンダー画像の今日の青（#2B6FB1）に合わせた。各ゲームは🃏🎰✊🟡🪙🐔、ゲーム選択とエラーは🎲。index.jsの共通エラーはroute.namespaceからthemeForNamespaceで色を選ぶ。interaction-routing.jsにinteractionNamespacesを公開し、全namespaceにテーマがあることをテストする。
+
+ボタンはpolishComponents()で文言から統一：削除/消去/停止/中断と登録・バナー等の解除をDanger、「〜せず」「一時停止」と検索/条件/選択/固定/絞り込みの解除は対象外。前/次のページ・N件・N組・ZIP・予定・月・週と前へ/次へに◀️▶️（既存のemojiとLinkは変更しない）。Primaryの付け替えはしないので、各画面の「青は1つ」の設計と既存テストは維持。payload()に加え、index.jsのpolishResponsesでreply/update/editReply/followUpの全応答に適用。冪等。
+
+4目並べの画像をブラックジャック・カジノと同じ紺背景・角丸パネル・枠線（480×360）へ変更し、距離ベースの縁取りで駒をなめらかにした。揃った4つは緑の輪。固定の枠と空き穴は一度だけ描画してキャッシュし、手ごとは駒のセルだけ描く（1枚約12ms）。インデックスPNG（約40色）を維持し、1手後3.8KiB・満盤5.2KiB。既存テストの寸法420×324→480×360、容量上限4096→8192バイトへ更新。カレンダー画像は明るい配色のまま変更なし。
+
+規則と見本はdocs/DESIGN.md（docs/previews/cards-v6_1.pngはカードとボタンの見た目を示す架空のHTMLモック、four-v6_1.pngは実際の描画結果）。変更内容はdocs/V6_1.md。コマンド・保存形式・依存・ENVの追加なし。手動admin更新のみ。Discord実端末での表示は未確認。
+
+検証：構文/実行ポリシー検査、全Node1132件（新規8件：テーマの記号と色、状態色の優先、利用者の絵文字の保持、全namespaceの対応、赤くする/しない文言、矢印とemoji・Linkの保持、builderでの冪等性とPrimary維持、4目並べの枠・配色・縁取り・空盤）、Python2ファイル、npm audit 0件。

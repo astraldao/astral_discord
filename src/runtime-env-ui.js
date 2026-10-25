@@ -2,7 +2,8 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Modal
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
 import {runtimeVariables} from './runtime-env.js';
-import {payload,acknowledgePrivate,adminSectionButton,adminFeatureButton,restartButton} from './ui.js';
+import {themed,acknowledgePrivate,adminSectionButton,adminFeatureButton,restartButton} from './ui.js';
+const {payload}=themed('admin');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`runtime:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function runtimeEnvScreen(s,store,note=''){

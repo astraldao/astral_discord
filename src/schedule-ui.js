@@ -17,8 +17,9 @@ import {sharedScheduleAccess,sharedScheduleMessage} from './shared-schedule-ui.j
 import {randomUUID} from 'node:crypto';
 import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P,escapeMarkdown} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
-import {payload,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton} from './ui.js';
+import {themed,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton} from './ui.js';
 import {currentScheduleMonth,shiftScheduleMonth,scheduleMonth,scheduleDate,scheduleInputDate,planScheduleImport} from './schedule-store.js';
+const {payload}=themed('schedule');
 const safe=x=>escapeMarkdown(String(x)).replace(/@/g,'＠');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`schedule:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style);

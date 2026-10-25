@@ -3,12 +3,13 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Chann
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton,acknowledgePrivate} from './ui.js';
+import {themed,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {visibleCharacters,searchScenarios,iacharaUrl,characterRevision} from './trpg-store.js';
 import {createTrpgRepair,trpgPanelTarget} from './trpg-repair.js';
 import {tableScreen,tableActions,tableActionKey} from './tables-ui.js';
 import {backupScreen,createTrpgBackups} from './trpg-backup.js';
 import {createIacharaClient} from './iachara.js';
+const {payload}=themed('trpg');
 const row=(...x)=>new ActionRowBuilder().addComponents(...x);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`trpg:${s.id}:${a}`).setLabel(label).setStyle(style);
 const link=(label,url)=>new ButtonBuilder().setLabel(label).setStyle(ButtonStyle.Link).setURL(url);

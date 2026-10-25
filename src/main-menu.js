@@ -1,8 +1,9 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
-import {payload,menuHomeButton,adminHomeButton} from './ui.js';
+import {themed,menuHomeButton,adminHomeButton} from './ui.js';
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`menu:${action}`).setLabel(label).setStyle(style);
 import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting,menuGuideTopics,menuTaskDetails,menuCapabilities,menuCapabilityNote} from './menu-catalog.js';
+const {payload}=themed('menu');
 class MenuUiError extends Error{}
 export function mainMenuScreen({admin=false,recent=[],capabilities}={}){
   const items=[...new Set(recent.filter(destination))].slice(0,3),state=menuCapabilities(capabilities);

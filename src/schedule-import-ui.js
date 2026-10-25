@@ -1,7 +1,8 @@
 import {ScheduleError} from './schedule-errors.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,FileUploadBuilder,LabelBuilder,ModalBuilder,StringSelectMenuBuilder,escapeMarkdown} from 'discord.js';
-import {payload} from './ui.js';
+import {themed} from './ui.js';
 import {scheduleInputDate} from './schedule-store.js';
+const {payload}=themed('schedule');
 const safe=value=>escapeMarkdown(String(value)).replace(/@/g,'＠');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`schedule:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);

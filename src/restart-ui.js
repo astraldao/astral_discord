@@ -1,7 +1,8 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,PermissionFlagsBits as P,MessageFlags} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {runtimeVariables} from './runtime-env.js';
-import {payload,acknowledgePrivate,adminHomeButton,adminSectionButton,menuHomeButton} from './ui.js';
+import {themed,acknowledgePrivate,adminHomeButton,adminSectionButton,menuHomeButton} from './ui.js';
+const {payload}=themed('admin');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`restart:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style);
 export function restartScreen(s,store){

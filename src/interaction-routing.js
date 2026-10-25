@@ -10,6 +10,7 @@ const definitions=[
   ['wallet','chipAccount','handle'],['chips','chipTools','handle'],['work','chipTools','handle'],['game','blackjack','handle'],
 ];
 const namespaces=new Set(definitions.map(([name])=>name));
+export const interactionNamespaces=Object.freeze([...namespaces,'vc']);
 const commandTargets=new Map([['menu','menu'],['vc','vc'],['game','game-lobby'],['read','read'],['admin','admin']]);
 
 export function interactionRoute(interaction){

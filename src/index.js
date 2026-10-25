@@ -45,7 +45,15 @@ import {createBlackjackController} from './blackjack-ui.js';
 import {createProfileController} from './profile-ui.js';
 import {TrpgStore} from './trpg-store.js';
 import {createTrpgController} from './trpg-ui.js';
-import {text,payload,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider,personalReadingButton,menuHomeButton} from './ui.js';
+import {text,themed,themeForNamespace,polishMessage,openButton,cancelButton,countdownCard,choiceNavigation,waitingCard,setBotIconProvider,personalReadingButton,menuHomeButton} from './ui.js';
+const {payload}=themed('voice');
+// Every interaction response passes through the shared button rules, including screens built outside payload().
+function polishResponses(interaction){
+  for(const method of ['reply','update','editReply','followUp']){
+    const original=interaction[method];
+    if(typeof original==='function')interaction[method]=options=>original.call(interaction,polishMessage(options));
+  }
+}
 const env=process.env;
 if(!/^\d{17,20}$/.test(env.GUILD_ID || '')) throw new Error('GUILD_IDにDiscordサーバーのIDを設定してください。');
 if(!env.DISCORD_TOKEN || env.DISCORD_TOKEN.startsWith('put_')) throw new Error('DISCORD_TOKENを設定してください。');
@@ -222,6 +230,7 @@ client.once('clientReady', async () => {
 client.on('interactionCreate', async interaction => {
   if (!ready || interaction.guildId !== env.GUILD_ID) return;
   const route=interactionRoute(interaction);if(!route)return;
+  polishResponses(interaction);
   const command=route.kind==='command',component=route.kind==='component'&&route.target==='vc';
   const menuComponent=route.kind==='component'&&route.target==='menu';
   const featureComponent=route.kind==='component'&&!['vc','menu'].includes(route.target);
@@ -272,8 +281,8 @@ client.on('interactionCreate', async interaction => {
   } catch (error) {
     const content = error instanceof EntryError ? error.message : '操作に失敗しました。設定や権限を確認してください。';
     const components=menuComponent||(command&&interaction.commandName==='menu')?[new ActionRowBuilder().addComponents(menuHomeButton())]:featureComponent || (command && ['admin','game','read'].includes(interaction.commandName))?[]:[openButton(),personalReadingButton().addComponents(menuHomeButton())];
-    if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components})));
-    else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components}),flags:MessageFlags.Ephemeral}));
+    if (interaction.deferred || interaction.replied) await quiet(() => interaction.editReply(payload('✧  確認してください',content,{state:'error',components,feature:themeForNamespace(route.namespace)})));
+    else await quiet(() => interaction.reply({...payload('✧  確認してください',content,{state:'error',components,feature:themeForNamespace(route.namespace)}),flags:MessageFlags.Ephemeral}));
     const source=route.namespace;
     console.error('操作:',error.code ?? error.name,'機能:',source);
   }finally{finishActivity();}

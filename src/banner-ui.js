@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,FileUploadBuilder,LabelBuilder,MessageFlags,ModalBuilder,PermissionFlagsBits as P} from 'discord.js';
-import {adminHomeButton,adminSectionButton,adminFeatureButton,card,payload} from './ui.js';
+import {themed,adminHomeButton,adminSectionButton,adminFeatureButton} from './ui.js';
 import {readBannerAttachment} from './banner-image.js';
+const {card,payload}=themed('admin');
 const ttl=10*60*1000,maximum=4;
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`banner:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);

@@ -3,11 +3,12 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,PermissionFlagsB
 import {wagerRow,wagerChoice,chipDelta} from './game-ui.js';
 import {cardName} from './blackjack.js';
 import {GameSessions} from './game-sessions.js';
-import {payload} from './ui.js';
+import {themed} from './ui.js';
 import {casinoKinds,casinoChoices,winningPayout,drawRank,rankName,animals,casinoNames} from './casino.js';
 import {GameWalletStore} from './game-wallets.js';
 import {gameImage,editGameImage,casinoImageKey} from './game-images.js';
 import {casinoImage} from './casino-art.js';
+const {payload}=themed('game','🎰');
 export {casinoNames} from './casino.js';
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`casino:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
@@ -44,7 +45,7 @@ export function createCasinoController({guild,now=()=>Date.now(),random,openWork
   const send=(s,i,note,reuse)=>editGameImage(i,s,{key:casinoImageKey(s),name:'casino.png',reuse,build:retained=>screen(s,note,retained)});
   const get=(id,i)=>{let s;try{s=sessions.get(id,i.user.id);}catch{throw new Error('この画面は終了しています。ゲーム選択から開き直してください。');}if(s.channelId!==i.channelId)throw new Error('ゲームを始めたチャンネルから操作してください。');return s;};
   async function acknowledge(i,separate=false){if(i.deferred||i.replied)return false;if(!separate&&i.message?.flags?.has(MessageFlags.Ephemeral)){await i.deferUpdate();return true;}await i.deferReply({flags:MessageFlags.Ephemeral});return false;}
-  const error=async(i,e,s,reuse)=>{if(s){await send(s,i,e.message,reuse);return;}const m=payload('✦  GAME',e.message,{state:'error',components:[row(home())]});m.attachments=[];if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});};
+  const error=async(i,e,s,reuse)=>{if(s){await send(s,i,e.message,reuse);return;}const m=payload('✦  GAME',e.message,{state:'error',components:[row(home())],icon:'🎲'});m.attachments=[];if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});};
   async function open(i,kind){let s,locked=false,authorized=false,reuse=false;try{
     if(!casinoKinds.includes(kind))throw new Error('ゲームを選び直してください。');reuse=await acknowledge(i);await access(i);
     s=[...sessions.sessions.values()].find(x=>x.userId===i.user.id && x.channelId===i.channelId && x.expires>now());

@@ -1,5 +1,6 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder} from 'discord.js';
-import {payload,text,menuHomeButton} from './ui.js';
+import {themed,text,menuHomeButton} from './ui.js';
+const {payload}=themed('admin');
 const labels={critical:'緊急',high:'高',moderate:'中',low:'低',unknown:'未確認'};
 export const securityScopes={all:'すべて',runtime:'実行用',dev:'開発用'};
 export function securityFindings(s){const scope=s.securityScope??'all';return (s.security?.findings??[]).flatMap(f=>{const packages=f.packages.filter(p=>scope==='all'||scope==='dev'&&p.dev||scope==='runtime'&&!p.dev);return packages.length?[{...f,packages,fixed:f.fixed.filter(v=>packages.some(p=>p.name===v.name))}]:[];});}

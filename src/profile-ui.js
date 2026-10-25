@@ -1,8 +1,9 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
-import {payload,text,personalReadingButton,menuHomeButton} from './ui.js';
+import {themed,text,personalReadingButton,menuHomeButton} from './ui.js';
 import {announcementText} from './speech.js';
+const {payload}=themed('voice');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`profile:${s.id}:${a}`).setLabel(label).setStyle(style);
 export function profileScreen(s,current,note=''){

@@ -1,8 +1,9 @@
 import {randomInt,randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,UserSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
-import {payload,text} from './ui.js';
+import {themed,text} from './ui.js';
 import {MAX_CHIPS} from './game-wallets.js';
+const {payload}=themed('game','🪙');
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(prefix,s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`${prefix}:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 const home=()=>new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary);
@@ -23,7 +24,7 @@ export function workScreen(s,balance,note=''){
   else if(s.view==='ready'){description=`逃げた仲間の順番を覚えて、同じ順番で捕まえよう。\n\n**いつでも無料** · 自己ベスト ${s.best??0}個\nチップ不足時のお礼は5枚。受け取りは30秒ごと・1時間で最大30枚。`;components=[row(button('work',s,'start-3','かんたん · 3個',ButtonStyle.Primary),button('work',s,'start-5','ふつう · 5個'),button('work',s,'start-7','むずかしい · 7個')),row(home())];}
   else if(s.view==='watch'){description=`**逃げた順番を覚えよう**\n\n${sequenceText(s)}\n\n「覚えた」を押すと順番を隠します。`;components=[row(button('work',s,'remember','覚えた',ButtonStyle.Primary),button('work',s,'cancel','難易度を選び直す'),home())];}
   else{description=`**${s.caught+1}番目に逃げたのは？**\n成功 ${s.caught}/${s.length}\n\n覚えた順番で、仲間を選んでください。`;components=[row(...animals.slice(0,3).map((a,n)=>button('work',s,`pick-${n}`,a.name).setEmoji(a.emoji))),row(...animals.slice(3).map((a,n)=>button('work',s,`pick-${n+3}`,a.name).setEmoji(a.emoji))),row(button('work',s,'cancel','難易度を選び直す'),home())];}
-  return {...payload('🐔  ぴよぴよ脱走劇',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?(s.failed?'error':'success'):'normal',components}),attachments:[]};
+  return {...payload('🐔  ぴよぴよ脱走劇',(note?`${note}\n\n`:'')+description,{state:s.view==='done'?(s.failed?'error':'success'):'normal',components,icon:'🐔'}),attachments:[]};
 }
 export function createChipTools({guild,wallet,now=()=>Date.now(),random=randomInt,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルでは操作できません。');},recipient=async(id,user)=>{if(!/^\d{17,20}$/.test(id)||id===user)throw new Error('自分以外のメンバーを選んでください。');const member=await guild.members.fetch({user:id,force:true});if(!member || member.user.bot)throw new Error('Bot以外のサーバーメンバーを選んでください。');return member;}}){
   const transfers=new GameSessions(now),work=new GameSessions(now,s=>['watch','playing','claim'].includes(s.view));

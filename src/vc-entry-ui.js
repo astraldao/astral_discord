@@ -1,5 +1,6 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelType,PermissionFlagsBits as P} from 'discord.js';
-import {payload,menuHomeButton} from './ui.js';
+import {themed,menuHomeButton} from './ui.js';
+const {payload}=themed('voice');
 
 // Only a freshly fetched, visible lobby may appear in the private guide.
 export async function lobbyEntryGuide({guild,member,lobbyId}){

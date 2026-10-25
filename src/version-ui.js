@@ -1,7 +1,8 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags} from 'discord.js';
 import {AdminSessions} from './admin.js';
-import {payload,text,adminHomeButton,menuHomeButton} from './ui.js';
+import {themed,text,adminHomeButton,menuHomeButton} from './ui.js';
 import {updateCapacityFields} from './update-capacity.js';
+const {payload}=themed('admin');
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`updates:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 const labels={idle:'待機中',preparing:'新版を取得・検証中',switching:'切り替え中',complete:'更新が完了しました',blocked:'進行中の操作があるため更新を見送りました',failed:'前回の更新を完了できませんでした'};

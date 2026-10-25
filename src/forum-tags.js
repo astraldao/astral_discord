@@ -1,7 +1,8 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ChannelType,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
-import {payload,text,adminHomeButton,adminSectionButton,adminFeatureButton,acknowledgePrivate} from './ui.js';
+import {themed,text,adminHomeButton,adminSectionButton,adminFeatureButton,acknowledgePrivate} from './ui.js';
+const {payload}=themed('admin');
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`forum:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function parseForumPost(value,guildId){let url;try{url=new URL(String(value).trim());}catch{}if(!url || url.protocol!=='https:' || url.hostname!=='discord.com' || url.port || url.username || url.password || url.search || url.hash)throw new Error('Discordの投稿リンクを入力してください。');const m=url.pathname.match(/^\/channels\/(\d{17,20})\/(\d{17,20})(?:\/\d{17,20})?\/?$/);if(!m || m[1]!==guildId)throw new Error('このサーバーの投稿リンクを入力してください。');return m[2];}

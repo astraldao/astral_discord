@@ -2,9 +2,10 @@ import {actionPicker} from './compact-controls.js';
 import {stat,readdir} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,PermissionFlagsBits as P,ChannelType} from 'discord.js';
-import {payload} from './ui.js';
+import {themed} from './ui.js';
 import {systemCapacity,capacitySummary} from './system-capacity.js';
 import {safeBackupFailure,backupFailureSummary} from './backup-fault.js';
+const {payload}=themed('admin');
 const exists=async(path,kind)=>{try{const s=await stat(path);return kind==='file'?s.isFile():s.isDirectory();}catch{return false;}};
 export async function voiceComponents(root=process.cwd(),env=process.env){
   const base=resolve(root,env.VOICEVOX_ROOT||'voicevox');

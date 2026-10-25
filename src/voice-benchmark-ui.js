@@ -1,10 +1,11 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,PermissionFlagsBits as P,MessageFlags,StringSelectMenuBuilder} from 'discord.js';
 import {AdminSessions} from './admin.js';
-import {payload,acknowledgePrivate,adminFeatureButton,adminSectionButton,text} from './ui.js';
+import {themed,acknowledgePrivate,adminFeatureButton,adminSectionButton,text} from './ui.js';
 import {backupFailureSummary,backupWarmupSteps} from './backup-fault.js';
 import {capacitySummary} from './system-capacity.js';
 import {benchmarkErrorMessage} from './voice-benchmark.js';
 import {benchmarkHistoryEntry,benchmarkReport,compareBenchmarks,benchmarkConditionLabels,benchmarkMetricLabels} from './voice-benchmark-history.js';
+const {payload}=themed('admin');
 class BenchmarkUiError extends Error {}
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`perf:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style);

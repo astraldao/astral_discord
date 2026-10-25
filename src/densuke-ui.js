@@ -1,12 +1,13 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,escapeMarkdown} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
-import {payload,adminHomeButton,adminSectionButton,adminFeatureButton,acknowledgePrivate} from './ui.js';
+import {themed,adminHomeButton,adminSectionButton,adminFeatureButton,acknowledgePrivate} from './ui.js';
 import {randomUUID} from 'node:crypto';
 import {PermissionFlagsBits as P} from 'discord.js';
 import {answerUrl} from './trpg-store.js';
 import {choices,eventData,UncertainCreation,createDensukeClient} from './densuke.js';
 import {validDensukeEmail} from './settings.js';
+const {payload}=themed('densuke');
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const screenActions=new Set(['choice','form','cancel','share','restart','form-email','form-recover']);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`densuke:${s.id}:${action}${action.includes(':')?'':':'+s.controlToken}`).setLabel(label).setStyle(style);

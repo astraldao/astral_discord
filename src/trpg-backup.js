@@ -1,7 +1,8 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,AttachmentBuilder} from 'discord.js';
 import {randomUUID} from 'node:crypto';
-import {payload,menuHomeButton} from './ui.js';
+import {themed,menuHomeButton} from './ui.js';
 import {prepareBackups,MAX_ZIP} from './backups.js';
+const {payload}=themed('trpg');
 const row=(...items)=>new ActionRowBuilder().addComponents(...items);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`trpg:${s.id}:${action}`).setLabel(label).setStyle(style);
 const size=bytes=>bytes<1024*1024?`${Math.max(1,Math.ceil(bytes/1024))} KiB`:`${(bytes/1024/1024).toFixed(1)} MiB`;
