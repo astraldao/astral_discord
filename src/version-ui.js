@@ -1,19 +1,20 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags} from 'discord.js';
 import {AdminSessions} from './admin.js';
-import {payload,text,adminHomeButton} from './ui.js';
+import {payload,text,adminHomeButton,menuHomeButton} from './ui.js';
 import {updateCapacityFields} from './update-capacity.js';
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`updates:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 const labels={idle:'待機中',preparing:'新版を取得・検証中',switching:'切り替え中',complete:'更新が完了しました',blocked:'進行中の操作があるため更新を見送りました',failed:'前回の更新を完了できませんでした'};
 export function versionScreen(s){
   const d=s.data,current=d.current,latest=d.latest,busy=['preparing','switching'].includes(d.phase),available=latest&&latest.sha!==current.sha;
-  const navigation=row(adminHomeButton());
+  const navigation=row(adminHomeButton(),...(d.phase==='blocked'?[menuHomeButton()]:[]));
   if(!d.supported){
     const m=payload('バージョン管理','**初回の切り替えが必要です**\nQuaxlyのStartup Commandから一度再導入すると、この画面で更新できるようになります。',{state:'warning',components:[row(new ButtonBuilder().setLabel('導入手順を見る').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord#quaxlyでgithubから導入更新')),navigation]});
     m.embeds[0].addFields({name:'現在のバージョン',value:`v${text(current.version)}`});return m;
   }
   const heading=busy?labels[d.phase]:d.phase==='blocked'?'操作の終了後に再試行できます':d.phase==='failed'?'更新結果を確認してください':available?'新しい更新があります':latest?'確認した最新版で稼働中':'まず更新を確認してください';
   let body=`**${heading}**`;
+  if(d.phase==='blocked')body+='\n読み上げ・VC入室・ゲームなどの進行状況を確認し、終了後に更新を再確認してください。';
   if(d.error)body+=`\n${text(d.error)}`;
   if(s.confirm)body+='\n\n取得・検証後にBotを再接続します。進行中の操作やゲームがあれば更新を見送ります。';
   else if(busy)body+='\n\n更新中はdnd（取り込み中）になります。切り替え後に /admin を開き直すと、稼働版を確認できます。';

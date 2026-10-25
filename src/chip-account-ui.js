@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,UserSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
+import {shortButtonRows} from './compact-controls.js';
 import {payload,text,adminHomeButton,menuHomeButton} from './ui.js';
 import {MAX_CHIPS} from './game-wallets.js';
 import {casinoNames} from './casino.js';
@@ -41,7 +42,7 @@ export function chipAccountScreen(s,wallet,note=''){
     }
   }
   if(!admin)m.components.at(-1).addComponents(menuHomeButton());
-  return {...m,attachments:[]};
+  return {...m,components:shortButtonRows(m.components),attachments:[]};
 }
 export function createChipAccountController({guild,wallet,now=()=>Date.now(),member=async user=>{const m=await guild.members.fetch({user,force:true});if(m.user.bot)throw new Error('Botのチップは調整できません。');return m;},access=async(i,admin)=>{const m=await guild.members.fetch({user:i.user.id,force:true}),c=await guild.channels.fetch(i.channelId,{force:true});if(!c?.permissionsFor(m)?.has(P.ViewChannel)||admin&&!m.permissions.has(P.Administrator))throw new Error(admin?'管理者権限がありません。':'このチャンネルでは操作できません。');}}){
   const sessions=new GameSessions(now);

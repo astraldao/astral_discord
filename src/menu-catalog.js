@@ -8,6 +8,16 @@ export const menuDestinations={
 };
 export const isMenuDestination=value=>typeof value==='string'&&Object.hasOwn(menuDestinations,value);
 
+export const menuTaskDetails={
+  vc:{prepare:'先にロビーVCへ参加してください。',effect:'入室先を選ぶと、参加予告と待機の後に移動します。待機中はキャンセルできます。'},
+  read:{prepare:'聞きたいVCに参加し、読みたいテキストチャンネルで開いてください。',effect:'開始ボタンを押した後の投稿を読みます。メニューへ戻っても続き、停止・再起動で終了します。'},
+  game:{prepare:'無料ゲームはチップ不要。チップゲームは最低10枚からです。',effect:'ゲームを選ぶだけではチップを使いません。勝負開始時に使い、進行中のゲームは続きへ戻れます。'},
+  calendar:{prepare:'共有投稿のあるテキストチャンネルで開きます。',effect:'閲覧・検索・ICS保存ができます。編集は管理者用の画面から行います。'},
+  profile:{prepare:'かな・長音で自分の名前の読み方を用意します。',effect:'保存後、次の入室告知から反映します。解除すると辞書による自動の読み方へ戻ります。'},
+  wallet:{prepare:'自分の残高・履歴を確認できます。譲渡は相手と枚数を確認してください。',effect:'履歴は取得時点の内容です。最新の情報は更新ボタンで再取得できます。'},
+  dice:{prepare:'1D100など、振ってほしいダイスをこのチャンネルへ投稿します。',effect:'結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。'},
+};
+
 export const menuTroubleshooting={
  vc:'ロビーに参加してから開き直してください。入室先が表示されない場合は、管理者がVC設定と動作診断を確認します。',
  read:'VCへの参加と、このチャンネルで読み上げを開始したかを確認してください。開始できない場合は管理者の動作診断を使います。',

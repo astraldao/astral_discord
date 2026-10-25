@@ -2,7 +2,7 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,Messa
 import {payload,menuHomeButton,adminHomeButton} from './ui.js';
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`menu:${action}`).setLabel(label).setStyle(style);
-import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting,menuGuideTopics,menuCapabilities,menuCapabilityNote} from './menu-catalog.js';
+import {menuDestinations as destinations,isMenuDestination as destination,menuTroubleshooting,menuGuideTopics,menuTaskDetails,menuCapabilities,menuCapabilityNote} from './menu-catalog.js';
 class MenuUiError extends Error{}
 export function mainMenuScreen({admin=false,recent=[],capabilities}={}){
   const items=[...new Set(recent.filter(destination))].slice(0,3),state=menuCapabilities(capabilities);
@@ -15,9 +15,9 @@ export function mainMenuScreen({admin=false,recent=[],capabilities}={}){
   ]}),attachments:[]};
 }
 export function mainMenuGuideScreen(topic,capabilities){
-  const selected=typeof topic==='string'&&Object.hasOwn(menuGuideTopics,topic)?menuGuideTopics[topic]:null,note=menuCapabilityNote(topic,capabilities),state=menuCapabilities(capabilities);
+  const selected=typeof topic==='string'&&Object.hasOwn(menuGuideTopics,topic)?menuGuideTopics[topic]:null,note=menuCapabilityNote(topic,capabilities),state=menuCapabilities(capabilities),task=selected?menuTaskDetails[topic]:null;
   const trouble=topic==='dice'&&state.diceEnabled===false?'管理者にダイス返信の有効化を依頼してください。ON/OFFは動作診断でも確認できます。':topic==='read'&&state.readingEnabled===false?'管理者が読み上げ設定を有効にしてBotを再起動すると利用できます。':menuTroubleshooting[topic];
-  return {...payload(selected?`使い方 · ${selected.label}`:'使い方',selected?`${note?`${note}\n\n`:''}${selected.guide}\n\n**うまく動かないとき**\n${trouble}`:'操作の手順を選んでください。\n\n普段は **/menu**、管理者の設定は **/admin** から開きます。\nどの機能も、まず画面で内容を確認できます。',{components:[
+  return {...payload(selected?`使い方 · ${selected.label}`:'使い方',selected?`${note?`${note}\n\n`:''}${task?`**使う前に**\n${task.prepare}\n\n**手順**\n`:''}${selected.guide}${task?`\n\n**反映・終了**\n${task.effect}`:''}\n\n**うまく動かないとき**\n${trouble}`:'操作の手順を選んでください。\n\n普段は **/menu**、管理者の設定は **/admin** から開きます。\nどの機能も、まず画面で内容を確認できます。',{components:[
     row(new StringSelectMenuBuilder().setCustomId('menu:help-topic').setPlaceholder('知りたい操作を選ぶ').addOptions(...Object.entries(menuGuideTopics).map(([value,item])=>({value,label:item.label,description:item.summary,default:value===topic})))),
     row(...(selected&&destination(topic)?[button(topic,`${selected.label}を開く`,ButtonStyle.Primary)]:[]),menuHomeButton()),
   ]}),attachments:[]};

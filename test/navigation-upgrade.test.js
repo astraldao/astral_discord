@@ -21,7 +21,8 @@ test('feature failure offers a safe manual reopen and never repeats stop, reads 
 test('all help topics have specific recovery advice and native hub stays within five rows',()=>{
  for(const admin of [false,true]){const p=mainMenuScreen({admin,recent:['vc','read','calendar']});assert.ok(p.components.length<=5);for(const r of p.components)assert.ok(r.toJSON().components.length<=5);}
  for(const topic of ['vc','read','calendar','game','profile','wallet'])assert.ok(mainMenuGuideScreen(topic).embeds[0].toJSON().description.includes('うまく動かないとき'));
- assert.equal(controls(adminScreen({id:'s',view:'home'},config)).find(b=>b.type===3).options.length,adminDestinations.length);
+ const choices=controls(adminScreen({id:'s',view:'home'},config)).find(b=>b.type===3).options;
+ assert.deepEqual(choices.map(c=>c.value),[...adminDestinations.map(d=>d.action),'nav-guides']);
 });
 test('admin task picker rejects arbitrary writes, foreign owners and channels',async()=>{
  let opens=0;const c=createAdminController({settings:{get:()=>config},guild:{},access:async()=>true,openSchedule:async()=>opens++});await c.handle(i('admin:open'));const s=[...c.sessions.sessions.values()][0];for(const value of ['save','install-panel','__proto__'])await c.handle(i(`admin:${s.id}:destination`,[value]));assert.equal(opens,0);await c.handle({...i(`admin:${s.id}:destination`,['open-schedule']),user:{id:'other'}});await c.handle({...i(`admin:${s.id}:destination`,['open-schedule']),channelId:'other'});assert.equal(opens,0);await c.handle(i(`admin:${s.id}:destination`,['open-schedule']));assert.equal(opens,1);

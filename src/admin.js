@@ -4,6 +4,7 @@ import {AttachmentBuilder,ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelSele
 import {canConfigure} from './commands.js';
 import {payload,text,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
+import {adminGuideFor,adminGuideDescription} from './feature-guides.js';
 export {adminCategories} from './admin-navigation.js';
 import {securityScreen,securityReport,securityScopes} from './security-ui.js';
 import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions} from './diagnostics.js';
@@ -42,6 +43,19 @@ export function changeSettings(c,action,value) {
   } else throw new Error('不明な設定操作です。');
   validateSettings(c);
 }
+export function settingChangeDescription(before,action,value){
+  const after=structuredClone(before);changeSettings(after,action,value);
+  const arrow=(label,a,b)=>`**${label}** ${a} → ${b}`;
+  const on=value=>value?'ON':'OFF';
+  if(action==='lobby')return arrow('ロビーVC',before.lobbyId?`<#${before.lobbyId}>`:'未設定',`<#${after.lobbyId}>`);
+  if(['add','remove'].includes(action))return `${arrow('入室先VC',`${before.targetIds.length}件`,`${after.targetIds.length}件`)}\n対象 <#${value}>`;
+  if(action==='seconds'||action==='volume')return arrow(action==='seconds'?'待機時間':'音量',`${before[action]}${action==='seconds'?'秒':'%'}`,`${after[action]}${action==='seconds'?'秒':'%'}`);
+  if(action==='voice')return arrow('音声告知',on(before.voice),on(after.voice));
+  if(action==='chatDice')return arrow('チャットダイス',on(before.chatDice!==false),on(after.chatDice!==false));
+  if(action==='enforce')return arrow('直接入室',before.enforce?'ロビーへ戻す':'許可',after.enforce?'ロビーへ戻す':'許可');
+  const surface=String(value.surface).normalize('NFKC').trim(),old=(before.words??[]).find(w=>action==='word-edit'?w.surface===value.previousSurface:w.surface.toLowerCase()===surface.toLowerCase()),next=(after.words??[]).find(w=>w.surface.toLowerCase()===surface.toLowerCase());
+  return `${arrow('読み方',old?`${text(old.surface)}：${text(old.reading)}`:'未登録',next?`${text(next.surface)}：${text(next.reading)}`:'登録を解除')}\n次の入室告知から反映します。`;
+}
 export class AdminSessions {
   sessions=new Map();
   constructor(now=()=>Date.now()){this.now=now;}
@@ -74,7 +88,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   const pagination=(prefix,page,pages)=>pages>1?[button(s,`${prefix}-prev`,'前のページ').setDisabled(page===0),button(s,`${prefix}-next`,'次のページ').setDisabled(page>=pages-1)]:[];
   if(s.stage) {
     const destructive=['remove','word-remove'].includes(s.stage.action);
-    title='✦  変更内容を確認';description=`${s.stage.description}\n\n保存すると待機中の入室予約を取り消します。\n戻ると、この変更を破棄します。`;
+    title='✦  変更内容を確認';description=`${s.stage.description}\n\n保存後に反映します。待機中の入室予約があれば取り消します。\n戻ると、この変更を破棄します。`;
     components=[row(button(s,'save',destructive?'削除を確定':'変更を保存',destructive?ButtonStyle.Danger:ButtonStyle.Primary),button(s,`nav-${s.view}`,'変更せず戻る'))];
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
@@ -82,14 +96,18 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     description+='\n\n**カテゴリを選ぶ**\nカテゴリか設定名を選択欄から選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
     components=[
       row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理')),
-      row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder('設定名・目的から直接開く').addOptions(...adminDestinations.map(d=>({label:`${d.categoryLabel} / ${d.label}`,description:d.description,value:d.action})))),
+      row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder('設定名・目的から直接開く').addOptions(...adminDestinations.map(d=>({label:`${d.categoryLabel} / ${d.label}`,description:d.description,value:d.action})),{label:'全機能の操作ガイド',description:'準備・手順・反映のタイミングから探す',value:'nav-guides'})),
       row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:category`).setPlaceholder('カテゴリから絞って探す').addOptions(...adminCategories.map(c=>({value:c.id,label:c.label,description:c.description})))),
       row(menuHomeButton()),
     ];
+  } else if(s.view==='guides') {
+    const selected=adminDestinations.find(d=>d.action===s.guideTopic),guide=adminGuideFor(s.guideTopic);
+    title=selected?`操作ガイド / ${selected.label}`:'全機能の操作ガイド';description=adminGuideDescription(s.guideTopic);
+    components=[row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:guide-topic`).setPlaceholder('手順を確認する機能を選ぶ').addOptions(...adminDestinations.map(d=>({value:d.action,label:`${d.categoryLabel} / ${d.label}`,description:d.description,default:d.action===s.guideTopic})))),row(...(selected?[button(s,selected.action,`${selected.label}を開く`,ButtonStyle.Primary)]:[]),button(s,'home','管理メニューへ')),...(guide?[row(new ButtonBuilder().setLabel('詳しい手順を読む').setStyle(ButtonStyle.Link).setURL(`https://github.com/astraldao/astral_discord/blob/main/docs/${guide.doc}`))]:[])];
   } else if(s.view.startsWith('category-')) {
     const category=adminCategories.find(value=>s.view===`category-${value.id}`);if(!category)throw new Error('カテゴリを選び直してください。');
     title=`管理 / ${category.label}`;description=category.actions.map(([,label,help])=>`**${label}** · ${help}`).join('\n');
-    components=[row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder(`${category.label}の操作を選ぶ`).addOptions(...category.actions.map(([value,label,description])=>({value,label,description})))),row(button(s,'home','管理メニューへ'))];
+    components=[row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder(`${category.label}の操作を選ぶ`).addOptions(...category.actions.map(([value,label,description])=>({value,label,description})))),row(button(s,'nav-guides','操作ガイド'),button(s,'home','管理メニューへ'))];
   } else if(s.view==='vc') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
@@ -161,7 +179,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(sessions.get(s.id,interaction.user.id)!==s || (s.originChannelId && s.originChannelId!==interaction.channelId) || s.stage!==stage)throw new Error('元の有効な確認画面から操作してください。');
     });
     s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;changed();
-    let note='✓ 設定を保存しました。再起動は不要です。';
+    let note=`✓ 設定を保存しました。再起動は不要です。${stage.changeDescription?`\n${stage.changeDescription}`:''}`;
     try {await refreshPanel();}catch{note+='\nパネル更新に失敗しました。「入室パネル」から更新してください。';}
     return note;
   }
@@ -185,7 +203,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         const parts=interaction.customId.split(':');action=parts[2];token=parts[3];s=sessions.get(parts[1],interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       }
       if(action==='diagnostics-action'){action=selectedAction(interaction.values,diagnosticActions(s));if(!action)throw new Error('この画面の操作一覧から選び直してください。');}
-      if(action==='destination'){const category=adminCategories.find(c=>s.view===`category-${c.id}`),choices=category?category.actions.map(([action])=>action):s.view==='home'?adminDestinations.map(d=>d.action):[];if(interaction.values?.length!==1||!choices.includes(interaction.values[0]))throw new Error('一覧から管理操作を選び直してください。');action=interaction.values[0];}
+      if(action==='destination'){const category=adminCategories.find(c=>s.view===`category-${c.id}`),choices=category?category.actions.map(([action])=>action):s.view==='home'?[...adminDestinations.map(d=>d.action),'nav-guides']:[];if(interaction.values?.length!==1||!choices.includes(interaction.values[0]))throw new Error('一覧から管理操作を選び直してください。');action=interaction.values[0];}
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='measure-voice'){if(!['diagnostics','diagnostics-help'].includes(s.view)||!openPerformance)throw new Error('動作診断から処理速度の測定を開いてください。');await openPerformance(interaction);return;}
@@ -207,7 +225,9 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(!interaction.deferred&&!interaction.replied){if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();}
       if(!await access(interaction))throw new Error('管理者権限がありません。');
       let note='',securityDownload;
-      if(action==='category'){
+      if(action==='guide-topic'){
+        if(s.view!=='guides'||interaction.values?.length!==1||!adminGuideFor(interaction.values[0]))throw new Error('操作ガイドの一覧から選び直してください。');s.guideTopic=interaction.values[0];
+      }else if(action==='category'){
         if(interaction.values?.length!==1||!adminCategories.some(c=>c.id===interaction.values[0]))throw new Error('カテゴリを選び直してください。');
         s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=`category-${interaction.values[0]}`;s.page=0;
       }else if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
@@ -242,7 +262,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
           description=kind==='word'?`**${text(value.surface)}** → ${text(value.reading)}`:`**${kind==='seconds'?'待機秒数':'音量'}** ${c[kind]} → ${text(value)}${kind==='seconds'?'秒':'%'}`;
         } else throw new Error('不明な操作です。 /admin で開き直してください。');
         await validateChannel(operation,value);changeSettings(structuredClone(c),operation,value);
-        s.stage={action:operation,value,base:JSON.stringify(c),description};
+        description=settingChangeDescription(c,operation,value);s.stage={action:operation,value,base:JSON.stringify(c),description,changeDescription:description};
         if(pendingCount() || ['lobby','remove','word-remove'].includes(operation))s.stage.description+=`\n\n現在の入室予約：${pendingCount()}件`;else note=await save(s,interaction);
       }
       if(s.view==='security')sessions.get(s.id,s.userId);

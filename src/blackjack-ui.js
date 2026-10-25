@@ -1,3 +1,4 @@
+import {gameLobbyChoices} from './game-ui.js';
 import {shortButtonRows} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,StringSelectMenuBuilder,PermissionFlagsBits as P} from 'discord.js';
 import {wagerRow,wagerChoice,chipNumber,chipDelta} from './game-ui.js';
@@ -14,11 +15,11 @@ const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCus
 const startButton=()=>row(new ButtonBuilder().setCustomId('game:open').setLabel('ゲームを選ぶ').setStyle(ButtonStyle.Primary));
 export function gameLobby(s,balance,lastCasino){
   const ongoing=s?.game.phase==='playing',ready=s?.game.phase==='ready';
-  const components=[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions({label:'ブラックジャック',value:'blackjack',description:'チップ · ディーラーと21点を目指す',emoji:'♠️'}, {label:'スロット',value:'slots',description:'チップ · 3つの絵柄を揃える',emoji:'🎰'}, {label:'ルーレット',value:'roulette',description:'チップ · 色・奇偶・数字の範囲を予想',emoji:'🔴'}, {label:'ダイス',value:'dice',description:'チップ · 2個の合計を予想する',emoji:'🎲'}, {label:'ハイ＆ロー',value:'highlow',description:'チップ · 次のカードの大小を予想',emoji:'🃏'}, {label:'どうぶつレース',value:'race',description:'チップ · 4匹の中から1着を予想',emoji:'🏁'}, {label:'バカラ',value:'baccarat',description:'チップ · 2つの手札の勝敗を予想',emoji:'♦️'}, {label:'じゃんけん',value:'rps',description:'無料 · Botと3回勝負',emoji:'✊'}, {label:'ニワトリを捕まえる',value:'work',description:'無料 · 仲間の順番を覚える',emoji:'🐔'}, {label:'4目並べ',value:'four',description:'無料 · Botと4つのコマを並べる',emoji:'🟡'}))];
+  const components=[row(new StringSelectMenuBuilder().setCustomId('game:select').setPlaceholder('ゲームを選ぶ').addOptions(...gameLobbyChoices(balance)))];
   const returns=[];if(s)returns.push(button(s,'resume',ongoing?'続きから遊ぶ':ready?'準備画面に戻る':'前の結果を見る',ButtonStyle.Primary));if(lastCasino)returns.push(new ButtonBuilder().setCustomId(`casino:${lastCasino.id}:${lastCasino.turn}:resume`).setLabel(`${casinoNames[lastCasino.kind]}に戻る`).setStyle(ButtonStyle.Secondary));if(returns.length)components.push(row(...returns));
   if(balance!==undefined)components.push(row(new StringSelectMenuBuilder().setCustomId('game:account').setPlaceholder('チップの残高・譲渡').addOptions({value:'wallet',label:'自分のチップ',description:'残高と履歴を確認する'},{value:'transfer',label:'チップを渡す',description:'相手と枚数を確認する'})));
   components.push(row(menuHomeButton()));
-  return payload('✦  ゲームを選ぶ',(balance===undefined?'':`**残高 ${balance.toLocaleString('ja-JP')} チップ**\n\n`)+(s?`**ブラックジャック · ${ongoing?'プレイ中':ready?'準備中':'ラウンド終了'}**\n${ongoing?'続きから遊ぶか、ゲームを選んでください。':ready?'掛けチップを選んで始めるか、ゲームを選んでください。':'結果を確認するか、ゲームを選んでください。'}`:`${balance!==undefined&&balance<10?'チップが少ないときも、無料ゲームで遊べます。':'下のメニューから遊ぶゲームを選んでください。'}\n\n**チップで遊ぶ** · カード、スロット、ルーレットなど7種類\n**無料で遊ぶ** · じゃんけん、記憶ゲーム、4目並べ`),{components});
+  return payload('✦  ゲームを選ぶ',(balance===undefined?'':`**残高 ${balance.toLocaleString('ja-JP')} チップ**\n\n`)+(s?`**ブラックジャック · ${ongoing?'プレイ中':ready?'準備中':'ラウンド終了'}**\n${ongoing?'続きから遊ぶか、ゲームを選んでください。':ready?'掛けチップを選んで始めるか、ゲームを選んでください。':'結果を確認するか、ゲームを選んでください。'}`:`${balance!==undefined&&balance<10?'チップが少ないときも、無料ゲームで遊べます。':'下のメニューから遊ぶゲームを選んでください。'}\n\n**チップで遊ぶ（10枚〜）** · カード、スロット、ルーレットなど7種類\n**無料で遊ぶ** · じゃんけん、記憶ゲーム、4目並べ`),{components});
 }
 const results={blackjack:'ブラックジャック！あなたの勝ち',win:'あなたの勝ち',lose:'ディーラーの勝ち',push:'引き分け',bust:'21を超えました · ディーラーの勝ち','dealer-bust':'ディーラーが21を超えました · あなたの勝ち',stopped:'ゲームを終了しました'};
 const stats=s=>s.stats??{win:0,lose:0,draw:0};
