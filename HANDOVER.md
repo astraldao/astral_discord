@@ -6,7 +6,7 @@ Codex と Claude Code で共用する。エージェント向けの作業ルー�
 
 ## 現在の状況（2026-10-25 引き継ぎ確認）
 
-- main の最新は `5e3da00`（v6.0.0）。未マージの作業ブランチや未完了の作業は記録上なし。
+- 機能コードは `5e3da00`（v6.0.0）。Claude の共用ガイド追加 `242517e` を取り込み、ユーザーの許可により Codex / Claude Code の双方が main を使用する。最新のコミットと未完了作業は、着手前にリモートの履歴とこの文書で確認する。
 - 新しい作業環境で `npm ci` → `npm run check` 成功、`npm test` 1124件すべて成功、Python テスト2ファイル成功、`npm audit` 0件。通常の git clone も成功した。
 - 本番（Quaxly）の稼働版・Discord実画面・音声・保存データは引き続き未確認。v6.0.0 を本番へ反映するかは管理者の手動更新次第。
 - v6.0.0 の節にある `/workspace/artifacts/usability-v6/screens.json` は当時の作業環境のファイルで、リポジトリには含まれない。
@@ -670,3 +670,9 @@ settingChangeDescriptionは既存changeSettingsをcloneに適用し、許可さ�
 全機能の見直し表はdocs/V6.md。既存エンジンをすべて書き換えたという意味ではない。卓/PCの公開範囲・控え・復旧、伝助の不明結果、画像適用、ICS範囲、ENV2項目/token除外などは維持。保存形式・依存・ENV追加なし。手動admin更新のみ。12ui draftは認証サービスに接続できず、生成デザインは未使用。Discordネイティブのメッセージと選択欄を実装し、実端末のDiscord表示は未確認。
 
 検証：構文/実行ポリシー検査、全Node1124件、npm audit全依存0件、文書リンク169件。新規11件で全15ガイドと文書/遷移、選ぶだけでは処理しないこと、無権限/別人/別チャンネル/期限切れ/不正値、正規化した設定差分と保存後表示、7ユーザーガイド、10ゲームと無料優先、履歴/auditの3ボタン上限、待機本文の非表示、タグなし、日程/予定数、blockedの出口を確認。既存の2箇所のホーム選択数検証を15機能+ガイドの16項目へ更新し、全15実機能の到達検証は維持。生成した実メッセージJSON（架空データ）は /workspace/artifacts/usability-v6/screens.json。
+
+## 2026-10-25 Codex / Claude Code の main 共用
+
+ユーザーが双方のmain利用を許可。Claudeの共通ガイド追加 `242517e3894eb68b3b05910168ae1d203d028f30` を履歴ごと取り込み、AGENTS.mdにmain共用・反映直前の最新取得・相手の更新の保持を追記する。作業ブランチは `codex/shared-main-guide`、運用追記コミットの題名は `docs: allow Codex and Claude to share main safely`。以降はmainでの作業も可能で、ブランチ分離を必須にしない。
+
+検証：新規依存導入 npm ci、構文/実行ポリシー検査、Node1124件、Python音声資産4件/バックアップ検索15件、npm audit0件、文書リンク170件を確認。機能コードと版はv6.0.0のまま。本番Discord・音声・Quaxlyは未確認で、更新は引き続き管理者の手動適用。
