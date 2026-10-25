@@ -2,8 +2,8 @@ import {BoundedBytes} from './bounded-bytes.js';
 import {routeDiceMessage} from './roll-route.js';
 export const beatApiDiceEndpoint='https://api.beatapi.io/v1/systemone';
 export const beatApiDiceModels=['jev-1.14-free','jev-1.14'];
-// 0.9 rejected short cheers such as "いけ！1d100"; 0.8 still needs a clear lean toward a new roll.
-export const beatApiDiceThreshold=0.8;
+// 0.9 rejected short cheers such as "いけ！1d100"; the owner chose 0.75, still a clear lean toward a new roll.
+export const beatApiDiceThreshold=0.75;
 const invalid=()=>new Error('invalid decision response');
 async function readDecision(response,signal){
   const length=response.headers.get('content-length');
