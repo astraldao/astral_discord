@@ -16,8 +16,8 @@ export function saizeRequest(content){
   return {kind:'saize'};
 }
 export function rollSaize(random=randomInt){
-  const first=random(1,4),second=random(1,5),last=random(1,11),code=`${first}${second}0${last}`;
-  return `🎲 **サイゼロール → ${code}**\n(1D3)(1D4)0(1D10) → (${first})(${second})0(${last})\n※ 実在するメニュー番号とは限りません。`;
+  const first=random(1,4),second=random(1,5),last=random(1,11),digit=last===10?0:last,code=`${first}${second}0${digit}`;
+  return `🎲 **サイゼロール → ${code}**\n(1D3)(1D4)0(1D10) → (${first})(${second})0(${last})${last===10?' → 末尾の10を0に変換':''}\n※ 実在するメニュー番号とは限りません。`;
 }
 function chatRequest(content){return saizeRequest(content)??diceRequest(content);}
 export function diceRequest(content){

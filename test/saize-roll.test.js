@@ -8,16 +8,16 @@ test('saize accepts a short call or explicit request including mentions and half
 test('saize ignores explanations, quotations, negations, narratives and mixed or ambiguous requests',()=>{
   for(const content of ['サイゼロールとは？','サイゼロールって何','サイゼロールの説明','サイゼロールをしない','サイゼロールしなくていい','サイゼロールやめて','サイゼロール禁止','サイゼロールした','サイゼロールをしたい','サイゼロールで遊ぼう','サイゼロールしてと言われた','サイゼロールしてもいい？','例：サイゼロール','サイゼロールなら','サイゼロールという機能','サイゼロール?','「サイゼロール」','"サイゼロール"','`サイゼロール`','```\nサイゼロール\n```','||サイゼロール||','> サイゼロール','https://example.org/サイゼロール','サイゼロール1D6','サイゼロール サイゼロール','スーパーサイゼロール','サイゼロールx','(1D3)(1D4)0(1D10)','ありがとう',null,{},'サイゼロール'+' '.repeat(1001)])assert.equal(saizeRequest(content),null,String(content));
 });
-test('saize concatenates three independent standard dice with a literal zero and preserves a ten',()=>{
+test('saize concatenates three independent standard dice with a literal zero and maps only the final ten to zero',()=>{
   const seen=new Set();for(let a=1;a<=3;a++)for(let b=1;b<=4;b++)for(let c=1;c<=10;c++){
     const values=[a,b,c],bounds=[],text=rollSaize((min,max)=>{bounds.push([min,max]);return values.shift();});
-    assert.deepEqual(bounds,[[1,4],[1,5],[1,11]]);assert.ok(text.includes(`サイゼロール → ${a}${b}0${c}`));assert.ok(text.includes(`(${a})(${b})0(${c})`));assert.match(text,/実在するメニュー番号とは限りません/);assert.ok(text.length<2000);seen.add(`${a}${b}0${c}`);
+    assert.deepEqual(bounds,[[1,4],[1,5],[1,11]]);assert.ok(text.includes(`サイゼロール → ${a}${b}0${c===10?0:c}`));assert.ok(text.includes(`(${a})(${b})0(${c})`));assert.match(text,/実在するメニュー番号とは限りません/);assert.ok(text.length<2000);assert.match(text,/サイゼロール → [1-3][1-4]0[0-9]\*\*/);seen.add(`${a}${b}0${c===10?0:c}`);
   }assert.equal(seen.size,120);
 });
-function fixture(){
+function fixture(random=(min,max)=>min){
   const replies=[],draws=[],state={enabled:true,visible:true,archived:false,locked:false,pending:false,fail:false,edited:false},message={id:'source',guildId:'guild',channelId:'channel',author:{id:'user',bot:false},content:'サイゼロール'},current={...message,reply:async data=>{replies.push(data);if(state.fail)throw new Error('SECRET');}};
   const member={user:{bot:false},get pending(){return state.pending;}},channel={guildId:'guild',isTextBased:()=>true,isThread:()=>false,get archived(){return state.archived;},get locked(){return state.locked;},permissionsFor:()=>({has:()=>state.visible}),messages:{fetch:async()=>({...current,content:state.edited?'サイゼロールの説明':current.content})}},guild={id:'guild',members:{fetch:async()=>member,fetchMe:async()=>({})},channels:{fetch:async()=>channel}};
-  const controller=createChatDice({guild,enabled:()=>state.enabled,now:()=>1000,random:(min,max)=>{draws.push([min,max]);return min;}});return {message,current,replies,draws,state,channel,guild,controller};
+  const controller=createChatDice({guild,enabled:()=>state.enabled,now:()=>1000,random:(min,max)=>{draws.push([min,max]);return random(min,max);}});return {message,current,replies,draws,state,channel,guild,controller};
 }
 test('saize posts one no-mention reply to the source with the existing deduplication nonce',async()=>{
   const f=fixture();await f.controller.onMessage(f.message);await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);assert.match(f.replies[0].content,/サイゼロール → 1101/);assert.deepEqual(f.draws,[[1,4],[1,5],[1,11]]);assert.deepEqual(f.replies[0].allowedMentions,{parse:[],repliedUser:false});assert.equal(f.replies[0].failIfNotExists,true);assert.equal(f.replies[0].nonce,'source');assert.equal(f.replies[0].enforceNonce,true);
@@ -34,4 +34,11 @@ test('saize rechecks live permissions and source edits before drawing and never 
 test('saize and ordinary dice share one user rate limit rather than allowing bypass via the other mode',async()=>{
   const f=fixture();for(const [id,content] of [['one','サイゼロール'],['two','1D6'],['three','サイゼロール'],['four','1D6']]){Object.assign(f.current,{id,content});await f.controller.onMessage({...f.message,id,content});}
   assert.equal(f.replies.length,3);assert.match(f.replies[0].content,/サイゼロール/);assert.match(f.replies[1].content,/1D6 → 1/);assert.match(f.replies[2].content,/サイゼロール/);
+});
+
+test('only saize converts a final ten; ordinary 1D10 replies still report ten',async()=>{
+  const saize=fixture((min,max)=>max-1);await saize.controller.onMessage(saize.message);
+  assert.match(saize.replies[0].content,/サイゼロール → 3400/);assert.match(saize.replies[0].content,/\(3\)\(4\)0\(10\) → 末尾の10を0に変換/);
+  const ordinary=fixture((min,max)=>max-1);ordinary.message.content=ordinary.current.content='1D10';await ordinary.controller.onMessage(ordinary.message);
+  assert.match(ordinary.replies[0].content,/1D10 → 10/);assert.doesNotMatch(ordinary.replies[0].content,/サイゼ|変換/);assert.deepEqual(ordinary.draws,[[1,11]]);
 });
