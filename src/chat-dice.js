@@ -1,4 +1,5 @@
 import {randomInt} from 'node:crypto';
+import {saizeMenuName,saizeMenuSource} from './saize-menu.js';
 import {PermissionFlagsBits as P,GatewayIntentBits,ApplicationFlagsBitField} from 'discord.js';
 // Deliberately conservative intent rules, not language understanding. No text is
 // retained or sent to an external service. Ambiguous prose is left alone.
@@ -12,12 +13,16 @@ function requestSource(content){
 }
 export function saizeRequest(content){
   const source=requestSource(content)?.replace(/<@!?\d{17,20}>/g,' ').trim();
-  if(!source||!/^(?:(?:じゃあ|では|次は|今回は|ちょっと|もう一度)\s*)?サイゼロール(?:\s*を?\s*(?:お願い(?:します)?|よろしく(?:お願いします)?|(?:して|振って|回して)(?:ください|くれる|もらえる)?|する|します))?[!！。、\s]*$/u.test(source))return null;
-  return {kind:'saize'};
+  const match=source?.match(/^(?:(?:じゃあ|では|次は|今回は|ちょっと|もう一度)\s*)?(!?)サイゼロール(?:\s*を?\s*(?:お願い(?:します)?|よろしく(?:お願いします)?|(?:して|振って|回して)(?:ください|くれる|もらえる)?|する|します))?[!！。、\s]*$/u);
+  if(!match)return null;
+  return match[1]==='!'?{kind:'saize',showMenu:true}:{kind:'saize'};
 }
-export function rollSaize(random=randomInt){
+export function rollSaize(random=randomInt,{showMenu=false}={}){
   const first=random(1,4),second=random(1,5),last=random(1,11),digit=last===10?0:last,code=`${first}${second}0${digit}`;
-  return `🎲 **サイゼロール → ${code}**\n(1D3)(1D4)0(1D10) → (${first})(${second})0(${last})${last===10?' → 末尾の10を0に変換':''}\n※ 実在するメニュー番号とは限りません。`;
+  const result=`🎲 **サイゼロール → ${code}**\n(1D3)(1D4)0(1D10) → (${first})(${second})0(${last})${last===10?' → 末尾の10を0に変換':''}\n※ 実在するメニュー番号とは限りません。`;
+  if(showMenu!==true)return result;
+  const name=saizeMenuName(code);
+  return `${result}\n\n${name?`**メニュー：${name}**`:'参照表にこの番号のメニューはありません。'}\n[参照表（${saizeMenuSource.revision}）](<${saizeMenuSource.url}>) · 現在の店舗での提供は未確認です。`;
 }
 function chatRequest(content){return saizeRequest(content)??diceRequest(content);}
 export function diceRequest(content){
@@ -65,7 +70,7 @@ export function createChatDice({guild,enabled=()=>true,now=()=>performance.now()
         [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
         if(!allowed()||current.author?.id!==message.author.id||current.content!==originalContent||current.webhookId||current.author.bot)return;
         const latest=chatRequest(current.content);if(!latest)return;
-        await current.reply({content:latest.kind==='saize'?rollSaize(random):latest.error??rollDice(latest,random),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
+        await current.reply({content:latest.kind==='saize'?rollSaize(random,{showMenu:latest.showMenu===true}):latest.error??rollDice(latest,random),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
       }finally{pending--;}
     }catch{/* No retries: Discord may have accepted a reply despite a failed request. */}
   }};
