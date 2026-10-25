@@ -2,12 +2,26 @@ import {randomInt} from 'node:crypto';
 import {PermissionFlagsBits as P,GatewayIntentBits,ApplicationFlagsBitField} from 'discord.js';
 // Deliberately conservative intent rules, not language understanding. No text is
 // retained or sent to an external service. Ambiguous prose is left alone.
-export function diceRequest(content){
+function requestSource(content){
   if(typeof content!=='string'||content.length>1000)return null;
   let source=content.normalize('NFKC').replace(/```[\s\S]*?(?:```|$)|`[^`]*(?:`|$)|\|\|[\s\S]*?(?:\|\||$)/g,' ').split('\n').filter(line=>!/^\s*>/.test(line)).join(' ').replace(/https?:\/\/\S+/g,' ').trim();
   if(/[?？]/u.test(source)){if(/(?:振って|ロールして)(?:くれる|もらえる)[?？]$/u.test(source)&&[...source.matchAll(/[?？]/gu)].length===1)source=source.slice(0,-1);else return null;}
   if(/[「」『』"“”]/u.test(source))return null;
   if(!source||/[?？]/u.test(source)||/(?:ない|ません|なかった|なくて|なければ|振らな|振りませ|振るな|振らず|振らなく|ロールしな|回さな|しない|しなく|不要|禁止|やめ|例|説明|ルール|期待値|平均|確率|意味|とは|って何|場合|なら|仮に|と言|とい[うわ]|らしい|そうです|でした|振った|振りました|振っても|できる|可能|コード|not\b|don't\b|example\b|what\b|how\b)/iu.test(source))return null;
+  return source;
+}
+export function saizeRequest(content){
+  const source=requestSource(content)?.replace(/<@!?\d{17,20}>/g,' ').trim();
+  if(!source||!/^(?:(?:じゃあ|では|次は|今回は|ちょっと|もう一度)\s*)?サイゼロール(?:\s*を?\s*(?:お願い(?:します)?|よろしく(?:お願いします)?|(?:して|振って|回して)(?:ください|くれる|もらえる)?|する|します))?[!！。、\s]*$/u.test(source))return null;
+  return {kind:'saize'};
+}
+export function rollSaize(random=randomInt){
+  const first=random(1,4),second=random(1,5),last=random(1,11),code=`${first}${second}0${last}`;
+  return `🎲 **サイゼロール → ${code}**\n(1D3)(1D4)0(1D10) → (${first})(${second})0(${last})\n※ 実在するメニュー番号とは限りません。`;
+}
+function chatRequest(content){return saizeRequest(content)??diceRequest(content);}
+export function diceRequest(content){
+  const source=requestSource(content);if(!source)return null;
   const matches=[...source.matchAll(/(?<![A-Za-z0-9_])([0-9]{1,7})[dD]([0-9]{1,7})(?:\s*([+-])\s*([0-9]{1,7}))?(?![A-Za-z0-9_])/gu)];
   if(!matches.length)return null;
   let rest=source;for(const m of matches)rest=rest.replace(m[0],' ');
@@ -37,7 +51,7 @@ export function createChatDice({guild,enabled=()=>true,now=()=>performance.now()
   return {async onMessage(message){
     try{
       if(!enabled()||message.guildId!==guild.id||message.author?.bot||message.webhookId||message.system||typeof message.id!=='string'||!message.author?.id||message.partial)return;
-      const originalContent=message.content;const request=diceRequest(originalContent);if(!request)return;
+      const originalContent=message.content;const request=chatRequest(originalContent);if(!request)return;
       const time=now();for(const [id,at] of seen)if(time-at>=60000)seen.delete(id);for(const [id,at] of users)if(time-at.seen>=60000)users.delete(id);
       const user=users.get(message.author.id)??{tokens:3,at:time,seen:time};
       const userTokens=Math.min(3,user.tokens+Math.max(0,time-user.at)/2000),globalTokens=Math.min(8,global.tokens+Math.max(0,time-global.at)/200);
@@ -50,8 +64,8 @@ export function createChatDice({guild,enabled=()=>true,now=()=>performance.now()
         const current=await channel.messages.fetch({message:message.id,force:true,cache:false});
         [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
         if(!allowed()||current.author?.id!==message.author.id||current.content!==originalContent||current.webhookId||current.author.bot)return;
-        const latest=diceRequest(current.content);if(!latest)return;
-        await current.reply({content:latest.error??rollDice(latest,random),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
+        const latest=chatRequest(current.content);if(!latest)return;
+        await current.reply({content:latest.kind==='saize'?rollSaize(random):latest.error??rollDice(latest,random),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
       }finally{pending--;}
     }catch{/* No retries: Discord may have accepted a reply despite a failed request. */}
   }};

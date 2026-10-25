@@ -15,7 +15,7 @@ export const menuTaskDetails={
   calendar:{prepare:'共有投稿のあるテキストチャンネルで開きます。',effect:'閲覧・検索・ICS保存ができます。編集は管理者用の画面から行います。'},
   profile:{prepare:'かな・長音で自分の名前の読み方を用意します。',effect:'保存後、次の入室告知から反映します。解除すると辞書による自動の読み方へ戻ります。'},
   wallet:{prepare:'自分の残高・履歴を確認できます。譲渡は相手と枚数を確認してください。',effect:'履歴は取得時点の内容です。最新の情報は更新ボタンで再取得できます。'},
-  dice:{prepare:'1D100など、振ってほしいダイスをこのチャンネルへ投稿します。',effect:'結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。'},
+  dice:{prepare:'1D100などのダイスや「サイゼロール」をこのチャンネルへ投稿します。',effect:'結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。'},
 };
 
 export const menuTroubleshooting={
@@ -27,7 +27,7 @@ export const menuTroubleshooting={
  wallet:'残高と利用履歴を確認してください。譲渡は相手と枚数の確認後に確定します。',
 };
 
-export const menuGuideTopics={...menuDestinations,dice:{label:'チャットダイス',summary:'投稿した1D100などへ結果を返信',guide:'このチャンネルへ 1D100・1D4,3D10・ダメージ 3D10 などを投稿します。結果は元の投稿への返信です。意味を尋ねる質問・説明・引用・否定には反応しません。外部AIへ本文を送りません。'}};
+export const menuGuideTopics={...menuDestinations,dice:{label:'チャットダイス',summary:'1D100やサイゼロールへ結果を返信',guide:'このチャンネルへ 1D100・1D4,3D10・ダメージ 3D10 などを投稿します。「サイゼロール」「サイゼロールして」なら (1D3)(1D4)0(1D10) を連結した番号を返します（末尾は1〜10）。結果は元の投稿への返信です。意味を尋ねる質問・説明・引用・否定には反応しません。外部AIへ本文を送りません。'}};
 menuTroubleshooting.dice='通常投稿で反応しない場合は @Bot 1D100 を試してください。管理者が動作診断で通常投稿への対応状況とON/OFFを確認できます。';
 
 // Keep runtime guidance to three booleans; no arbitrary service state enters a card.
