@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Client,GatewayIntentBits,IntentsBitField,ApplicationFlagsBitField,Routes} from 'discord.js';
 import {diceRequest,rollDice,createChatDice,configureDiceContent} from '../src/chat-dice.js';
 import {changeSettings} from '../src/admin.js';
+const replyText=m=>[m.content,...(m.embeds??[]).map(e=>{const d=e.toJSON();return [d.title,d.description,d.footer?.text].filter(Boolean).join('\n');})].filter(Boolean).join('\n');
 const request=s=>diceRequest(s);
 test('bare, Japanese declarations, explicit requests and fullwidth expressions are accepted',()=>{
  for(const text of ['1D100','1d4','3D10','１Ｄ１００','1D4,3D10','判定1D100','目星1D100','聞き耳 1d100','じゃあ目星で1D100振って','1D100を振って','1D100を振ってください','1D100振ってくれる？','3D10ロールしてもらえる？','ダメージ 3D10','回復 1D4+2','roll 3d10','SANチェック 1d100','<@123456789012345678> 1d100'])assert.ok(request(text)?.rolls,text);
@@ -17,15 +18,15 @@ test('resource caps are validated before drawing and request text is never execu
  assert.equal(request('1D100; process.exit()'),null);assert.equal(request('1D100+foo'),null);assert.throws(()=>rollDice({rolls:[{count:1e9,sides:6,modifier:0}]}));
 });
 test('secure draw boundaries, totals, modifiers and bounded individual results are correct',()=>{
- const bounds=[],text=rollDice(request('3D10+2'),(min,max)=>{bounds.push([min,max]);return max-1;});assert.deepEqual(bounds,[[1,11],[1,11],[1,11]]);assert.match(text,/3D10\+2 → 32/);assert.match(text,/10, 10, 10/);
- const max=rollDice(request('100D1000000,100D1000000'),()=>1000000);assert.ok(max.length<2000);assert.match(max,/残り80個/);assert.match(max,/100000000/);
+ const bounds=[],text=rollDice(request('3D10+2'),(min,max)=>{bounds.push([min,max]);return max-1;});assert.deepEqual(bounds,[[1,11],[1,11],[1,11]]);assert.match(text,/3D10\+2 → 32/);assert.match(text,/10 10 10/);
+ const max=rollDice(request('100D1000000,100D1000000'),()=>1000000);assert.ok(max.length<2000);assert.doesNotMatch(max,/残り|省略/);assert.equal(max.match(/\b1000000\b/g).length,200);assert.match(max,/100000000/);
 });
 function fixture(){let stamp=1000,enabled=true,visible=true,fail=false,edited=false,archived=false;const replies=[],message={id:'message',guildId:'guild',channelId:'channel',content:'3D10',author:{id:'user',bot:false}},current={...message,async reply(m){replies.push(m);if(fail)throw new Error('SECRET');}};
  const member={user:{bot:false}},channel={guildId:'guild',isTextBased:()=>true,isThread:()=>false,get archived(){return archived;},permissionsFor:()=>({has:()=>visible}),messages:{async fetch(){return {...current,content:edited?'changed':current.content};}}};
  const guild={id:'guild',members:{fetch:async()=>member,fetchMe:async()=>({})},channels:{fetch:async()=>channel}},controller=createChatDice({guild,enabled:()=>enabled,now:()=>stamp,random:()=>4});
  return {message,current,channel,guild,replies,controller,now:n=>stamp=n,enabled:v=>enabled=v,visible:v=>visible=v,fail:v=>fail=v,edited:v=>edited=v,archived:v=>archived=v};}
 test('valid human posts receive one reply with no mentions, individual values and no source text',async()=>{
- const f=fixture();await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);assert.match(f.replies[0].content,/3D10 → 12/);assert.deepEqual(f.replies[0].allowedMentions,{parse:[],repliedUser:false});assert.equal(f.replies[0].failIfNotExists,true);assert.equal(f.replies[0].nonce,f.message.id);assert.equal(f.replies[0].enforceNonce,true);
+ const f=fixture();await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);assert.match(replyText(f.replies[0]),/3D10 → 12/);assert.deepEqual(f.replies[0].allowedMentions,{parse:[],repliedUser:false});assert.equal(f.replies[0].failIfNotExists,true);assert.equal(f.replies[0].nonce,f.message.id);assert.equal(f.replies[0].enforceNonce,true);
 });
 test('bot/webhook/DM/foreign guild/system/partial messages and irrelevant conversations are ignored',async()=>{
  for(const extra of [{guildId:null},{guildId:'other'},{author:{id:'bot',bot:true}},{webhookId:'hook'},{system:true},{partial:true},{content:'例は1D100です'},{content:'ordinary'}]){const f=fixture();await f.controller.onMessage({...f.message,...extra});assert.equal(f.replies.length,0);}
@@ -37,7 +38,7 @@ test('deduplication and cooldowns prevent duplicate posts and unknown outcomes n
  const f=fixture();f.fail(true);await f.controller.onMessage(f.message);await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);f.fail(false);await f.controller.onMessage({...f.message,id:'second'});assert.equal(f.replies.length,2);await f.controller.onMessage({...f.message,id:'second'});assert.equal(f.replies.length,2);await f.controller.onMessage({...f.message,id:'third'});assert.equal(f.replies.length,3);await f.controller.onMessage({...f.message,id:'fourth'});assert.equal(f.replies.length,3);f.now(4000);await f.controller.onMessage({...f.message,id:'fourth'});assert.equal(f.replies.length,4);
 });
 test('at most four replies can be pending and message edits during permission lookup cannot change the dice',async()=>{
- const f=fixture();let release;f.guild.members.fetch=()=>new Promise(resolve=>release=resolve);const original=f.controller.onMessage(f.message);await new Promise(r=>setImmediate(r));f.message.content='100D10';release({user:{bot:false}});f.guild.members.fetch=async()=>({user:{bot:false}});await original;assert.equal(f.replies.length,1);assert.match(f.replies[0].content,/3D10/);
+ const f=fixture();let release;f.guild.members.fetch=()=>new Promise(resolve=>release=resolve);const original=f.controller.onMessage(f.message);await new Promise(r=>setImmediate(r));f.message.content='100D10';release({user:{bot:false}});f.guild.members.fetch=async()=>({user:{bot:false}});await original;assert.equal(f.replies.length,1);assert.match(replyText(f.replies[0]),/3D10/);
  const g=fixture(),waiting=[];g.channel.messages.fetch=async options=>({...g.current,id:options.message,author:{id:`user${options.message}`,bot:false}});g.guild.members.fetch=()=>new Promise(resolve=>waiting.push(resolve));const jobs=[];for(let n=0;n<5;n++){g.now(1000+n*300);jobs.push(g.controller.onMessage({...g.message,id:String(n),author:{id:`user${n}`}}));}await new Promise(r=>setImmediate(r));assert.equal(waiting.length,4);g.guild.members.fetch=async()=>({user:{bot:false}});for(const done of waiting)done({user:{bot:false}});await Promise.all(jobs);assert.equal(g.replies.length,4);
 });
 test('content intent requires existing Discord approval and failures keep mention-mode available',async()=>{

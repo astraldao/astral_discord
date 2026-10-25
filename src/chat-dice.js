@@ -1,5 +1,6 @@
 import {randomInt} from 'node:crypto';
-import {saizeMenuName,saizeMenuSource} from './saize-menu.js';
+import {rollReply} from './roll-ui.js';
+export {rollDice,rollSaize} from './roll-ui.js';
 import {PermissionFlagsBits as P,GatewayIntentBits,ApplicationFlagsBitField} from 'discord.js';
 // Deliberately conservative intent rules, not language understanding. No text is
 // retained or sent to an external service. Ambiguous prose is left alone.
@@ -17,13 +18,6 @@ export function saizeRequest(content){
   if(!match)return null;
   return match[1]==='!'?{kind:'saize',showMenu:true}:{kind:'saize'};
 }
-export function rollSaize(random=randomInt,{showMenu=false}={}){
-  const first=random(1,4),second=random(1,5),last=random(1,11),digit=last===10?0:last,code=`${first}${second}0${digit}`;
-  const result=`🎲 **サイゼロール → ${code}**\n(1D3)(1D4)0(1D10) → (${first})(${second})0(${last})${last===10?' → 末尾の10を0に変換':''}\n※ 実在するメニュー番号とは限りません。`;
-  if(showMenu!==true)return result;
-  const name=saizeMenuName(code);
-  return `${result}\n\n${name?`**メニュー：${name}**`:'参照表にこの番号のメニューはありません。'}\n[参照表（${saizeMenuSource.revision}）](<${saizeMenuSource.url}>) · 現在の店舗での提供は未確認です。`;
-}
 function chatRequest(content){return saizeRequest(content)??diceRequest(content);}
 export function diceRequest(content){
   const source=requestSource(content);if(!source)return null;
@@ -37,12 +31,6 @@ export function diceRequest(content){
   const rolls=matches.map(m=>({count:Number(m[1]),sides:Number(m[2]),modifier:m[3]?(m[3]==='-'?-1:1)*Number(m[4]):0}));
   if(rolls.length>5||rolls.some(r=>r.count<1||r.count>100||r.sides<2||r.sides>1000000||Math.abs(r.modifier)>1000000)||rolls.reduce((n,r)=>n+r.count,0)>200)return {error:'ダイスは1回1〜100個、面数2〜1000000、最大5式・合計200個、補正は±1000000までです。'};
   return {rolls};
-}
-export function rollDice(request,random=randomInt){
-  if(!request||request.error||!Array.isArray(request.rolls))throw new Error('invalid dice request');
-  if(request.rolls.length<1||request.rolls.length>5||request.rolls.some(r=>!Number.isInteger(r.count)||r.count<1||r.count>100||!Number.isInteger(r.sides)||r.sides<2||r.sides>1000000||!Number.isInteger(r.modifier)||Math.abs(r.modifier)>1000000)||request.rolls.reduce((n,r)=>n+r.count,0)>200)throw new Error('invalid dice request');
-  const lines=request.rolls.map(r=>{const values=Array.from({length:r.count},()=>random(1,r.sides+1)),sum=values.reduce((a,b)=>a+b,0)+r.modifier,label=`${r.count}D${r.sides}${r.modifier?`${r.modifier>0?'+':''}${r.modifier}`:''}`;return `**${label} → ${sum}**${r.count>1?`\n内訳：${values.slice(0,20).join(', ')}${values.length>20?` …（残り${values.length-20}個）`:''}`:''}`;});
-  return `🎲 ${lines.join('\n\n')}`;
 }
 // Full content is requested only when Discord reports it is already enabled.
 // Otherwise ordinary mention messages remain usable without privileged intent.
@@ -70,7 +58,7 @@ export function createChatDice({guild,enabled=()=>true,now=()=>performance.now()
         [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
         if(!allowed()||current.author?.id!==message.author.id||current.content!==originalContent||current.webhookId||current.author.bot)return;
         const latest=chatRequest(current.content);if(!latest)return;
-        await current.reply({content:latest.kind==='saize'?rollSaize(random,{showMenu:latest.showMenu===true}):latest.error??rollDice(latest,random),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
+        await current.reply({...rollReply(latest,random,{embed:channel.permissionsFor(bot)?.has(P.EmbedLinks)===true}),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
       }finally{pending--;}
     }catch{/* No retries: Discord may have accepted a reply despite a failed request. */}
   }};

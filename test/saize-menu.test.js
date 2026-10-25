@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {saizeRequest,rollSaize,createChatDice} from '../src/chat-dice.js';
 import {saizeMenuName,saizeMenuSource} from '../src/saize-menu.js';
 
+const replyText=m=>[m.content,...(m.embeds??[]).map(e=>{const d=e.toJSON();return [d.title,d.description,d.footer?.text].filter(Boolean).join('\n');})].filter(Boolean).join('\n');
 test('menu disclosure requires an immediately preceding exclamation mark on the request token',()=>{
   for(const text of ['!サイゼロール','!サイゼロールして','!サイゼロールお願い','!サイゼロールしてくれる？','！サイゼロール','<@123456789012345678> !サイゼロール','じゃあ !サイゼロール'])assert.deepEqual(saizeRequest(text),{kind:'saize',showMenu:true},text);
   for(const text of ['サイゼロール','サイゼロール!','サイゼロール！','サイゼロールして！'])assert.deepEqual(saizeRequest(text),{kind:'saize'},text);
@@ -33,12 +34,12 @@ function fixture(content,{edited=false,enabled=true,fail=false,values=[2,4,7]}={
 }
 test('actual replies disclose the name only for the prefix, with mention suppression and deduplication intact',async()=>{
   for(const content of ['サイゼロール','サイゼロール!','!サイゼロール']){
-    const f=fixture(content);await f.controller.onMessage(f.message);await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);assert.match(f.replies[0].content,/サイゼロール → 2407/);
-    assert.equal(f.replies[0].content.includes('ディアボラ風ハンバーグ'),content.startsWith('!'));assert.deepEqual(f.replies[0].allowedMentions,{parse:[],repliedUser:false});assert.equal(f.replies[0].nonce,'source');assert.equal(f.replies[0].enforceNonce,true);assert.equal(f.draws.length,3);
+    const f=fixture(content);await f.controller.onMessage(f.message);await f.controller.onMessage(f.message);assert.equal(f.replies.length,1);assert.match(replyText(f.replies[0]),/サイゼロール → 2407/);
+    assert.equal(replyText(f.replies[0]).includes('ディアボラ風ハンバーグ'),content.startsWith('!'));assert.deepEqual(f.replies[0].allowedMentions,{parse:[],repliedUser:false});assert.equal(f.replies[0].nonce,'source');assert.equal(f.replies[0].enforceNonce,true);assert.equal(f.draws.length,3);
   }
 });
 test('a missing menu preserves the four-digit roll and the ten-to-zero conversion without rerolling',async()=>{
-  const f=fixture('!サイゼロール',{values:[3,4,10]});await f.controller.onMessage(f.message);assert.match(f.replies[0].content,/サイゼロール → 3400/);assert.match(f.replies[0].content,/末尾の10を0に変換/);assert.match(f.replies[0].content,/参照表にこの番号のメニューはありません/);assert.deepEqual(f.draws,[[1,4],[1,5],[1,11]]);
+  const f=fixture('!サイゼロール',{values:[3,4,10]});await f.controller.onMessage(f.message);assert.match(replyText(f.replies[0]),/サイゼロール → 3400/);assert.match(replyText(f.replies[0]),/10 → 0/);assert.match(replyText(f.replies[0]),/参照表に該当なし/);assert.deepEqual(f.draws,[[1,4],[1,5],[1,11]]);
 });
 test('prefix edits or disabled replies do not draw, and unknown detailed replies are never retried',async()=>{
   for(const options of [{edited:true},{enabled:false}]){const f=fixture('!サイゼロール',options);await f.controller.onMessage(f.message);assert.equal(f.replies.length,0);assert.equal(f.draws.length,0);}
