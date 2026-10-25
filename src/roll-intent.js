@@ -2,11 +2,15 @@
 const roots=['振って','ふって','フッテ','回して','まわして','転がして','ころがして','ロールして','ろーるして','して'];
 const politePositive=['くれる','もらえる','くれますか','もらえますか','いただけますか','いただける','くれるかな','もらえるかな','くれませんか','もらえませんか','いただけませんか','もらっていい'];
 const politeQuestionOnly=['くれない','もらえない','いただけない'];
-export function requestSource(content){
-  if(typeof content!=='string'||content.length>1000)return null;
+const nonRollWords=/(?:ない|ません|なかった|なくて|なければ|振らな|振りませ|振るな|振らず|振らなく|ロールしな|回さな|しない|しなく|不要|禁止|やめ|例|説明|ルール|期待値|平均|確率|意味|とは|って何|場合|なら|仮に|と言|とい[うわ]|らしい|そうです|でした|振った|振りました|振っても|できる|可能|コード|not\b|don't\b|example\b|what\b|how\b)/iu;
+export function rollText(content,{limit=1000}={}){
+  if(typeof content!=='string'||content.length>limit)return null;
   const protectedFree=content.normalize('NFKC').replace(/```[\s\S]*?(?:```|$)|`[^`]*(?:`|$)|\|\|[\s\S]*?(?:\|\||$)|!?\[[^\]\n]*\]\(https?:\/\/[^)\n]*(?:\)|$)/g,' '),lines=[];
   for(const line of protectedFree.split('\n')){if(/^\s*>>>/.test(line))break;if(!/^\s*>/.test(line))lines.push(line);}
-  let source=lines.join(' ').replace(/https?:\/\/\S+/g,' ').trim();
+  return lines.join(' ').replace(/https?:\/\/\S+/g,' ').trim();
+}
+export function requestSource(content){
+  let source=rollText(content);if(!source)return null;
   if(/[「」『』"“”]/u.test(source))return null;
   const question=source.endsWith('?');
   if(source.includes('?')&&(!question||source.indexOf('?')!==source.length-1))return null;
@@ -16,7 +20,7 @@ export function requestSource(content){
   // Only a complete delegated request licenses the polite negative question.
   // Remove its ending before the ordinary negation/permission guards run.
   if(ending)source=source.slice(0,-ending.length).trimEnd()+'ください';
-  if(!source||/(?:ない|ません|なかった|なくて|なければ|振らな|振りませ|振るな|振らず|振らなく|ロールしな|回さな|しない|しなく|不要|禁止|やめ|例|説明|ルール|期待値|平均|確率|意味|とは|って何|場合|なら|仮に|と言|とい[うわ]|らしい|そうです|でした|振った|振りました|振っても|できる|可能|コード|not\b|don't\b|example\b|what\b|how\b)/iu.test(source))return null;
+  if(!source||nonRollWords.test(source))return null;
   return source;
 }
 const requests=['お願い','お願いします','おねがい','おねがいします','よろしく','頼む','たのむ','ください','下さい','くれ','くれる','もらえる','ちょうだい','ほしい','欲しい','ほしいです','欲しいです','ほしいな','欲しいな','ね','して','する','します',...roots,
@@ -55,4 +59,11 @@ export function declaredRoll(source,matches){
   const label=before.match(/^([\p{L}\p{N}ー _・]{1,60}?)(?:は|が|を|=|:|→)\s*$/u)?.[1].trim();
   if(!label||/(?:ふった|ふりました|まわした|ころがした|ロールした|ろーるした|って|という|予定|つもり|報告|記事|資料|引用|記載|書[いか]|話|聞|教わ|もし|ブログ)/u.test(label))return false;
   return quantities.some(([subject,unit])=>subject.test(label)&&unit.test(after));
+}
+
+export function clearlyNotRoll(source){
+  if(/[「」『』"“”]/u.test(source)||/(?:振って|ふって|回して|まわして|転がして|ころがして)(?:も)?いい|(?:振れる|ふれる|振れます|ふれます)/u.test(source))return true;
+  if(/(?:ふった|ふりました|まわした|ころがした|ロールした|ろーるした)[。!]*$/u.test(source))return true;
+  if(requestSource(source))return false;
+  return nonRollWords.test(source);
 }
