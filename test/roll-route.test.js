@@ -51,3 +51,11 @@ test('the real Noul adapter and chat controller compose without sending metadata
   let requests=0;const judge=createBeatApiDiceJudge({apiKey:'fixture-key',fetcher:async(_,options)=>{requests++;assert.deepEqual(JSON.parse(options.body).state,{text:ambiguous});return new Response(JSON.stringify({model:'jev-1.14-free',answers:{should_roll:{type:'noul',noul:.95}}}),{headers:{'Content-Type':'application/json'}});}});
   const f=fixture(ambiguous,{decision:()=>judge.decide(ambiguous)});await f.controller.onMessage(f.message);assert.equal(requests,1);assert.deepEqual(f.draws,[[1,11]]);assert.equal(f.replies.length,1);assert.match(f.replies[0].embeds[0].data.title,/1D10 → 10/);
 });
+test('short cheers with a formula roll locally without Jev, while negations, questions and past reports do not',()=>{
+  for(const input of ['いけ！1d100','いけ!1d100','行け！1D100','いっけー！1d100','1d100いけー','いけいけ1d100','せーの1d20','えいっ2d6','そりゃ！3d6','おりゃー2d6','くらえ1d10','ほい1d6','どうだ1d20','よし1d100','いざ1d100']){
+    const r=routeDiceMessage(input);assert.equal(r?.kind,'local',input);assert.ok(r.request.rolls?.length,input);
+  }
+  for(const input of ['行けない1d100','いけない！1d100','いけ1d100って何','「いけ！1d100」']) assert.equal(routeDiceMessage(input),null,input);
+  for(const input of ['それ1d100','それは1d100','さっき1d100いけた'])assert.notEqual(routeDiceMessage(input)?.kind,'local',input);
+  assert.equal(routeDiceMessage('いけ！'),null);
+});
