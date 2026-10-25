@@ -33,7 +33,7 @@ export function createDiagnostics({settings,guild,version,pendingCount,component
   };
 }
 export function diagnosticActions(s){
-  if(s.view==='diagnostics')return [{value:'diagnostics-help',label:'対処の手順',description:'確認結果から次の操作を探す'},{value:'open-security',label:'脆弱性診断',description:'依存パッケージの診断画面を開く'}];
+  if(s.view==='diagnostics')return [{value:'open-jev',label:'Jevを試す',description:'実際にAPIへ接続・モデルと応答時間を確認'},{value:'diagnostics-help',label:'対処の手順',description:'確認結果から次の操作を探す'},{value:'open-security',label:'脆弱性診断',description:'依存パッケージの診断画面を開く'}];
   if(s.view==='diagnostics-help')return [{value:'nav-vc',label:'VC設定',description:'ロビーと行き先を確認する'},{value:'nav-audio',label:'音声設定',description:'参加告知・音量・導入手順'},{value:'open-runtime',label:'ENV・起動設定',description:'読み上げの有効化・スレッド数'}];
   return [];
 }

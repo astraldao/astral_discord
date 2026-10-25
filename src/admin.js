@@ -8,6 +8,8 @@ import {adminGuideFor,adminGuideDescription} from './feature-guides.js';
 export {adminCategories} from './admin-navigation.js';
 import {securityScreen,securityReport,securityScopes} from './security-ui.js';
 import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions} from './diagnostics.js';
+import {jevDiagnosticsScreen,safeJevProbe} from './jev-diagnostics.js';
+import {safeDiceJudgeState} from './beatapi-dice.js';
 import {validateSettings} from './settings.js';
 const {payload}=themed('admin');
 
@@ -156,9 +158,9 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,diagnose,securityScan,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});if(!canConfigure(member.permissions))return false;const channel=await guild.channels.fetch(i.channelId,{force:true});return channel?.permissionsFor(member)?.has(P.ViewChannel)===true;}}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,diagnose,jevTest,securityScan,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});if(!canConfigure(member.permissions))return false;const channel=await guild.channels.fetch(i.channelId,{force:true});return channel?.permissionsFor(member)?.has(P.ViewChannel)===true;}}) {
   const sessions=new AdminSessions();
-  const screen=(s,note='')=>({...(s.view==='diagnostics-help'?diagnosticsHelpScreen(s):s.view==='security'?securityScreen(s):s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
+  const screen=(s,note='')=>({...(s.view==='jev-test'?jevDiagnosticsScreen(s):s.view==='diagnostics-help'?diagnosticsHelpScreen(s):s.view==='security'?securityScreen(s):s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
     if(!['lobby','add'].includes(action))return;
     const channel=await guild.channels.fetch(value);
@@ -242,6 +244,18 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       else if(action==='security-prev'||action==='security-next'){
         if(s.view!=='security'||s.security?.status!=='complete')throw new Error('脆弱性診断を開き直してください。');
         s.page+=action==='security-prev'?-1:1;
+      }
+      else if(action==='open-jev'){
+        if(s.view!=='diagnostics'||!s.diagnostics||!jevTest)throw new Error('動作診断からJevの接続試験を開いてください。');
+        s.jevConfig=safeDiceJudgeState(jevTest.snapshot());s.jevToken=randomUUID().slice(0,12);s.jevResult=null;s.view='jev-test';
+      }
+      else if(action==='jev-run'){
+        if(s.view!=='jev-test'||!token||s.jevToken!==token||!jevTest)throw new Error('最新のJev接続試験から操作してください。');
+        const runToken=randomUUID().slice(0,12);s.jevToken=runToken;
+        const beforeRequest=async()=>{try{const authorized=await access(interaction);return authorized&&sessions.get(s.id,s.userId)===s&&s.view==='jev-test'&&s.jevToken===runToken&&(!s.originChannelId||s.originChannelId===interaction.channelId);}catch{return false;}};
+        const result=await jevTest.probe({beforeRequest});
+        if(!await beforeRequest())throw new Error('画面の期限または管理者権限が変わりました。/admin から開き直してください。');
+        s.jevResult=safeJevProbe(result);s.jevConfig=safeDiceJudgeState(jevTest.snapshot());if(s.diagnostics?.dice)s.diagnostics.dice.judge=s.jevConfig;
       }
       else if(action==='diagnostics-help'){if(s.view!=='diagnostics'||!s.diagnostics)throw new Error('動作診断から対処の手順を開いてください。');s.view='diagnostics-help';}
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}

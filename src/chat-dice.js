@@ -32,12 +32,14 @@ export function createChatDice({guild,enabled=()=>true,now=()=>performance.now()
         const latest=routeDiceMessage(current.content);if(!latest)return;
         let target=current;
         if(latest.kind==='judge'){
-          if(typeof judge!=='function'||await judge(latest.text)!==true)return;
-          [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
-          if(!allowed())return;
-          target=await channel.messages.fetch({message:message.id,force:true,cache:false});
-          [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
-          if(!allowed()||target.author?.id!==message.author.id||target.content!==originalContent||target.webhookId||target.author.bot||target.system||target.partial)return;
+          const beforeRequest=async()=>{
+            [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
+            if(!allowed())return false;
+            target=await channel.messages.fetch({message:message.id,force:true,cache:false});
+            [member,bot,channel]=await Promise.all([guild.members.fetch({user:message.author.id,force:true}),guild.members.fetchMe({force:true}),guild.channels.fetch(message.channelId,{force:true})]);
+            return Boolean(allowed()&&target.author?.id===message.author.id&&target.content===originalContent&&!target.webhookId&&!target.author.bot&&!target.system&&!target.partial);
+          };
+          if(typeof judge!=='function'||await judge(latest.text,{beforeRequest})!==true||!await beforeRequest())return;
         }
         await target.reply({...rollReply(latest.request,random,{embed:channel.permissionsFor(bot)?.has(P.EmbedLinks)===true}),allowedMentions:{parse:[],repliedUser:false},failIfNotExists:true,nonce:message.id,enforceNonce:true});
       }finally{pending--;}
