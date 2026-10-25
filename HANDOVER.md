@@ -724,3 +724,11 @@ saizeRequestは「サイゼロール」の直前の!だけをshowMenu:trueとし
 作業ブランチmain、起点8070abd、コミット題名 `feat: present dice rolls in compact cards with complete breakdowns`。コマンド/ボタン・依存・ENV・保存形式・呼びかけ判定・乱数範囲・チップ・権限/本文再確認・連投制限は変更なし。12ui draftは認証が必要で候補を生成できず、生成デザインは未採用。プロジェクト既存のDiscordネイティブカード規則で実装した。架空の実送信データからHTML見本を生成するscripts/preview-rolls.jsとdocs/previews/rolls-v6_4.htmlを追加。再生成方法はDICEに記載し、作業環境だけの画像を共有成果物として参照させない。HTMLモックのheadless Chromium撮影は完了せず、専用プロファイルでの再試行も20秒でタイムアウトしPNGを得られなかった。ブラウザでの見た目の確認済みとはせず、代わりに実カードの送信データ・全内訳・長さ上限を自動検証し、ブラウザで開けるHTMLと再生成手順を残す。
 
 検証：npm ci、構文/実行ポリシー検査、Node1154件、Python音声資産4件/バックアップ検索15件、npm audit0件。新規7件で単一/複数式のタイトル・全出目・正負補正・ゲーム配色、最大200個と最大桁/補正/2〜5式でembed4096/総6000・文字2000の上限、サイゼ120通り×!有無と生出目/変換/URL公開境界、無効依頼で未抽選、投稿直前に埋め込み権限がなくなる場合の全内訳文字返信、結果不明時の再送/再抽選がないことを確認。Discord/Quaxly実機表示は未確認。本番更新は管理者の手動適用のみ。
+
+### v6.4.0 反映後の同期復旧
+
+機能コミット `143164a8986bb20481d8ea19e08ebd40d3d16486` はCI `40198924687` 成功後にmainへ反映済み。反映後のCLI git fetchで認証情報を読めず失敗した。失敗後もシェルが後続処理を進めたため、ローカルmainだけを一度旧8070abdへ戻してしまった。GitHub上のmainは変更されておらず、ローカル機能コミットc63affaも保持されていた。
+
+GitHub連携で最新mainとGitコミットのメタデータを読み、author/committerの日時・タイムゾーンを含むコミットオブジェクトを復元してSHAが143164aと一致することを検証。ローカル機能コミットと同じtree18453b18であることも確認し、ローカルmain/origin-mainを反映済みの正確なコミットへ戻した。ローカル候補はcodex/roll-local-recovery-v6.4.0へ保持。以降、取得や照合が失敗したら参照を動かさないよう、同期コマンドを失敗時に止める。CLIの認証が使えない間はGitHub連携で最新main・親・treeを照合し、期待SHAを指定した通常のfast-forwardで更新する。
+
+この追記の作業ブランチmain、題名 `docs: record verified recovery after Git synchronization failure`。機能・版はv6.4.0のまま。再検証はnpm ci/check、Node1154件、Python4件/15件、npm audit0件。GitHub上の機能コミットのCI成功と、手元の復旧確認を区別する。本番Discord実表示・Quaxlyは引き続き未確認で、手動更新のみ。
