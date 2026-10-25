@@ -1,6 +1,7 @@
 import {randomInt} from 'node:crypto';
 import {themed} from './ui.js';
 import {saizeMenuName,saizeMenuSource} from './saize-menu.js';
+import {advancedDiceReply} from './dice-expression-ui.js';
 const {payload}=themed('game');
 const sign=n=>`${n>0?'+':''}${n}`;
 function diceResults(request,random){
@@ -26,10 +27,11 @@ function saizeText(r,showMenu){
   const name=saizeMenuName(r.code);
   return `${text}\n\n${name?`**メニュー：${name}**`:'参照表にこの番号のメニューはありません。'}\n[参照表（${saizeMenuSource.revision}）](<${saizeMenuSource.url}>) · 現在の店舗での提供は未確認です。`;
 }
-export function rollDice(request,random=randomInt){return diceText(diceResults(request,random));}
+export function rollDice(request,random=randomInt){return request?.kind==='advanced'?advancedDiceReply(request,random,{embed:false}).content:diceText(diceResults(request,random));}
 export function rollSaize(random=randomInt,{showMenu=false}={}){return saizeText(saizeResult(random),showMenu);}
 export function rollReply(request,random=randomInt,{embed=true}={}){
   if(request?.error)return embed?payload('ダイスを確認',request.error,{state:'warning'}):{content:request.error};
+  if(request?.kind==='advanced')return advancedDiceReply(request,random,{embed});
   if(request?.kind==='saize'){
     const r=saizeResult(random),showMenu=request.showMenu===true;
     if(!embed)return {content:saizeText(r,showMenu)};

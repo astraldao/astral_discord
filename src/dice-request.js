@@ -1,4 +1,5 @@
 import {requestSource,rollWords,declaredRoll} from './roll-intent.js';
+import {pureAdvancedDice,advancedRollCandidate} from './dice-expression.js';
 export const diceLimitMessage='ダイスは1回1〜100個、面数2〜1000000、最大5式・合計200個、補正は±1000000までです。';
 export function diceExpressions(source){
   return [...source.matchAll(/(?<![A-Za-z0-9_])([0-9]+)[dD]([0-9]+)(?:\s*([+-])\s*([0-9]+))?(?:(?![A-Za-z0-9_])|(?=(?:cm|km|kg|hp|mp|san|m|g)(?:[\s!。]|$)))/giu)];
@@ -23,6 +24,7 @@ export function requestFromExpressions(matches){
   return {rolls};
 }
 export function pureDiceRequest(source){
+  const advanced=pureAdvancedDice(source);if(advanced)return advanced;
   const matches=diceExpressions(source);if(!matches.length||withoutExpressions(source,matches).replace(/[\s,、。!！:：・/\[\]()]+/g,''))return null;
   return requestFromExpressions(matches);
 }
@@ -34,6 +36,7 @@ export function saizeRequest(content){
 }
 export function diceRequest(content){
   const source=requestSource(content);if(!source)return null;
+  const advanced=advancedRollCandidate(source);if(advanced){if(!rollWords(advanced.rest)&&!declaredRoll(source,advanced.spans.map(s=>Object.assign([s.raw],{index:s.start}))))return null;return advanced.request;}
   const matches=diceExpressions(source);if(!matches.length)return null;
   if(!rollWords(withoutExpressions(source,matches))&&!declaredRoll(source,matches))return null;
   return requestFromExpressions(matches);

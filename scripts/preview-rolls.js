@@ -1,8 +1,8 @@
 import {rollReply} from '../src/roll-ui.js';
 import {diceRequest,saizeRequest} from '../src/chat-dice.js';
-const cases=[['3D10+2',[6,8,10]],['1D100,1D4+2',[42,3]],['サイゼロール',[3,4,10]],['!サイゼロール',[2,4,7]]];
+const cases=process.argv.includes('--advanced')?[['(2d6+3)*2',[4,5]],['4d6kh3',[6,2,5,3]],['有利で1d20',[7,18]],['4d6r1',[1,4,6,1,2,3]],['1d6!',[6,6,3]],['5d10cs>=8',[8,3,10,7,9]],['1d100<=70',[42]],['3d6r1!kh2',[1,6,6,3,2,1,4]]]:[['3D10+2',[6,8,10]],['1D100,1D4+2',[42,3]],['サイゼロール',[3,4,10]],['!サイゼロール',[2,4,7]]];
 const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const markdown=value=>escape(value).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replaceAll('\n','<br>');
+const markdown=value=>escape(value).replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/~~([^~]+)~~/g,'<s>$1</s>').replaceAll('\n','<br>');
 const cards=cases.map(([content,values])=>{
   let n=0;const d=rollReply(saizeRequest(content)??diceRequest(content),()=>values[n++]).embeds[0].toJSON(),color=`#${d.color.toString(16).padStart(6,'0')}`;
   return `<section><p class="source">投稿：${escape(content)}</p><article style="border-left-color:${color}"><h2>${d.url?`<a href="${escape(d.url)}">${escape(d.title)}</a>`:escape(d.title)}</h2><div class="body">${markdown(d.description)}</div><footer>${escape(d.footer.text)}</footer></article></section>`;
