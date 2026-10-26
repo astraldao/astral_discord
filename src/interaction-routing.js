@@ -1,3 +1,4 @@
+import {menuGuideTopics} from './menu-catalog.js';
 // A namespace selects a controller, never an authorization level. Each
 // controller retains its own fresh permission, owner and session checks.
 const definitions=[
@@ -22,7 +23,7 @@ export function interactionRoute(interaction){
   const namespace=interaction.customId.slice(0,separator),button=interaction.isButton();
   if(namespace==='vc')return button||interaction.isStringSelectMenu()?{target:'vc',namespace,kind:'component'}:null;
   if(!namespaces.has(namespace))return null;
-  if(namespace==='menu'&&!button&&!(interaction.isStringSelectMenu()&&['menu:recent','menu:help-topic','menu:find'].includes(interaction.customId)))return null;
+  if(namespace==='menu'&&!button){const help=interaction.customId.match(/^menu:help-view:([a-z]{1,16})$/);if(!interaction.isStringSelectMenu()||!(['menu:recent','menu:help-topic','menu:find'].includes(interaction.customId)||help&&Object.hasOwn(menuGuideTopics,help[1])))return null;}
   if(!button&&!interaction.isAnySelectMenu()&&!interaction.isModalSubmit())return null;
   return {target:interaction.customId==='wallet:open'?'wallet-self':namespace,namespace,kind:'component'};
 }

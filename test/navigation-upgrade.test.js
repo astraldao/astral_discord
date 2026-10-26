@@ -20,7 +20,7 @@ test('feature failure offers a safe manual reopen and never repeats stop, reads 
 });
 test('all help topics have specific recovery advice and native hub stays within five rows',()=>{
  for(const admin of [false,true]){const p=mainMenuScreen({admin,recent:['vc','read','calendar']});assert.ok(p.components.length<=5);for(const r of p.components)assert.ok(r.toJSON().components.length<=5);}
- for(const topic of ['vc','read','calendar','game','profile','wallet'])assert.ok(mainMenuGuideScreen(topic).embeds[0].toJSON().description.includes('うまく動かないとき'));
+ for(const topic of ['vc','read','calendar','game','profile','wallet'])assert.ok(mainMenuGuideScreen(topic,{},'trouble').embeds[0].toJSON().title.includes('うまく動かないとき'));
  const choices=controls(adminScreen({id:'s',view:'home'},config)).find(b=>b.type===3).options;
  assert.deepEqual(choices.map(c=>c.value),[...adminDestinations.map(d=>d.action),'nav-guides']);
 });

@@ -89,7 +89,7 @@ test('explicit cancellation and shutdown retain their distinct causes and bounde
   for(const reason of ['user','shutdown']){
     const ready=deferred();let time=0;const probe=createVoiceBenchmark({now:()=>time,capacity:async()=>({}),worker:()=>({ready:ready.promise,diagnostics:{stage:'warmup',warmupParts:2,elapsedMs:1234,text:'PRIVATE'},close(){ready.reject(new Error('closed'));}})}),task=probe.run('owner');await tick();time=1234;
     if(reason==='user')probe.cancel('owner','confirmed-user');else probe.close();const r=await task;assert.equal(r.cancelled,true);assert.equal(r.cancelReason,reason);assert.equal(r.elapsedMs,1234);assert.deepEqual(r.info,{stage:'warmup',warmupParts:2,elapsedMs:1234});assert.equal(r.failure,undefined);
-    const view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r});assert.ok(JSON.stringify(view).includes(reason==='user'?'確認操作で':'Bot停止により'));assert.match(view.embeds[0].toJSON().description,/最長の分割待ち \*\*未計測/);probe.close();
+    const view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r});assert.ok(JSON.stringify(view).includes(reason==='user'?'確認操作で':'Bot停止により'));assert.match(benchmarkScreen({id:'s',turn:0,resultView:'timings'},{phase:'idle',result:r}).embeds[0].toJSON().description,/最長の分割待ち \*\*未計測/);probe.close();
   }
 });
 
@@ -102,8 +102,8 @@ test('navigation during the final permission fetch prevents an old measurement r
 });
 
 test('diagnostics distinguish configured and effective threads and cold initialization from steady encoding',()=>{
-  const view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:{ok:true,measuredAt:1,parts:7,audioMs:3552,synthesisMs:21000,realTimeFactor:5.91,encodingMs:10002,info:{threads:1,configuredThreads:3,protocol:2},encoding:{backend:'worker-opusscript',warmupMs:10000,processMs:2}}});
-  const body=view.embeds[0].toJSON().description;assert.match(body,/合成スレッド 1（設定上限 3/);assert.match(body,/初期化 \*\*10,000ms/);assert.match(body,/変換 \*\*2ms/);assert.ok(body.includes('同じVC接続中'));assert.ok(body.length<4096);
+  const state={phase:'idle',result:{ok:true,measuredAt:1,parts:7,audioMs:3552,synthesisMs:21000,realTimeFactor:5.91,encodingMs:10002,info:{threads:1,configuredThreads:3,protocol:2},encoding:{backend:'worker-opusscript',warmupMs:10000,processMs:2}}};
+  const body=['timings','capacity'].map(resultView=>benchmarkScreen({id:'s',turn:0,resultView},state).embeds[0].toJSON().description).join('\n');assert.match(body,/合成スレッド 1（設定上限 3/);assert.match(body,/初期化 \*\*10,000ms/);assert.match(body,/変換 \*\*2ms/);assert.ok(body.includes('同じVC接続中'));assert.ok(body.length<4096);
 });
 
 test('refresh stays in the same button position before and during measurement, apart from cancellation',()=>{
@@ -176,13 +176,13 @@ test('a 46-second preparation and repeated expired refreshes cannot cancel the a
 test('feature diagnostics show the chosen synthesis mode and bounded frame counts without arbitrary native fields',()=>{
   const info=backupInfo({engine:'features',protocol:3,threads:1,stage:'synthesis',framesDone:12,framesTotal:60,frameStart:12,frameEnd:60,text:'PRIVATE',feature:'PRIVATE'});
   assert.equal(info.protocol,3);assert.equal(info.framesTotal,60);assert.ok(!JSON.stringify(info).includes('PRIVATE'));assert.deepEqual(backupInfo({engine:'PRIVATE',framesTotal:3751,frameEnd:-1}),{});
-  const failure=backupFailure(backupFault(null,'SYNTHESIS_TIMEOUT',info)),view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:{ok:false,measuredAt:1,parts:1,info,failure}}),body=view.embeds[0].toJSON().description;
+  const failure=backupFailure(backupFault(null,'SYNTHESIS_TIMEOUT',info)),view=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:{ok:false,measuredAt:1,parts:1,info,failure}}),body=['summary','timings'].map(resultView=>benchmarkScreen({id:'s',turn:0,resultView},{phase:'idle',result:{ok:false,measuredAt:1,parts:1,info,failure}}).embeds[0].toJSON().description).join('\n');
   assert.match(body,/特徴量を共有して連続生成/);assert.match(body,/フレーム 12\/60/);assert.ok(body.length<4096);assert.ok(!body.includes('PRIVATE'));
 });
 
 test('diagnostics distinguish CPU execution from elapsed time without attributing the gap to host contention',()=>{
   const r={ok:true,measuredAt:1,parts:4,audioMs:3573,warmupMs:32029,firstAudioMs:2810,synthesisMs:13452,encodingMs:6884,info:{protocol:3,threads:1,warmupCpuMs:1000,firstAudioCpuMs:100,synthesisCpuMs:2000},encoding:{backend:'worker-opusscript',warmupMs:6194,processMs:266,warmupCpuMs:200,processCpuMs:50}};
-  const body=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r}).embeds[0].toJSON().description;
+  const body=['summary','timings','capacity'].map(resultView=>benchmarkScreen({id:'s',turn:0,resultView},{phase:'idle',result:r}).embeds[0].toJSON().description).join('\n');
   assert.match(body,/モデル準備 \*\*32,029ms/);assert.match(body,/CPU実行：準備 \*\*1,000ms/);assert.match(body,/Opus CPU：初期化 \*\*200ms/);assert.match(body,/差だけでホストの混雑は断定できません/);assert.ok(body.length<4096);
   assert.deepEqual(backupInfo({warmupCpuMs:-1,synthesisCpuMs:3600001,firstAudioCpuMs:'PRIVATE'}),{});
 });
@@ -195,7 +195,7 @@ test('a stalled model load keeps the preparation duration, last checkpoint and C
   const info={stage:'warmup',warmupStep:'model-load',warmupStepMs:38128,warmupCpuMs:200,elapsedMs:98128,timerLateMs:8128,warmupParts:0};
   const probe=createVoiceBenchmark({now:()=>time,capacity:async()=>({}),worker:()=>({get ready(){time=98128;return Promise.reject(backupFault(null,'SYNTHESIS_WARMUP_TIMEOUT',info));},diagnostics:info,close(){}})});
   const r=await probe.run('local');assert.equal(r.ok,false);assert.equal(r.cancelled,false);assert.equal(r.warmupMs,null);assert.equal(r.warmupElapsedMs,98128);assert.equal(r.parts,0);assert.equal(r.failure.info.warmupStep,'model-load');
-  const body=benchmarkScreen({id:'s',turn:0},{phase:'idle',result:r}).embeds[0].toJSON().description;
+  const body=['summary','timings','capacity'].map(resultView=>benchmarkScreen({id:'s',turn:0,resultView},{phase:'idle',result:r}).embeds[0].toJSON().description).join('\n');
   assert.match(body,/モデル準備経過 \*\*98,128ms/);assert.match(body,/準備箇所：音声モデルの読込/);assert.match(body,/準備（最終記録） \*\*200ms/);assert.match(body,/監視タイマーの遅れ 8128ms/);assert.ok(body.length<4096);probe.close();
 });
 test('active startup progress uses fixed stage labels and marks CPU as the last recorded value',()=>{

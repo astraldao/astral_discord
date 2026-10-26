@@ -66,7 +66,7 @@ test('settings previews describe normalized before/after values without writing,
 
 test('all user help topics show prerequisites and effect without turning a guide into a mutation',()=>{
   assert.deepEqual(Object.keys(menuTaskDetails).sort(),Object.keys(menuGuideTopics).sort());
-  for(const topic of Object.keys(menuGuideTopics)){const m=mainMenuGuideScreen(topic,{readingEnabled:false,diceEnabled:true,diceFullContent:false});compact(m);assert.match(body(m),/使う前に/);assert.match(body(m),/反映・終了/);assert.ok(!controls(m).some(c=>/start|save|confirm/.test(c.custom_id??'')));}
+  for(const topic of Object.keys(menuGuideTopics)){const m=mainMenuGuideScreen(topic,{readingEnabled:false,diceEnabled:true,diceFullContent:false},'before');compact(m);assert.match(body(m),/使う前に/);assert.match(body(m),/反映・終了/);assert.ok(!controls(m).some(c=>/start|save|confirm/.test(c.custom_id??'')));}
   assert.match(body(mainMenuGuideScreen('dice')),/チップは使いません/);
 });
 

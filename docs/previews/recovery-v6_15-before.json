@@ -1,0 +1,594 @@
+{
+  "help": {
+    "embeds": [
+      {
+        "color": 5793266,
+        "title": "✦  使い方 · チャットダイス",
+        "description": "**通常の投稿から利用できます。** Botをメンションする必要はありません。\n\n**使う前に**\n1D100などのダイスや「サイゼロール」をこのチャンネルへ投稿します。\n\n**手順**\nこのチャンネルへ 1D100・1D4,3D10・1d10ふって・ダメージ 3D10 などを投稿します。「お風呂の温度は1D100度！！」のような、温度や点数を決める宣言にも対応します。\n\n高度な式：(2d6+3)*2＝計算、4d6kh3／kl3＝高い／低い3個、1d20を有利で／不利で＝2個から採用、4d6r1＝1を一度だけ振り直し、1d6!＝最大値で追加、5d10cs>=8＝成功数、1d100<=70＝成功・失敗。振り直し前と除外した値も残します。追加抽選に上限があります。\n\n「サイゼロール」「サイゼロールして」なら (1D3)(1D4)0(1D10) を連結した番号を返します（末尾の10は0に変換）。料理名も見たいときだけ「!サイゼロール」と投稿してください。2024年6月の参照表を使い、!なしでは料理名を出しません。結果は元の投稿への返信です。通常の文章は30文字未満が対象です（式だけの投稿は例外）。明確な依頼はその場で判定し、関連する曖昧な短文だけ、設定済みのJevへ送ります。説明・引用・否定は見送ります。\n\n**反映・終了**\n結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。\n\n**うまく動かないとき**\n通常投稿で反応しない場合は @Bot 1D100 を試してください。管理者が動作診断で通常投稿への対応状況とON/OFFを確認できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "menu:help-topic",
+            "placeholder": "知りたい操作を選ぶ",
+            "options": [
+              {
+                "label": "VCに入る",
+                "value": "vc",
+                "description": "ロビーから入室先を選ぶ",
+                "default": false
+              },
+              {
+                "label": "読み上げ",
+                "value": "read",
+                "description": "このチャンネルの投稿をVCで聞く",
+                "default": false
+              },
+              {
+                "label": "ゲーム",
+                "value": "game",
+                "description": "ゲームを選ぶ・続きを遊ぶ",
+                "default": false
+              },
+              {
+                "label": "予定表",
+                "value": "calendar",
+                "description": "このチャンネルの共有予定を見る",
+                "default": false
+              },
+              {
+                "label": "画像工房",
+                "value": "workshop",
+                "description": "画像を絵文字・スタンプ・共有用に整形",
+                "default": false
+              },
+              {
+                "label": "自分の読み方",
+                "value": "profile",
+                "description": "名前をどう読み上げるか設定する",
+                "default": false
+              },
+              {
+                "label": "自分のチップ",
+                "value": "wallet",
+                "description": "残高と利用履歴を確認する",
+                "default": false
+              },
+              {
+                "label": "チャットダイス",
+                "value": "dice",
+                "description": "計算式・採用指定・成功数にも対応",
+                "default": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "benchmark": {
+    "embeds": [
+      {
+        "color": 2721133,
+        "title": "⚙️  音声の処理速度",
+        "description": "**測定が完了しました**\n測定 <t:1793000000:R>\n\nCPU上限 **1コア** · CPU並列度 1\nメモリ **261MiB / 589MiB** · x64\n合成スレッド 1（設定上限 3・CPUに合わせて制限） · 音声プロトコル 3\n\nモデル準備 **8,574ms**\n先頭音声まで **2,020ms**\n合成完了 **12,759ms** · 音声 3.55秒 / 7片\n最長の分割待ち **2,274ms**\nOpus変換 **1,707ms**（先頭音声・最大1秒分）\n実時間比 **3.59**（1未満なら音声の長さより速く合成）\nCPU制限発生 **19%の期間** · 制限時間 784ms\n合成方式：特徴量を共有して連続生成\nOpus内訳：初期化 **1,626ms** · 変換 **44ms**\n読み上げでは接続時に初期化し、同じVC接続中は変換環境を再利用します。\n\nCPU実行：準備 **1,000ms** · 先頭 **100ms** · 合成 **2,000ms**\nOpus CPU：初期化 **200ms** · 変換 **20ms**\nCPU実行は処理に使ったCPU時間です。経過との差には実行待ち・入出力等を含みます。差だけでホストの混雑は断定できません。合成は全スレッドの合計なので、経過時間を超える場合があります。\n\n合成が音声の長さより遅いため、連続投稿では順番待ちが増える可能性があります。この結果は測定時の負荷を含みます。読み上げでは接続時の準備と、投稿後の開始待ちを分けて確認できます。\n\n測定履歴はメモリ内の直近5件です。Bot再起動で消えます。自動測定は行いません。\n合成は準備完了後の時間です。Discordの権限確認・通信・VCで聞こえるまでの時間は含みません。CPU制限は測定中のコンテナ全体の値で、CPU使用率ではありません。メモリは測定時点の値で、ピークではありません。\nVOICEVOX:ずんだもん",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:start",
+            "label": "もう一度測定",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:status",
+            "label": "状態を更新",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:history",
+            "label": "測定履歴（1/5）",
+            "style": 2,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:cancel",
+            "label": "測定を中断",
+            "style": 4,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:open-feature:diagnose",
+            "label": "動作診断を開く",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:open-section:operations",
+            "label": "運用・管理へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "transfer": {
+    "embeds": [
+      {
+        "color": 9933280,
+        "title": "🪙  チップを渡す",
+        "description": "チップが不足しています。\n\n**残高 3,000 チップ**\n相手 <@222222222222222222>\n枚数を入力してください。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 5,
+            "custom_id": "chips:2c125432-030:1:target",
+            "placeholder": "渡す相手を選ぶ",
+            "min_values": 1,
+            "max_values": 1
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "chips:2c125432-030:1:amount",
+            "label": "枚数を入力",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "game:open",
+            "label": "ゲーム選択へ",
+            "style": 2
+          }
+        ]
+      }
+    ],
+    "form": {
+      "label": "チップの枚数",
+      "value": ""
+    }
+  },
+  "timings": {
+    "embeds": [
+      {
+        "color": 2721133,
+        "title": "⚙️  音声の処理速度",
+        "description": "**測定が完了しました**\n測定 <t:1793000000:R>\n\nCPU上限 **1コア** · CPU並列度 1\nメモリ **261MiB / 589MiB** · x64\n合成スレッド 1（設定上限 3・CPUに合わせて制限） · 音声プロトコル 3\n\nモデル準備 **8,574ms**\n先頭音声まで **2,020ms**\n合成完了 **12,759ms** · 音声 3.55秒 / 7片\n最長の分割待ち **2,274ms**\nOpus変換 **1,707ms**（先頭音声・最大1秒分）\n実時間比 **3.59**（1未満なら音声の長さより速く合成）\nCPU制限発生 **19%の期間** · 制限時間 784ms\n合成方式：特徴量を共有して連続生成\nOpus内訳：初期化 **1,626ms** · 変換 **44ms**\n読み上げでは接続時に初期化し、同じVC接続中は変換環境を再利用します。\n\nCPU実行：準備 **1,000ms** · 先頭 **100ms** · 合成 **2,000ms**\nOpus CPU：初期化 **200ms** · 変換 **20ms**\nCPU実行は処理に使ったCPU時間です。経過との差には実行待ち・入出力等を含みます。差だけでホストの混雑は断定できません。合成は全スレッドの合計なので、経過時間を超える場合があります。\n\n合成が音声の長さより遅いため、連続投稿では順番待ちが増える可能性があります。この結果は測定時の負荷を含みます。読み上げでは接続時の準備と、投稿後の開始待ちを分けて確認できます。\n\n測定履歴はメモリ内の直近5件です。Bot再起動で消えます。自動測定は行いません。\n合成は準備完了後の時間です。Discordの権限確認・通信・VCで聞こえるまでの時間は含みません。CPU制限は測定中のコンテナ全体の値で、CPU使用率ではありません。メモリは測定時点の値で、ピークではありません。\nVOICEVOX:ずんだもん",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:start",
+            "label": "もう一度測定",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:status",
+            "label": "状態を更新",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:history",
+            "label": "測定履歴（1/5）",
+            "style": 2,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:cancel",
+            "label": "測定を中断",
+            "style": 4,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:open-feature:diagnose",
+            "label": "動作診断を開く",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:open-section:operations",
+            "label": "運用・管理へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "capacity": {
+    "embeds": [
+      {
+        "color": 2721133,
+        "title": "⚙️  音声の処理速度",
+        "description": "**測定が完了しました**\n測定 <t:1793000000:R>\n\nCPU上限 **1コア** · CPU並列度 1\nメモリ **261MiB / 589MiB** · x64\n合成スレッド 1（設定上限 3・CPUに合わせて制限） · 音声プロトコル 3\n\nモデル準備 **8,574ms**\n先頭音声まで **2,020ms**\n合成完了 **12,759ms** · 音声 3.55秒 / 7片\n最長の分割待ち **2,274ms**\nOpus変換 **1,707ms**（先頭音声・最大1秒分）\n実時間比 **3.59**（1未満なら音声の長さより速く合成）\nCPU制限発生 **19%の期間** · 制限時間 784ms\n合成方式：特徴量を共有して連続生成\nOpus内訳：初期化 **1,626ms** · 変換 **44ms**\n読み上げでは接続時に初期化し、同じVC接続中は変換環境を再利用します。\n\nCPU実行：準備 **1,000ms** · 先頭 **100ms** · 合成 **2,000ms**\nOpus CPU：初期化 **200ms** · 変換 **20ms**\nCPU実行は処理に使ったCPU時間です。経過との差には実行待ち・入出力等を含みます。差だけでホストの混雑は断定できません。合成は全スレッドの合計なので、経過時間を超える場合があります。\n\n合成が音声の長さより遅いため、連続投稿では順番待ちが増える可能性があります。この結果は測定時の負荷を含みます。読み上げでは接続時の準備と、投稿後の開始待ちを分けて確認できます。\n\n測定履歴はメモリ内の直近5件です。Bot再起動で消えます。自動測定は行いません。\n合成は準備完了後の時間です。Discordの権限確認・通信・VCで聞こえるまでの時間は含みません。CPU制限は測定中のコンテナ全体の値で、CPU使用率ではありません。メモリは測定時点の値で、ピークではありません。\nVOICEVOX:ずんだもん",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:start",
+            "label": "もう一度測定",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:status",
+            "label": "状態を更新",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:history",
+            "label": "測定履歴（1/5）",
+            "style": 2,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "perf:preview:0:cancel",
+            "label": "測定を中断",
+            "style": 4,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:open-feature:diagnose",
+            "label": "動作診断を開く",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:open-section:operations",
+            "label": "運用・管理へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "helpAdvanced": {
+    "embeds": [
+      {
+        "color": 5793266,
+        "title": "✦  使い方 · チャットダイス",
+        "description": "**通常の投稿から利用できます。** Botをメンションする必要はありません。\n\n**使う前に**\n1D100などのダイスや「サイゼロール」をこのチャンネルへ投稿します。\n\n**手順**\nこのチャンネルへ 1D100・1D4,3D10・1d10ふって・ダメージ 3D10 などを投稿します。「お風呂の温度は1D100度！！」のような、温度や点数を決める宣言にも対応します。\n\n高度な式：(2d6+3)*2＝計算、4d6kh3／kl3＝高い／低い3個、1d20を有利で／不利で＝2個から採用、4d6r1＝1を一度だけ振り直し、1d6!＝最大値で追加、5d10cs>=8＝成功数、1d100<=70＝成功・失敗。振り直し前と除外した値も残します。追加抽選に上限があります。\n\n「サイゼロール」「サイゼロールして」なら (1D3)(1D4)0(1D10) を連結した番号を返します（末尾の10は0に変換）。料理名も見たいときだけ「!サイゼロール」と投稿してください。2024年6月の参照表を使い、!なしでは料理名を出しません。結果は元の投稿への返信です。通常の文章は30文字未満が対象です（式だけの投稿は例外）。明確な依頼はその場で判定し、関連する曖昧な短文だけ、設定済みのJevへ送ります。説明・引用・否定は見送ります。\n\n**反映・終了**\n結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。\n\n**うまく動かないとき**\n通常投稿で反応しない場合は @Bot 1D100 を試してください。管理者が動作診断で通常投稿への対応状況とON/OFFを確認できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "menu:help-topic",
+            "placeholder": "知りたい操作を選ぶ",
+            "options": [
+              {
+                "label": "VCに入る",
+                "value": "vc",
+                "description": "ロビーから入室先を選ぶ",
+                "default": false
+              },
+              {
+                "label": "読み上げ",
+                "value": "read",
+                "description": "このチャンネルの投稿をVCで聞く",
+                "default": false
+              },
+              {
+                "label": "ゲーム",
+                "value": "game",
+                "description": "ゲームを選ぶ・続きを遊ぶ",
+                "default": false
+              },
+              {
+                "label": "予定表",
+                "value": "calendar",
+                "description": "このチャンネルの共有予定を見る",
+                "default": false
+              },
+              {
+                "label": "画像工房",
+                "value": "workshop",
+                "description": "画像を絵文字・スタンプ・共有用に整形",
+                "default": false
+              },
+              {
+                "label": "自分の読み方",
+                "value": "profile",
+                "description": "名前をどう読み上げるか設定する",
+                "default": false
+              },
+              {
+                "label": "自分のチップ",
+                "value": "wallet",
+                "description": "残高と利用履歴を確認する",
+                "default": false
+              },
+              {
+                "label": "チャットダイス",
+                "value": "dice",
+                "description": "計算式・採用指定・成功数にも対応",
+                "default": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "helpBefore": {
+    "embeds": [
+      {
+        "color": 5793266,
+        "title": "✦  使い方 · チャットダイス",
+        "description": "**通常の投稿から利用できます。** Botをメンションする必要はありません。\n\n**使う前に**\n1D100などのダイスや「サイゼロール」をこのチャンネルへ投稿します。\n\n**手順**\nこのチャンネルへ 1D100・1D4,3D10・1d10ふって・ダメージ 3D10 などを投稿します。「お風呂の温度は1D100度！！」のような、温度や点数を決める宣言にも対応します。\n\n高度な式：(2d6+3)*2＝計算、4d6kh3／kl3＝高い／低い3個、1d20を有利で／不利で＝2個から採用、4d6r1＝1を一度だけ振り直し、1d6!＝最大値で追加、5d10cs>=8＝成功数、1d100<=70＝成功・失敗。振り直し前と除外した値も残します。追加抽選に上限があります。\n\n「サイゼロール」「サイゼロールして」なら (1D3)(1D4)0(1D10) を連結した番号を返します（末尾の10は0に変換）。料理名も見たいときだけ「!サイゼロール」と投稿してください。2024年6月の参照表を使い、!なしでは料理名を出しません。結果は元の投稿への返信です。通常の文章は30文字未満が対象です（式だけの投稿は例外）。明確な依頼はその場で判定し、関連する曖昧な短文だけ、設定済みのJevへ送ります。説明・引用・否定は見送ります。\n\n**反映・終了**\n結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。\n\n**うまく動かないとき**\n通常投稿で反応しない場合は @Bot 1D100 を試してください。管理者が動作診断で通常投稿への対応状況とON/OFFを確認できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "menu:help-topic",
+            "placeholder": "知りたい操作を選ぶ",
+            "options": [
+              {
+                "label": "VCに入る",
+                "value": "vc",
+                "description": "ロビーから入室先を選ぶ",
+                "default": false
+              },
+              {
+                "label": "読み上げ",
+                "value": "read",
+                "description": "このチャンネルの投稿をVCで聞く",
+                "default": false
+              },
+              {
+                "label": "ゲーム",
+                "value": "game",
+                "description": "ゲームを選ぶ・続きを遊ぶ",
+                "default": false
+              },
+              {
+                "label": "予定表",
+                "value": "calendar",
+                "description": "このチャンネルの共有予定を見る",
+                "default": false
+              },
+              {
+                "label": "画像工房",
+                "value": "workshop",
+                "description": "画像を絵文字・スタンプ・共有用に整形",
+                "default": false
+              },
+              {
+                "label": "自分の読み方",
+                "value": "profile",
+                "description": "名前をどう読み上げるか設定する",
+                "default": false
+              },
+              {
+                "label": "自分のチップ",
+                "value": "wallet",
+                "description": "残高と利用履歴を確認する",
+                "default": false
+              },
+              {
+                "label": "チャットダイス",
+                "value": "dice",
+                "description": "計算式・採用指定・成功数にも対応",
+                "default": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "helpTrouble": {
+    "embeds": [
+      {
+        "color": 5793266,
+        "title": "✦  使い方 · チャットダイス",
+        "description": "**通常の投稿から利用できます。** Botをメンションする必要はありません。\n\n**使う前に**\n1D100などのダイスや「サイゼロール」をこのチャンネルへ投稿します。\n\n**手順**\nこのチャンネルへ 1D100・1D4,3D10・1d10ふって・ダメージ 3D10 などを投稿します。「お風呂の温度は1D100度！！」のような、温度や点数を決める宣言にも対応します。\n\n高度な式：(2d6+3)*2＝計算、4d6kh3／kl3＝高い／低い3個、1d20を有利で／不利で＝2個から採用、4d6r1＝1を一度だけ振り直し、1d6!＝最大値で追加、5d10cs>=8＝成功数、1d100<=70＝成功・失敗。振り直し前と除外した値も残します。追加抽選に上限があります。\n\n「サイゼロール」「サイゼロールして」なら (1D3)(1D4)0(1D10) を連結した番号を返します（末尾の10は0に変換）。料理名も見たいときだけ「!サイゼロール」と投稿してください。2024年6月の参照表を使い、!なしでは料理名を出しません。結果は元の投稿への返信です。通常の文章は30文字未満が対象です（式だけの投稿は例外）。明確な依頼はその場で判定し、関連する曖昧な短文だけ、設定済みのJevへ送ります。説明・引用・否定は見送ります。\n\n**反映・終了**\n結果は元の投稿への返信です。ゲーム内のチップを賭けるダイスとは別で、チップは使いません。\n\n**うまく動かないとき**\n通常投稿で反応しない場合は @Bot 1D100 を試してください。管理者が動作診断で通常投稿への対応状況とON/OFFを確認できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "menu:help-topic",
+            "placeholder": "知りたい操作を選ぶ",
+            "options": [
+              {
+                "label": "VCに入る",
+                "value": "vc",
+                "description": "ロビーから入室先を選ぶ",
+                "default": false
+              },
+              {
+                "label": "読み上げ",
+                "value": "read",
+                "description": "このチャンネルの投稿をVCで聞く",
+                "default": false
+              },
+              {
+                "label": "ゲーム",
+                "value": "game",
+                "description": "ゲームを選ぶ・続きを遊ぶ",
+                "default": false
+              },
+              {
+                "label": "予定表",
+                "value": "calendar",
+                "description": "このチャンネルの共有予定を見る",
+                "default": false
+              },
+              {
+                "label": "画像工房",
+                "value": "workshop",
+                "description": "画像を絵文字・スタンプ・共有用に整形",
+                "default": false
+              },
+              {
+                "label": "自分の読み方",
+                "value": "profile",
+                "description": "名前をどう読み上げるか設定する",
+                "default": false
+              },
+              {
+                "label": "自分のチップ",
+                "value": "wallet",
+                "description": "残高と利用履歴を確認する",
+                "default": false
+              },
+              {
+                "label": "チャットダイス",
+                "value": "dice",
+                "description": "計算式・採用指定・成功数にも対応",
+                "default": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  }
+}
