@@ -81,7 +81,12 @@ export function createUpdateCapacity({root=process.cwd(),fetcher=fetch,now=Date.
   };
 }
 
-export function updateCapacityFields(s){
+export function updateCapacityWarning(s){
+  const v=s.capacity,d=s.data;
+  return d.latest&&d.latest.sha!==d.current.sha&&v&&v.targetSha===d.latest.sha&&v.currentSha===(validSha(d.current.sha)?d.current.sha:null)&&size(v.freeBytes)&&v.freeBytes<UPDATE_MIN_FREE_BYTES?'確認時のOSの空き容量が最低条件200 MiBを下回っています。空きを確保し、更新を再確認してください。':null;
+}
+
+export function updateCapacityFields(s,{compact=false}={}){
   const value=s.capacity,data=s.data;
   if(!data.latest||data.latest.sha===data.current.sha)return [];
   const valid=value&&value.targetSha===data.latest.sha&&value.currentSha===(validSha(data.current.sha)?data.current.sha:null);
@@ -89,6 +94,7 @@ export function updateCapacityFields(s){
   if(!valid)return ['preparing','switching'].includes(data.phase)?[]:[{name:'更新に使う容量',value:'未計測です。「更新を再確認」で調べられます。取得できない項目があっても、更新確認は続けられます。'}];
   const deps=value.dependencies==='reuse'?'再利用予定（追加取得なし）':value.dependencies==='install'?'新規取得が必要（容量未確認）':'未確認';
   const subtotal=size(value.sourceBytes)&&size(value.dataBackupBytes)?format(value.sourceBytes+value.dataBackupBytes):'未確認';
+  if(compact)return [{name:'更新容量の目安',value:`取得 **${format(value.archiveBytes)}**${!size(value.archiveBytes)?'（取得上限20 MiB）':''} · 依存：${deps}\n追加の保存容量 **${subtotal}**${value.dependencies!=='reuse'?' ＋ 依存（未確認）':''}\nOSの空き **${format(value.freeBytes)}** · 最低条件 ${UPDATE_MIN_FREE_BYTES/MiB} MiB\n\n一時領域・旧版の控え等は別途必要です。契約上限とは異なる場合があります。詳しくは「容量の内訳」へ。`}];
   return [
     {name:'取得する容量',value:`コード圧縮ファイル：${format(value.archiveBytes)}${!size(value.archiveBytes)?'（取得上限20 MiB）':''}\n依存パッケージ：${deps}`},
     {name:'追加の保存容量（目安）',value:`新版コード：${format(value.sourceBytes)}\n保存データの控え1組：${format(value.dataBackupBytes)}\n小計：${subtotal}${value.dependencies!=='reuse'?' ＋ 依存パッケージ（未確認）':''}\n更新中は圧縮ファイル・一時領域・復旧用の控えも使用します。`},

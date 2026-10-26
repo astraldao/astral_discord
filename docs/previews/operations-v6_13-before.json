@@ -1,0 +1,224 @@
+{
+  "security": {
+    "embeds": [
+      {
+        "color": 12024096,
+        "title": "⚙️  脆弱性診断",
+        "description": "**診断結果**\n確認 <t:1793000000:f> · <t:1793000000:R>\nBot v6.12.0 · ロック aaaaaaaaaaaa\n対象 44種類（実行用 43・開発用 1）\n表示：すべて · 2件 / 全2件\n\n**既知の勧告 2件**\n緊急 0 · 高 1 · 中 0 · 低 0 · 未確認 1\n\n1/1ページ\n\n**[CVE-2099-1001](https://osv.dev/vulnerability/CVE-2099-1001) · 高**\nexample-0 1.0.0（開発用・直接）\nexample-1 1.0.0（実行用・直接）\nほか5種類\n修正版の候補：example-1 1.0.1\n\n**[CVE-2099-1002](https://osv.dev/vulnerability/CVE-2099-1002) · 未確認**\nexample-tool 2.0.0（開発用・直接）\n\n修正版の候補は勧告の記載です。互換性やこのBotへの適用可否は更新内容で確認してください。\n深刻度・修正版などの詳細は1件が未確認です。勧告リンクから確認できます。\n\n**対象と更新方法**\n情報源はOSV。OS・Node本体・Python/VOICEVOX・改変された実ファイル・Bot独自コードは診断対象外です。登録の遅れや未公開の問題もあるため、安全性を保証する診断ではありません。\n結果は最大5分間再利用します。修正は「バージョン管理」から確認できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "admin:preview:security-scope",
+            "placeholder": "勧告の対象を絞り込む",
+            "options": [
+              {
+                "label": "すべて",
+                "value": "all",
+                "default": true
+              },
+              {
+                "label": "実行用",
+                "value": "runtime",
+                "default": false
+              },
+              {
+                "label": "開発用",
+                "value": "dev",
+                "default": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:preview:security-run",
+            "label": "再診断する",
+            "style": 1
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:preview:security-export",
+            "label": "全件JSONを保存",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:preview:open-updates",
+            "label": "バージョン管理",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:preview:nav-category-operations",
+            "label": "運用・管理へ",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "version": {
+    "embeds": [
+      {
+        "color": 7306643,
+        "title": "⚙️  バージョン管理",
+        "description": "**新しい更新があります**\n内容を確認してから更新できます。\n\n最終確認 <t:1793000000:R>",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        },
+        "fields": [
+          {
+            "name": "現在のバージョン",
+            "value": "**v6.12.0**\naaaaaaa",
+            "inline": true
+          },
+          {
+            "name": "確認した最新版",
+            "value": "**v6.13.0**\nbbbbbbb",
+            "inline": true
+          },
+          {
+            "name": "取得する容量",
+            "value": "コード圧縮ファイル：2.0 MiB\n依存パッケージ：再利用予定（追加取得なし）"
+          },
+          {
+            "name": "追加の保存容量（目安）",
+            "value": "新版コード：10.0 MiB\n保存データの控え1組：1.0 MiB\n小計：11.0 MiB\n更新中は圧縮ファイル・一時領域・復旧用の控えも使用します。"
+          },
+          {
+            "name": "空き容量の確認",
+            "value": "更新処理の最低条件：200 MiB以上\nOSが報告する確認時の空き：300.0 MiB\nホストの契約上限とは異なる場合があります。\n\n差分だけでなくコード一式を取得し、旧版も保持します。小計はファイル合計で、ディスク上の使用量・npmキャッシュは別です。古い版の整理で減る分は差し引きません。"
+          }
+        ]
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "updates:preview:0:confirm",
+            "label": "更新内容を確認",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "updates:preview:0:check",
+            "label": "更新を再確認",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "label": "変更内容を見る",
+            "style": 5,
+            "url": "https://github.com/astraldao/astral_discord/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:open",
+            "label": "管理メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "runtime": {
+    "embeds": [
+      {
+        "color": 12024096,
+        "title": "⚙️  ENV・起動設定",
+        "description": "**バックアップ読み上げ**\nASTRAL_BACKUP_TTS\n稼働中 **0** → 次回起動時 **1**\n\n**合成スレッド上限**\nVOICEVOX_BACKUP_THREADS\n稼働中 **1** → 次回起動時 **2**\n\n**保存済みの変更があります。Botを再起動して反映してください。**\n保存値は外部の環境変数より優先します。空欄で保存すると外部設定・既定値へ戻します。\nトークンは表示・編集しません。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "runtime:preview:0:edit",
+            "placeholder": "変更する起動設定を選ぶ",
+            "options": [
+              {
+                "label": "バックアップ読み上げ",
+                "value": "ASTRAL_BACKUP_TTS",
+                "description": "ASTRAL_BACKUP_TTS"
+              },
+              {
+                "label": "合成スレッド上限",
+                "value": "VOICEVOX_BACKUP_THREADS",
+                "description": "VOICEVOX_BACKUP_THREADS"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "runtime:preview:0:refresh",
+            "label": "状態を更新",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "restart:open",
+            "label": "Botを再起動",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:open-section:operations",
+            "label": "運用・管理へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  }
+}

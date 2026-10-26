@@ -1,30 +1,35 @@
-import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags} from 'discord.js';
+import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,MessageFlags} from 'discord.js';
 import {AdminSessions} from './admin.js';
 import {themed,text,adminHomeButton,menuHomeButton} from './ui.js';
-import {updateCapacityFields} from './update-capacity.js';
+import {updateCapacityFields,updateCapacityWarning} from './update-capacity.js';
 const {payload}=themed('admin');
 const row=(...buttons)=>new ActionRowBuilder().addComponents(...buttons);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`updates:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
+export const versionViews={summary:'概要',capacity:'容量の内訳',steps:'更新の流れ・注意点'};
 const labels={idle:'待機中',preparing:'新版を取得・検証中',switching:'切り替え中',complete:'更新が完了しました',blocked:'進行中の操作があるため更新を見送りました',failed:'前回の更新を完了できませんでした'};
 export function versionScreen(s){
-  const d=s.data,current=d.current,latest=d.latest,busy=['preparing','switching'].includes(d.phase),available=latest&&latest.sha!==current.sha;
+  const view=Object.hasOwn(versionViews,s.versionView)?s.versionView:'summary',d=s.data,current=d.current,latest=d.latest,busy=['preparing','switching'].includes(d.phase),available=latest&&latest.sha!==current.sha;
   const navigation=row(adminHomeButton(),...(d.phase==='blocked'?[menuHomeButton()]:[]));
   if(!d.supported){
     const m=payload('バージョン管理','**初回の切り替えが必要です**\nQuaxlyのStartup Commandから一度再導入すると、この画面で更新できるようになります。',{state:'warning',components:[row(new ButtonBuilder().setLabel('導入手順を見る').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord#quaxlyでgithubから導入更新')),navigation]});
     m.embeds[0].addFields({name:'現在のバージョン',value:`v${text(current.version)}`});return m;
   }
   const heading=busy?labels[d.phase]:d.phase==='blocked'?'操作の終了後に再試行できます':d.phase==='failed'?'更新結果を確認してください':available?'新しい更新があります':latest?'確認した最新版で稼働中':'まず更新を確認してください';
-  let body=`**${heading}**`;
+  const spaceWarning=updateCapacityWarning(s);let body=`${spaceWarning?`**空き容量の確認が必要です**\n${spaceWarning}\n\n`:''}**${heading}**`;
   if(d.phase==='blocked')body+='\n読み上げ・VC入室・ゲームなどの進行状況を確認し、終了後に更新を再確認してください。';
   if(d.error)body+=`\n${text(d.error)}`;
   if(s.confirm)body+='\n\n取得・検証後にBotを再接続します。進行中の操作やゲームがあれば更新を見送ります。';
   else if(busy)body+='\n\n更新中はdnd（取り込み中）になります。切り替え後に /admin を開き直すと、稼働版を確認できます。';
   else if(available)body+='\n内容を確認してから更新できます。';
   else if(!latest)body+='\n管理者が操作したときだけ確認・更新します。';
+  if(latest)body+=`\n[変更内容を見る](https://github.com/astraldao/astral_discord/commit/${latest.sha})`;
   if(d.checkedAt!==null)body+=`\n\n最終確認 <t:${Math.floor(d.checkedAt/1000)}:R>`;
+  if(view==='capacity')body+=available?'\n\n取得する容量と、更新のために追加で使う保存容量を分けて表示します。確認時点の目安です。':'\n\n容量の見積もりは、異なる版への更新候補があるときに確認できます。';
+  else if(view==='steps')body+='\n\n**1. 更新を確認**\n取得先の版・変更内容・容量を確認します。\n\n**2. 更新内容を確認 → この版に更新する**\n明示操作で取得・検証・切り替えます。進行中の読み上げ・入室・ゲームがあれば見送ります。\n\n**3. 再接続後に確認**\n更新中はdndになります。再接続後に /admin で稼働版を確認してください。\n旧版も復旧用に保持します。自動更新は行いません。';
   const controls=s.confirm?row(button(s,'start','この版に更新する',ButtonStyle.Primary),button(s,'cancel','変更せず戻る')):busy?row(button(s,'status','進行状況を確認',ButtonStyle.Primary)):row(...(available?[button(s,'confirm','更新内容を確認',ButtonStyle.Primary)]:[]),button(s,'check',latest?'更新を再確認':'更新を確認',available?ButtonStyle.Secondary:ButtonStyle.Primary));
-  const m=payload(s.confirm?'更新内容を確認':'バージョン管理',body,{state:d.phase==='blocked'?'warning':d.phase==='failed'?'error':latest&&!available&&!busy?'success':'normal',components:[controls,...(latest?[row(new ButtonBuilder().setLabel('変更内容を見る').setStyle(ButtonStyle.Link).setURL(`https://github.com/astraldao/astral_discord/commit/${latest.sha}`))]:[]),navigation]});
-  m.embeds[0].addFields({name:'現在のバージョン',value:`**v${text(current.version)}**${current.sha?`\n${current.sha.slice(0,7)}`:''}`,inline:true},{name:'確認した最新版',value:latest?`**v${text(latest.version)}**\n${latest.sha.slice(0,7)}`:'未確認',inline:true},...updateCapacityFields(s));return m;
+  const m=payload(s.confirm?'更新内容を確認':`バージョン管理 / ${versionViews[view]}`,body,{state:d.phase==='failed'?'error':d.phase==='blocked'||spaceWarning?'warning':latest&&!available&&!busy?'success':'normal',components:[
+    row(new StringSelectMenuBuilder().setCustomId(`updates:${s.id}:${s.turn}:view`).setPlaceholder('表示を切り替える').addOptions(Object.entries(versionViews).map(([value,label])=>({value,label,default:value===view})))),controls,navigation]});
+  m.embeds[0].addFields({name:'現在のバージョン',value:`**v${text(current.version)}**${current.sha?`\n${current.sha.slice(0,7)}`:''}`,inline:true},{name:'確認した最新版',value:latest?`**v${text(latest.version)}**\n${latest.sha.slice(0,7)}`:'未確認',inline:true},...(view==='steps'?[]:updateCapacityFields(s,{compact:view!=='capacity'})));return m;
 }
 export function createVersionController({updater,access,beforeStart=async()=>{},estimateCapacity=async()=>null,now=Date.now}){
   const sessions=new AdminSessions(now);
@@ -37,7 +42,8 @@ export function createVersionController({updater,access,beforeStart=async()=>{},
       await ack(i);
       const [,id,turn,action]=i.customId.split(':');s=sessions.get(id,i.user.id);await check(i,s);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
       if(String(s.turn)!==turn)throw new Error('古い画面です。/admin から開き直してください。');await ack(i);
-      if(action==='check'||action==='status'){s.data=await updater.request(action);s.confirm=false;if(action==='check'){await check(i,s);try{s.capacity=await estimateCapacity(s.data);}catch{s.capacity=null;}}}
+      if(action==='view'){if(i.values?.length!==1||!Object.hasOwn(versionViews,i.values[0]))throw new Error('表示を選び直してください。');s.versionView=i.values[0];}
+      else if(action==='check'||action==='status'){s.data=await updater.request(action);s.confirm=false;if(action==='check'){await check(i,s);try{s.capacity=await estimateCapacity(s.data);}catch{s.capacity=null;}}}
       else if(action==='confirm'){
         s.data=await updater.request('status');if(!s.data.latest||s.data.latest.sha===s.data.current.sha||['preparing','switching'].includes(s.data.phase))throw new Error('更新を確認し直してください。');
         s.confirm=true;s.target=s.data.latest.sha;

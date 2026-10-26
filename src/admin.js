@@ -6,7 +6,7 @@ import {themed,text,menuHomeButton,acknowledgePrivate} from './ui.js';
 import {adminCategories,adminDestinations} from './admin-navigation.js';
 import {adminGuideFor,adminGuideDescription} from './feature-guides.js';
 export {adminCategories} from './admin-navigation.js';
-import {securityScreen,securityReport,securityScopes} from './security-ui.js';
+import {securityScreen,securityReport,securityScopes,securityActions,securityFindings} from './security-ui.js';
 import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions,diagnosticTabs} from './diagnostics.js';
 import {jevDiagnosticsScreen,safeJevProbe} from './jev-diagnostics.js';
 import {safeDiceJudgeState} from './beatapi-dice.js';
@@ -192,7 +192,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       const initialAction=interaction.customId?.split(':')[2];
       if(!initialAction?.startsWith('form-')&&initialAction!=='word-edit')await acknowledgePrivate(interaction);
       if(!await access(interaction))throw new Error('管理画面は管理者専用です。');
-      let action,token;
+      let action,token,securitySelected=false;
       const entry=interaction.customId?.match(/^admin:open-(section|feature):([^:]+)$/);
       if(interaction.isChatInputCommand() || interaction.customId==='admin:open' || entry) {
         if(!interaction.deferred&&!interaction.replied){if(interaction.message?.flags?.has(MessageFlags.Ephemeral))await interaction.deferUpdate();else await interaction.deferReply({flags:MessageFlags.Ephemeral});}
@@ -205,6 +205,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       }else{
         const parts=interaction.customId.split(':');action=parts[2];token=parts[3];s=sessions.get(parts[1],interaction.user.id);if(s.originChannelId && s.originChannelId!==interaction.channelId)throw new Error('元のチャンネルから操作してください。');
       }
+      if(action==='security-action'){if(s.view!=='security'||!Number.isSafeInteger(s.securityUiRevision)||token!==String(s.securityUiRevision))throw new Error('最新の診断画面から選び直してください。');action=selectedAction(interaction.values,securityActions(s));securitySelected=!!action;if(!action)throw new Error('この診断画面の選択欄から選び直してください。');}
       if(action==='diagnostics-action'){action=selectedAction(interaction.values,diagnosticActions(s));if(!action)throw new Error('この画面の操作一覧から選び直してください。');}
       if(action==='destination'){const category=adminCategories.find(c=>s.view===`category-${c.id}`),choices=category?category.actions.map(([action])=>action):s.view==='home'?[...adminDestinations.map(d=>d.action),'nav-guides']:[];if(interaction.values?.length!==1||!choices.includes(interaction.values[0]))throw new Error('一覧から管理操作を選び直してください。');action=interaction.values[0];}
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
@@ -234,16 +235,22 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         if(interaction.values?.length!==1||!adminCategories.some(c=>c.id===interaction.values[0]))throw new Error('カテゴリを選び直してください。');
         s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=`category-${interaction.values[0]}`;s.page=0;
       }else if(action==='home' || action.startsWith('nav-') || action.startsWith('pick-')) {s.stage=null;delete s.formDraft;delete s.wordEditSurface;delete s.wordModal;s.view=action==='home'?'home':action.startsWith('nav-')?action.slice(4):action;s.page=0;}
-      else if(action==='open-security'){s.stage=null;s.view='security';s.page=0;s.security=securityScan?.snapshot()??null;}
+      else if(action==='open-security'){s.stage=null;s.view='security';s.page=0;s.security=securityScan?.snapshot()??null;s.securityView='summary';s.securityDetail=null;}
       else if(action==='security-run'){
         if(s.view!=='security'||!securityScan)throw new Error('脆弱性診断を開き直してください。');sessions.get(s.id,s.userId);
-        const result=await securityScan.run();if(!await access(interaction))throw new Error('管理者権限がありません。');sessions.get(s.id,s.userId);s.security=result;s.page=0;
+        const result=await securityScan.run();if(!await access(interaction))throw new Error('管理者権限がありません。');sessions.get(s.id,s.userId);s.security=result;s.page=0;s.securityView='summary';s.securityDetail=null;
       }
-      else if(action==='security-scope'){if(s.view!=='security'||s.security?.status!=='complete'||interaction.values?.length!==1||!Object.hasOwn(securityScopes,interaction.values[0]))throw new Error('診断結果から対象を選び直してください。');s.securityScope=interaction.values[0];s.page=0;}
+      else if(action==='security-summary'||action==='security-help'||action.startsWith('security-filter-')||action.startsWith('security-finding-')){
+        if(s.view!=='security'||!securitySelected)throw new Error('脆弱性診断から選び直してください。');
+        if(action.startsWith('security-filter-')){const scope=action.slice('security-filter-'.length);if(s.security?.status!=='complete'||!Object.hasOwn(securityScopes,scope))throw new Error('診断結果から対象を選び直してください。');s.securityScope=scope;s.page=0;s.securityDetail=null;s.securityView='summary';}
+        else if(action.startsWith('security-finding-')){const index=action.slice('security-finding-'.length),findings=securityFindings(s);if(s.security?.status!=='complete'||!/^(0|[1-9]\d*)$/u.test(index)||Number(index)<s.page*3||Number(index)>=s.page*3+3||!findings[Number(index)])throw new Error('一覧に表示された勧告を選んでください。');s.securityDetail=findings[Number(index)].id;s.securityDetailPage=0;s.securityView='detail';}
+        else{s.securityView=action==='security-help'?'help':'summary';s.securityDetail=null;}
+      }
+      else if(action==='security-scope'){if(s.view!=='security'||s.security?.status!=='complete'||interaction.values?.length!==1||!Object.hasOwn(securityScopes,interaction.values[0]))throw new Error('診断結果から対象を選び直してください。');s.securityScope=interaction.values[0];s.page=0;s.securityDetail=null;s.securityView='summary';}
       else if(action==='security-export'){if(s.view!=='security')throw new Error('脆弱性診断から保存してください。');securityDownload=securityReport(s.security);}
       else if(action==='security-prev'||action==='security-next'){
-        if(s.view!=='security'||s.security?.status!=='complete')throw new Error('脆弱性診断を開き直してください。');
-        s.page+=action==='security-prev'?-1:1;
+        if(s.view!=='security'||s.security?.status!=='complete'||s.securityView==='help')throw new Error('脆弱性診断を開き直してください。');
+        const key=s.securityDetail?'securityDetailPage':'page';s[key]=(s[key]??0)+(action==='security-prev'?-1:1);
       }
       else if(action==='open-jev'){
         if(s.view!=='diagnostics'||!s.diagnostics||!jevTest)throw new Error('動作診断からJevの接続試験を開いてください。');

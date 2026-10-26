@@ -8,11 +8,17 @@ const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`runtime:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function runtimeEnvScreen(s,store,note=''){
   const state=store.snapshot(),stage=s.stage,d=stage&&runtimeVariables.find(d=>d.key===stage.key);
-  const description=stage?`**${d.label}**\n${d.key}\n次回起動時：${state.effective[d.key]} → ${stage.value??'外部設定・既定値に戻す'}\n\n${d.help}\n\n保存後、「Botを再起動」から再起動すると反映します。`:runtimeVariables.map(d=>`**${d.label}**\n${d.key}\n稼働中 **${state.running[d.key]}** → 次回起動時 **${state.effective[d.key]}**`).join('\n\n')+`\n\n${state.pending?'**保存済みの変更があります。Botを再起動して反映してください。**':'項目を選んで変更できます。'}\n保存値は外部の環境変数より優先します。空欄で保存すると外部設定・既定値へ戻します。\nトークンは表示・編集しません。`;
-  return {...payload(stage?'起動設定の変更を確認':'ENV・起動設定',`${note?`${note}\n\n`:''}${description}`,{state:stage||state.pending?'warning':'normal',components:stage?[row(button(s,'save','変更を保存',ButtonStyle.Primary),button(s,'cancel','変更せず戻る'))]:[
-    row(new StringSelectMenuBuilder().setCustomId(`runtime:${s.id}:${s.turn}:edit`).setPlaceholder('変更する起動設定を選ぶ').addOptions(...runtimeVariables.map(d=>({label:d.label,value:d.key,description:d.key})))),
+  const display=(key,value)=>key==='ASTRAL_BACKUP_TTS'?value==='1'?'ON':'OFF':`${value}スレッド`;
+  const description=stage?`**${d.label}を変更しますか？**\n次回起動時：**${display(d.key,state.effective[d.key])} → ${stage.value===null?'外部設定・既定値に戻す':display(d.key,stage.value)}**\n\n${d.help}\n\n「変更を保存」後にBotを再起動すると反映します。`:state.pending?'**再起動待ちの変更があります**\n保存済みの設定は、Botを再起動すると反映されます。':'**保存済みの変更は反映されています**\n変更する項目を選択欄から選んでください。';
+  const m=payload(stage?'起動設定の変更を確認':'ENV・起動設定',`${note?`${note}\n\n`:''}${description}`,{state:stage||state.pending?'warning':'normal',components:stage?[row(button(s,'save','変更を保存',ButtonStyle.Primary),button(s,'cancel','変更せず戻る'))]:[
+    row(new StringSelectMenuBuilder().setCustomId(`runtime:${s.id}:${s.turn}:edit`).setPlaceholder('変更する起動設定を選ぶ').addOptions(...runtimeVariables.map(d=>({label:d.label,value:d.key,description:d.help.slice(0,100)})))),
     row(button(s,'refresh','状態を更新'),restartButton(),adminSectionButton('operations')),
-  ]}),attachments:[]};
+  ]});
+  if(stage)m.embeds[0].addFields({name:'設定項目',value:d.key});
+  else{
+    m.embeds[0].addFields(...runtimeVariables.map(d=>({name:d.label,value:`稼働中 **${display(d.key,state.running[d.key])}**\n次回起動 **${display(d.key,state.effective[d.key])}**\n${d.key}`,inline:true})),{name:'設定の扱い',value:'保存値は外部の環境変数より優先します。空欄で保存すると外部設定・既定値へ戻します。トークンは表示・編集しません。'});
+  }
+  return {...m,attachments:[]};
 }
 export function createRuntimeEnvController({guild,store,access=async i=>{const [m,c]=await Promise.all([guild.members.fetch({user:i.user.id,force:true}),guild.channels.fetch(i.channelId,{force:true})]);if(!m.permissions.has(P.Administrator)||!c?.permissionsFor(m)?.has(P.ViewChannel))throw new Error('起動設定は管理者専用です。現在の管理者権限と閲覧権限を確認してください。');}}){
   const sessions=new AdminSessions();
