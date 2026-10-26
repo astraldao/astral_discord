@@ -1,0 +1,676 @@
+{
+  "menu": {
+    "embeds": [
+      {
+        "color": 5793266,
+        "title": "✦  メニュー",
+        "description": "**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · このチャンネルの投稿を、参加中のVCで聞く\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n画像工房・読み上げ・ゲーム・個人設定は選択欄から開けます。「使い方」で手順を確認できます。チャットダイスは1D100などを投稿して使えます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/26"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:vc",
+            "label": "VCに入る",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "menu:calendar",
+            "label": "予定表",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "menu:find",
+            "placeholder": "目的・説明から機能を探す",
+            "options": [
+              {
+                "label": "VCに入る",
+                "value": "vc",
+                "description": "ロビーから入室先を選ぶ"
+              },
+              {
+                "label": "読み上げ",
+                "value": "read",
+                "description": "このチャンネルの投稿をVCで聞く"
+              },
+              {
+                "label": "ゲーム",
+                "value": "game",
+                "description": "ゲームを選ぶ・続きを遊ぶ"
+              },
+              {
+                "label": "予定表",
+                "value": "calendar",
+                "description": "このチャンネルの共有予定を見る"
+              },
+              {
+                "label": "画像工房",
+                "value": "workshop",
+                "description": "画像を絵文字・スタンプ・共有用に整形"
+              },
+              {
+                "label": "自分の読み方",
+                "value": "profile",
+                "description": "名前をどう読み上げるか設定する"
+              },
+              {
+                "label": "自分のチップ",
+                "value": "wallet",
+                "description": "残高と利用履歴を確認する"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:help",
+            "label": "使い方",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "admin": {
+    "embeds": [
+      {
+        "color": 7306643,
+        "title": "⚙️  管理メニュー",
+        "description": "**よく使う操作**\n予定表・Botの更新は下のボタンから、再起動などは選択欄から開けます。\n\n**カテゴリを選ぶ**\nカテゴリか設定名を選択欄から選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/26"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:preview:open-schedule",
+            "label": "予定表",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:preview:open-updates",
+            "label": "バージョン管理",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "admin:preview:destination",
+            "placeholder": "設定名・目的から直接開く",
+            "options": [
+              {
+                "label": "予定・卓 / 予定表",
+                "value": "open-schedule",
+                "description": "共有カレンダーの作成・予定の編集"
+              },
+              {
+                "label": "予定・卓 / 卓・キャラシ",
+                "value": "open-trpg",
+                "description": "卓の登録・PCの確認"
+              },
+              {
+                "label": "予定・卓 / 日程調整",
+                "value": "open-densuke",
+                "description": "伝助の作成・回答URLの共有"
+              },
+              {
+                "label": "入室・音声 / VC設定",
+                "value": "nav-vc",
+                "description": "ロビー・行き先・待機時間"
+              },
+              {
+                "label": "入室・音声 / 音声設定",
+                "value": "nav-audio",
+                "description": "参加告知・音量・読み方辞書"
+              },
+              {
+                "label": "入室・音声 / 入室パネル",
+                "value": "nav-panel",
+                "description": "ロビーに入室用のパネルを設置"
+              },
+              {
+                "label": "外観・投稿 / Botのバナー",
+                "value": "open-banner",
+                "description": "画像のアップロード・適用・解除"
+              },
+              {
+                "label": "外観・投稿 / 投稿タグ",
+                "value": "open-forum",
+                "description": "フォーラムのタグを整理"
+              },
+              {
+                "label": "運用・管理 / バージョン管理",
+                "value": "open-updates",
+                "description": "現在版・最新版の確認と手動更新"
+              },
+              {
+                "label": "運用・管理 / 動作診断",
+                "value": "diagnose",
+                "description": "音声ファイルと必要な権限を確認"
+              },
+              {
+                "label": "運用・管理 / 脆弱性診断",
+                "value": "open-security",
+                "description": "依存パッケージの既知の勧告を確認"
+              },
+              {
+                "label": "運用・管理 / チップ管理",
+                "value": "open-chips",
+                "description": "残高の確認・調整・履歴"
+              },
+              {
+                "label": "運用・管理 / 設定を確認",
+                "value": "nav-overview",
+                "description": "設定値・入室先・ダイス返信のON/OFF"
+              },
+              {
+                "label": "運用・管理 / ENV・起動設定",
+                "value": "open-runtime",
+                "description": "読み上げの有効化・合成スレッド数"
+              },
+              {
+                "label": "運用・管理 / Botを再起動",
+                "value": "open-restart",
+                "description": "現在の版で再接続・起動設定を反映"
+              },
+              {
+                "label": "全機能の操作ガイド",
+                "value": "nav-guides",
+                "description": "準備・手順・反映のタイミングから探す"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "admin:preview:category",
+            "placeholder": "カテゴリから絞って探す",
+            "options": [
+              {
+                "label": "予定・卓",
+                "value": "schedule",
+                "description": "予定表、卓とキャラシ、日程調整"
+              },
+              {
+                "label": "入室・音声",
+                "value": "voice",
+                "description": "ロビー、入室先、ずんだもん、入室パネル"
+              },
+              {
+                "label": "外観・投稿",
+                "value": "appearance",
+                "description": "Botのバナー、フォーラムの投稿タグ"
+              },
+              {
+                "label": "運用・管理",
+                "value": "operations",
+                "description": "手動更新、再起動、診断、起動設定"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "diagnostics": {
+    "embeds": [
+      {
+        "color": 7306643,
+        "title": "⚙️  動作診断",
+        "description": "確認 <t:1793000000:R>\n**Bot** v6.12.0 · Node v24.19.0\n**稼働時間** 123分 · **入室予約** 0件\n\n**実行環境**\nCPU上限 **1コア** · CPU並列度 1\nメモリ **270MiB / 589MiB** · x64\n\n**音声告知** ON\nPython実行ファイル · 確認できました\n音声ランタイム · 確認できました\nずんだもんモデル · 未確認・不足\n日本語辞書 · 未確認・不足\n\n**バックアップ読み上げ**\n起動設定 ON · 停止中\n使うときはVCに参加し、読みたいチャンネルで /menu → 読み上げ → 開始。\n\n**チャットダイス** ON · 通常投稿に対応\n\nJev jev-1.14-free · 直前の判定：返信 · 判定値0.91（0.75以上で返信）\n30文字未満の曖昧な候補だけBeatAPIへ送ります。診断を開くだけではAPIを呼びません。「Jevを試す」から実際の接続を確認できます。\n\n**設定済みVC** 16件 · 1/2ページ\nロビー <#111111111111111111> · 必要な権限あり\n入室先 <#111111111111111112> · 不足：発言\n入室先 <#111111111111111113> · 必要な権限あり\n入室先 <#111111111111111114> · 必要な権限あり\n入室先 <#111111111111111115> · 必要な権限あり\n入室先 <#111111111111111116> · 必要な権限あり\n入室先 <#111111111111111117> · 必要な権限あり\n入室先 <#111111111111111118> · 必要な権限あり\n入室先 <#111111111111111119> · 必要な権限あり\n入室先 <#111111111111111120> · 必要な権限あり\n入室先 <#111111111111111121> · 必要な権限あり\n入室先 <#111111111111111122> · 必要な権限あり\n入室先 <#111111111111111123> · 必要な権限あり\n入室先 <#111111111111111124> · 必要な権限あり\n入室先 <#111111111111111125> · 必要な権限あり\n\nファイルの存在と権限の確認結果です。処理速度の測定は下のボタンから実行できます。VCの接続試験は行いません。PythonをPATHから使う構成は未確認と表示されます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/26"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:preview:diagnose",
+            "label": "診断を更新",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:preview:measure-voice",
+            "label": "速度を測る",
+            "style": 1
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "emoji": {
+              "name": "◀️"
+            },
+            "custom_id": "admin:preview:diagnostics-prev",
+            "label": "前のページ",
+            "style": 2,
+            "disabled": true
+          },
+          {
+            "type": 2,
+            "emoji": {
+              "name": "▶️"
+            },
+            "custom_id": "admin:preview:diagnostics-next",
+            "label": "次のページ",
+            "style": 2,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "admin:preview:diagnostics-action",
+            "placeholder": "対処・関連する診断を選ぶ",
+            "min_values": 1,
+            "max_values": 1,
+            "options": [
+              {
+                "label": "Jevを試す",
+                "value": "open-jev",
+                "description": "実際にAPIへ接続・モデルと応答時間を確認"
+              },
+              {
+                "label": "対処の手順",
+                "value": "diagnostics-help",
+                "description": "確認結果から次の操作を探す"
+              },
+              {
+                "label": "脆弱性診断",
+                "value": "open-security",
+                "description": "依存パッケージの診断画面を開く"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:preview:nav-category-operations",
+            "label": "運用・管理へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "reader": {
+    "embeds": [
+      {
+        "color": 4034513,
+        "title": "🔊  バックアップ読み上げ",
+        "description": "**投稿を待っています**\n読む場所 <#111111111111111111>\n聞く場所 <#222222222222222222>\n\n本文50文字を超えると「以下略」を付けます。投稿順に最後まで読み上げます。\n**読み方** そのまま\n**待ち** 3件 / 8件\n**直近の開始待ち** 220ms\n\nVOICEVOX:ずんだもん",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/26"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "read:pause:123456789abc:1",
+            "label": "一時停止",
+            "style": 2,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "read:stop:123456789abc",
+            "label": "読み上げを停止",
+            "style": 4
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "read:mode:123456789abc:1",
+            "placeholder": "読み方を選ぶ",
+            "disabled": false,
+            "options": [
+              {
+                "label": "そのまま",
+                "value": "raw",
+                "description": "本文をそのまま読みます",
+                "default": true
+              },
+              {
+                "label": "チャット向け",
+                "value": "chat",
+                "description": "リンク・コード・伏せ字・絵文字を短く整形",
+                "default": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "read:actions:123456789abc:1",
+            "placeholder": "状態・内訳・待機分の操作",
+            "min_values": 1,
+            "max_values": 1,
+            "options": [
+              {
+                "label": "状態を更新・操作画面へ",
+                "value": "status",
+                "description": "現在の読み上げ状態を取得する"
+              },
+              {
+                "label": "処理状況・内訳",
+                "value": "details",
+                "description": "開始待ちと累計・読み飛ばしを確認する"
+              },
+              {
+                "label": "待機分を消去…",
+                "value": "clear",
+                "description": "現在の音声を残して、次の画面で確認する"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "label": "設定・困ったとき",
+            "style": 5,
+            "url": "https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md"
+          },
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "games": {
+    "embeds": [
+      {
+        "color": 9933280,
+        "title": "🎲  ゲームを選ぶ",
+        "description": "**残高 3,000 チップ**\n\n**ブラックジャック · プレイ中**\n続きから遊ぶか、ゲームを選んでください。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/26"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "game:select",
+            "placeholder": "ゲームを選ぶ",
+            "options": [
+              {
+                "label": "ブラックジャック",
+                "value": "blackjack",
+                "description": "10枚〜 · ディーラーと21点を目指す",
+                "emoji": {
+                  "name": "♠️",
+                  "animated": false
+                }
+              },
+              {
+                "label": "スロット",
+                "value": "slots",
+                "description": "10枚〜 · 3つの絵柄を揃える",
+                "emoji": {
+                  "name": "🎰",
+                  "animated": false
+                }
+              },
+              {
+                "label": "ルーレット",
+                "value": "roulette",
+                "description": "10枚〜 · 色・奇偶・数字の範囲を予想",
+                "emoji": {
+                  "name": "🔴",
+                  "animated": false
+                }
+              },
+              {
+                "label": "ダイス",
+                "value": "dice",
+                "description": "10枚〜 · 合計を予想（チャットダイスとは別）",
+                "emoji": {
+                  "name": "🎲",
+                  "animated": false
+                }
+              },
+              {
+                "label": "ハイ＆ロー",
+                "value": "highlow",
+                "description": "10枚〜 · 次のカードの大小を予想",
+                "emoji": {
+                  "name": "🃏",
+                  "animated": false
+                }
+              },
+              {
+                "label": "どうぶつレース",
+                "value": "race",
+                "description": "10枚〜 · 4匹の中から1着を予想",
+                "emoji": {
+                  "name": "🏁",
+                  "animated": false
+                }
+              },
+              {
+                "label": "バカラ",
+                "value": "baccarat",
+                "description": "10枚〜 · 2つの手札の勝敗を予想",
+                "emoji": {
+                  "name": "♦️",
+                  "animated": false
+                }
+              },
+              {
+                "label": "じゃんけん",
+                "value": "rps",
+                "description": "無料 · Botと3回勝負",
+                "emoji": {
+                  "name": "✊",
+                  "animated": false
+                }
+              },
+              {
+                "label": "ニワトリを捕まえる",
+                "value": "work",
+                "description": "無料 · 仲間の順番を覚える",
+                "emoji": {
+                  "name": "🐔",
+                  "animated": false
+                }
+              },
+              {
+                "label": "4目並べ",
+                "value": "four",
+                "description": "無料 · Botと4つのコマを並べる",
+                "emoji": {
+                  "name": "🟡",
+                  "animated": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "bj:preview:0:resume",
+            "label": "続きから遊ぶ",
+            "style": 1
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "game:account",
+            "placeholder": "チップの残高・譲渡",
+            "options": [
+              {
+                "label": "自分のチップ",
+                "value": "wallet",
+                "description": "残高と履歴を確認する"
+              },
+              {
+                "label": "チップを渡す",
+                "value": "transfer",
+                "description": "相手と枚数を確認する"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "wallet": {
+    "embeds": [
+      {
+        "color": 9933280,
+        "title": "🪙  自分のチップ",
+        "description": "**残高 3,010 チップ**\n\n**増減の内訳**\nゲーム収支 -100\nお手伝い +25\n受取 +40 · 譲渡 −10\n管理者追加 +100 · 減額 −50\nその他 +5\n\n開始時点 3,000枚 · 10/26 16:33以降の記録",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/26"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "wallet:preview:0:history",
+            "label": "チップの履歴",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "wallet:preview:0:stats",
+            "label": "ゲームの記録",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "wallet:preview:0:refresh",
+            "label": "最新の残高に更新",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "chips:open",
+            "label": "チップを渡す",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "game:open",
+            "label": "ゲーム選択へ",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  }
+}

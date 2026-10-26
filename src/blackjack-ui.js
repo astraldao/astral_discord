@@ -20,7 +20,9 @@ export function gameLobby(s,balance,lastCasino){
   const returns=[];if(s)returns.push(button(s,'resume',ongoing?'続きから遊ぶ':ready?'準備画面に戻る':'前の結果を見る',ButtonStyle.Primary));if(lastCasino)returns.push(new ButtonBuilder().setCustomId(`casino:${lastCasino.id}:${lastCasino.turn}:resume`).setLabel(`${casinoNames[lastCasino.kind]}に戻る`).setStyle(ButtonStyle.Secondary));if(returns.length)components.push(row(...returns));
   if(balance!==undefined)components.push(row(new StringSelectMenuBuilder().setCustomId('game:account').setPlaceholder('チップの残高・譲渡').addOptions({value:'wallet',label:'自分のチップ',description:'残高と履歴を確認する'},{value:'transfer',label:'チップを渡す',description:'相手と枚数を確認する'})));
   components.push(row(menuHomeButton()));
-  return payload('✦  ゲームを選ぶ',(balance===undefined?'':`**残高 ${balance.toLocaleString('ja-JP')} チップ**\n\n`)+(s?`**ブラックジャック · ${ongoing?'プレイ中':ready?'準備中':'ラウンド終了'}**\n${ongoing?'続きから遊ぶか、ゲームを選んでください。':ready?'掛けチップを選んで始めるか、ゲームを選んでください。':'結果を確認するか、ゲームを選んでください。'}`:`${balance!==undefined&&balance<10?'チップが少ないときも、無料ゲームで遊べます。':'下のメニューから遊ぶゲームを選んでください。'}\n\n**チップで遊ぶ（10枚〜）** · カード、スロット、ルーレットなど7種類\n**無料で遊ぶ** · じゃんけん、記憶ゲーム、4目並べ`),{components,icon:'🎲'});
+  const status=s?`\n\n**ブラックジャック · ${ongoing?'プレイ中':ready?'準備中':'ラウンド終了'}**\n${ongoing?'「続きから遊ぶ」で再開できます。':ready?'掛け枚数は準備画面で選べます。':'前の結果を確認できます。'}`:'';
+  const m=payload('ゲームを選ぶ',`${balance===undefined?'':`**残高 ${balance.toLocaleString('ja-JP')} チップ**\n`}${balance!==undefined&&balance<10?'チップが少ないときも、無料ゲームで遊べます。':'ゲームを選ぶだけではチップを使いません。'}${status}`,{components,icon:'🎲'});
+  m.embeds[0].addFields({name:'無料で遊ぶ',value:'じゃんけん・記憶ゲーム・4目並べ',inline:true},{name:'チップで遊ぶ（10枚〜）',value:'カード・スロット・ルーレットなど7種類',inline:true});return m;
 }
 const results={blackjack:'ブラックジャック！あなたの勝ち',win:'あなたの勝ち',lose:'ディーラーの勝ち',push:'引き分け',bust:'21を超えました · ディーラーの勝ち','dealer-bust':'ディーラーが21を超えました · あなたの勝ち',stopped:'ゲームを終了しました'};
 const stats=s=>s.stats??{win:0,lose:0,draw:0};

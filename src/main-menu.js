@@ -8,7 +8,7 @@ class MenuUiError extends Error{}
 export function mainMenuScreen({admin=false,recent=[],capabilities}={}){
   const items=[...new Set(recent.filter(destination))].slice(0,3),state=menuCapabilities(capabilities);
   const diceHint=state.diceEnabled===false?'チャットダイスは現在OFFです。':state.diceFullContent===false?'チャットダイスは @Bot 1D100 のようにメンションして使えます。':'チャットダイスは1D100などを投稿して使えます。';
-  return {...payload('メニュー',`**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · ${state.readingEnabled===false?'現在は未有効 · 使い方で手順を確認':'このチャンネルの投稿を、参加中のVCで聞く'}\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n画像工房・読み上げ・ゲーム・個人設定は選択欄から開けます。「使い方」で手順を確認できます。${diceHint}`,{components:[
+  return {...payload('メニュー',`**やりたいことを選んでください**\nVC入室・予定表はボタンから、読み上げ・ゲーム・画像工房などは選択欄から開けます。\n\n${state.readingEnabled===false?'読み上げは現在未有効です。「使い方」で設定手順を確認できます。\n':''}${diceHint}`,{components:[
     row(button('vc','VCに入る',ButtonStyle.Primary),button('calendar','予定表')),
     row(new StringSelectMenuBuilder().setCustomId('menu:find').setPlaceholder('目的・説明から機能を探す').addOptions(...Object.entries(destinations).map(([value,d])=>({value,label:d.label,description:d.summary})))),
     ...(items.length?[row(new StringSelectMenuBuilder().setCustomId('menu:recent').setPlaceholder('最近使った機能を開く').addOptions(...items.map(value=>({value,label:destinations[value].label,description:destinations[value].summary}))))]:[]),

@@ -32,24 +32,34 @@ export function createDiagnostics({settings,guild,version,pendingCount,component
     return {checkedAt:Date.now(),version,node:process.version,uptime:Math.floor(process.uptime()/60),pending:pendingCount(),...(dice?{dice:{enabled:dice.enabled===true,fullContent:dice.fullContent===true,...(judge?{judge}:{})}}:{}),voiceEnabled:c.voice,voice,channels,capacity:spec,backup:{enabled:backup.enabled===true,active:backup.active===true,...(lastFailure?{lastFailure}:{})}};
   };
 }
+export const diagnosticTabs={overview:'概要',audio:'音声・読み上げ',dice:'ダイス・Jev',channels:'VC・権限',capacity:'実行環境'};
+const voiceLabels={python:'Python実行ファイル',runtime:'音声ランタイム',model:'ずんだもんモデル',dictionary:'日本語辞書'};
 export function diagnosticActions(s){
-  if(s.view==='diagnostics')return [{value:'open-jev',label:'Jevを試す',description:'実際にAPIへ接続・モデルと応答時間を確認'},{value:'diagnostics-help',label:'対処の手順',description:'確認結果から次の操作を探す'},{value:'open-security',label:'脆弱性診断',description:'依存パッケージの診断画面を開く'}];
+  if(s.view==='diagnostics')return [...Object.entries(diagnosticTabs).map(([tab,label])=>({value:`diagnostics-tab-${tab}`,label,description:tab==='overview'?'確認したい項目と全体の状態':`${label}の詳細を見る`,default:tab===(s.diagnosticTab??'overview')})),{value:'open-jev',label:'Jevを試す',description:'実際にAPIへ接続・モデルと応答時間を確認'},{value:'diagnostics-help',label:'対処の手順',description:'確認結果から次の操作を探す'},{value:'open-security',label:'脆弱性診断',description:'依存パッケージの診断画面を開く'}];
   if(s.view==='diagnostics-help')return [{value:'nav-vc',label:'VC設定',description:'ロビーと行き先を確認する'},{value:'nav-audio',label:'音声設定',description:'参加告知・音量・導入手順'},{value:'open-runtime',label:'ENV・起動設定',description:'読み上げの有効化・スレッド数'}];
   return [];
 }
 export function diagnosticsScreen(s){
   const d=s.diagnostics;if(!d)throw new Error('診断を開き直してください。');
-  const pages=Math.max(1,Math.ceil(d.channels.length/15));s.page=Math.max(0,Math.min(s.page,pages-1));
-  const badge=x=>x?'確認できました':'未確認・不足';
-  const backup=d.backup?`\n\n**バックアップ読み上げ**\n起動設定 ${d.backup.enabled?'ON':'OFF'} · ${d.backup.active?'使用中':'停止中'}\n${d.backup.enabled?'使うときはVCに参加し、読みたいチャンネルで /menu → 読み上げ → 開始。':'有効化の手順は「音声設定」から確認できます。'}`:'';
-  const dice=d.dice?`\n\n**チャットダイス** ${d.dice.enabled?'ON':'OFF'} · ${d.dice.fullContent?'通常投稿に対応':'Botメンション付き投稿に対応'}\n${!d.dice.fullContent?'通常投稿への対応には、PortalでMessage Content Intentを有効化後にBotを再起動します。':''}${d.dice.judge?`\n${diceJudgeSummary(d.dice.judge)}`:''}`:'';
-  const body=`${d.checkedAt?`確認 <t:${Math.floor(d.checkedAt/1000)}:R>\n`:''}**Bot** v${d.version} · Node ${d.node}\n**稼働時間** ${d.uptime}分 · **入室予約** ${d.pending}件\n\n${d.capacity?`**実行環境**\n${capacitySummary(d.capacity)}\n\n`:''}**音声告知** ${d.voiceEnabled?'ON':'OFF'}\nPython実行ファイル · ${badge(d.voice.python)}\n音声ランタイム · ${badge(d.voice.runtime)}\nずんだもんモデル · ${badge(d.voice.model)}\n日本語辞書 · ${badge(d.voice.dictionary)}${backup}${dice}${d.backup?.lastFailure?`\n\n**読み上げの直前の停止**\n${backupFailureSummary(d.backup.lastFailure)}`:''}\n\n**設定済みVC** ${d.channels.length}件 · ${s.page+1}/${pages}ページ\n${d.channels.slice(s.page*15,s.page*15+15).map(c=>`${c.lobby?'ロビー':'入室先'} <#${c.id}> · ${c.status}`).join('\n')||'未設定'}\n\nファイルの存在と権限の確認結果です。処理速度の測定は下のボタンから実行できます。VCの接続試験は行いません。PythonをPATHから使う構成は未確認と表示されます。`;
-  const button=(a,label)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${a}`).setLabel(label).setStyle(ButtonStyle.Secondary);
-  return payload('✦  動作診断',body,{components:[
-    new ActionRowBuilder().addComponents(button('diagnose','診断を更新'),button('measure-voice','速度を測る').setStyle(ButtonStyle.Primary)),
-    ...(pages>1?[new ActionRowBuilder().addComponents(button('diagnostics-prev','前のページ').setDisabled(s.page===0),button('diagnostics-next','次のページ').setDisabled(s.page===pages-1))]:[]),
-    actionPicker(`admin:${s.id}:diagnostics-action`,diagnosticActions({...s,view:'diagnostics'}),'対処・関連する診断を選ぶ'),
-    new ActionRowBuilder().addComponents(button('nav-category-operations','運用・管理へ')),
+  const tab=Object.hasOwn(diagnosticTabs,s.diagnosticTab)?s.diagnosticTab:'overview',missing=Object.keys(voiceLabels).filter(key=>!d.voice[key]),channels=d.channels.filter(c=>c.status!=='必要な権限あり'),judge=safeDiceJudgeState(d.dice?.judge);
+  const issues=[...(!d.channels.length?['VCが未設定です']:channels.length?[`VC・権限 ${channels.length}件を確認してください`]:[]),...(missing.length&&(d.voiceEnabled||d.backup?.enabled)?[`音声の構成要素 ${missing.length}項目が未確認です`]:[]),...(d.backup?.lastFailure?['読み上げの直前の停止理由を確認できます']:[]),...(['configuration-error','no-credits','http-error','invalid-response','timeout'].includes(judge?.last)?['Jevの直前の状態を確認してください']:[])];
+  const pages=tab==='channels'?Math.max(1,Math.ceil(d.channels.length/5)):1;s.page=Math.max(0,Math.min(s.page??0,pages-1));
+  let body=`${d.checkedAt?`確認 <t:${Math.floor(d.checkedAt/1000)}:R> · `:''}Bot v${d.version}\n\n`,state='normal';
+  if(tab==='overview'){
+    state=issues.length?'warning':'normal';body+=`**${issues.length?`確認したい項目 ${issues.length}件`:'確認した範囲に不足はありません'}**\n${issues.map(x=>`• ${x}`).join('\n')||'ファイルと権限の確認結果です。接続・再生は利用時に確認してください。'}\n\n**音声告知** ${d.voiceEnabled?'ON':'OFF'} · 構成要素 ${4-missing.length}/4確認\n${d.backup?`**読み上げ** 起動設定 ${d.backup.enabled?'ON':'OFF'} · ${d.backup.active?'使用中':'停止中'}\n`:''}${d.dice?`**ダイス** ${d.dice.enabled?'ON':'OFF'} · ${d.dice.fullContent?'通常投稿に対応':'Botメンション付き投稿に対応'}\n`:''}${judge?`**Jev** ${!judge.configured?'未有効':judge.lastModel?`直前 ${judge.lastModel}`:`${judge.model} · 接続未確認`}\n`:''}**VC** ${d.channels.length}件 · 権限確認 ${d.channels.length-channels.length}件\n\n${d.capacity?`${capacitySummary(d.capacity)}\n\n`:''}詳しい結果は選択欄で切り替えられます。`;
+  }else if(tab==='audio'){
+    body+=`**音声告知** ${d.voiceEnabled?'ON':'OFF'}\n${Object.entries(voiceLabels).map(([key,label])=>`${d.voice[key]?'✓':'?'} ${label} · ${d.voice[key]?'確認済み':'未確認・不足'}`).join('\n')}\n\n${d.backup?`**バックアップ読み上げ**\n起動設定 ${d.backup.enabled?'ON':'OFF'} · ${d.backup.active?'使用中':'停止中'}\n${d.backup.enabled?'VCに参加し、読みたいチャンネルで /menu → 読み上げ → 開始。':'有効化は音声設定の手順から確認できます。'}\n\n`:''}${d.backup?.lastFailure?`**直前の停止**\n${backupFailureSummary(d.backup.lastFailure)}\n\n`:''}ファイルの存在の確認結果です。PythonをPATHから使う場合は未確認と表示されます。合成・変換の処理速度は「速度を測る」から確認できます。VC接続・再生試験は含みません。`;state=d.backup?.lastFailure?'warning':'normal';
+  }else if(tab==='dice'){
+    body+=d.dice?`**チャットダイス** ${d.dice.enabled?'ON':'OFF'}\n${d.dice.fullContent?'通常投稿に対応しています。':'Botメンション付き投稿に対応。通常投稿を使うにはPortalでMessage Content Intentを有効にして再起動します。'}\n\n${judge?diceJudgeSummary(judge):'Jevの状態は未確認です。'}\n\n接続試験は選択欄の「Jevを試す」から開けます。`:'ダイスの状態は未確認です。';
+  }else if(tab==='channels'){
+    body+=`**設定済みVC ${d.channels.length}件** · ${s.page+1}/${pages}ページ\n必要な権限あり ${d.channels.length-channels.length}件 · 要確認 ${channels.length}件\n\n${d.channels.slice(s.page*5,s.page*5+5).map(c=>`**${c.lobby?'ロビー':'入室先'}** <#${c.id}>\n${c.status}`).join('\n\n')||'VC設定でロビーと入室先を登録してください。'}\n\n設定済みVCの権限を確認しています。VCへの接続試験は行いません。`;
+  }else body+=`**実行環境**\n${capacitySummary(d.capacity)}\n\n**Node** ${d.node}\n**稼働時間** ${d.uptime}分\n**入室予約** ${d.pending}件\n\n値は診断した時点の内容です。速度の実測は「速度を測る」から確認できます。`;
+  const b=(action,label)=>new ButtonBuilder().setCustomId(`admin:${s.id}:${action}`).setLabel(label).setStyle(ButtonStyle.Secondary);
+  return payload(`動作診断 / ${diagnosticTabs[tab]}`,body,{state,components:[
+    actionPicker(`admin:${s.id}:diagnostics-action`,diagnosticActions({...s,view:'diagnostics',diagnosticTab:tab}),'表示・対処を選ぶ'),
+    ...(pages>1?[new ActionRowBuilder().addComponents(b('diagnostics-prev','前のページ').setDisabled(s.page===0),b('diagnostics-next','次のページ').setDisabled(s.page===pages-1))]:[]),
+    new ActionRowBuilder().addComponents(b('diagnose','診断を更新').setStyle(tab==='audio'?ButtonStyle.Secondary:ButtonStyle.Primary),b('measure-voice','速度を測る').setStyle(tab==='audio'?ButtonStyle.Primary:ButtonStyle.Secondary)),
+    new ActionRowBuilder().addComponents(b('nav-category-operations','運用・管理へ')),
   ]});
 }
 

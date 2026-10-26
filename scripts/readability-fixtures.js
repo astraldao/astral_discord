@@ -1,0 +1,7 @@
+export function readabilityFixtures(){
+  const config={lobbyId:'111111111111111111',targetIds:['222222222222222222'],seconds:5,volume:30,voice:true,enforce:true,words:[]};
+  const diagnostics={checkedAt:1793000000000,version:'6.12.0',node:'v24.19.0',uptime:123,pending:0,voiceEnabled:true,voice:{python:true,runtime:true,model:false,dictionary:false},channels:Array.from({length:16},(_,i)=>({id:String(111111111111111111n+BigInt(i)),lobby:i===0,status:i===1?'不足：発言':'必要な権限あり'})),capacity:{cpuLimitCores:1,logicalCores:1,memoryUsedBytes:270*1048576,memoryLimitBytes:589*1048576,arch:'x64'},backup:{enabled:true,active:false},dice:{enabled:true,fullContent:true,judge:{configured:true,model:'jev-1.14-free',lastModel:'jev-1.14-free',last:'allow',lastScore:.91}}};
+  const reader={id:'123456789abc',ready:true,paused:false,phase:'waiting',textId:'111111111111111111',voiceId:'222222222222222222',queue:Array(3).fill({}),controlRevision:1,metrics:{started:8,lastParts:null,lastMs:220,overBudget:2,dropped:0,cleared:0}};
+  const account={balance:3010,ledger:{opening:3000,started:1793000000000,totals:{paid:250,wagered:350,work:25,received:40,sent:10,added:100,removed:50,other:5},games:{},history:[]}},wallet={account:()=>account,now:()=>1793000000000};
+  return {config,diagnostics,reader,wallet,game:{id:'preview',turn:0,game:{phase:'playing'}},walletSession:{id:'preview',turn:0,userId:'111111111111111111',scope:'self',view:'summary'}};
+}

@@ -41,7 +41,7 @@ test('backup diagnostics reports only enabled/active flags and keeps the voice a
 
 test('diagnostics includes only whitelisted stop details and exposes the measured-speed entry',async()=>{
   const diagnose=createDiagnostics({settings:{get:()=>({lobbyId:null,targetIds:[],voice:true})},guild:{channels:{fetch:async()=>{},cache:new Map()},members:{fetchMe:async()=>({})}},version:'3.36.0',pendingCount:()=>0,components:async()=>({}),capacity:async()=>({cpuLimitCores:.25,logicalCores:8,memoryUsedBytes:100,memoryLimitBytes:1000,arch:'x64'}),backupState:()=>({enabled:true,active:false,lastFailure:{code:'SYNTHESIS_TIMEOUT',message:'PRIVATE_TEXT',info:{stage:'synthesis',parts:1,activePart:1,threads:1,text:'PRIVATE_TEXT',token:'SECRET'}}})});
-  const d=await diagnose(),p=diagnosticsScreen({id:'s',page:0,diagnostics:d}),out=JSON.stringify(p);assert.equal(d.backup.lastFailure.info.parts,1);assert.match(out,/0.25コア/);assert.match(out,/2片目/);assert.ok(out.includes('measure-voice'));assert.ok(!out.includes('PRIVATE_TEXT'));assert.ok(!out.includes('SECRET'));
+  const d=await diagnose(),p=diagnosticsScreen({id:'s',page:0,diagnostics:d}),out=JSON.stringify(p);assert.equal(d.backup.lastFailure.info.parts,1);assert.match(out,/0.25コア/);assert.match(JSON.stringify(diagnosticsScreen({id:'s',page:0,diagnosticTab:'audio',diagnostics:d})),/2片目/);assert.ok(out.includes('measure-voice'));assert.ok(!out.includes('PRIVATE_TEXT'));assert.ok(!out.includes('SECRET'));
 });
 
 test('dice availability reports finite flags and does not copy raw state into diagnostics',async()=>{

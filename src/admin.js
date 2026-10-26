@@ -7,7 +7,7 @@ import {adminCategories,adminDestinations} from './admin-navigation.js';
 import {adminGuideFor,adminGuideDescription} from './feature-guides.js';
 export {adminCategories} from './admin-navigation.js';
 import {securityScreen,securityReport,securityScopes} from './security-ui.js';
-import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions} from './diagnostics.js';
+import {diagnosticsScreen,diagnosticsHelpScreen,diagnosticActions,diagnosticTabs} from './diagnostics.js';
 import {jevDiagnosticsScreen,safeJevProbe} from './jev-diagnostics.js';
 import {safeDiceJudgeState} from './beatapi-dice.js';
 import {validateSettings} from './settings.js';
@@ -96,7 +96,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
   } else if(s.view==='home') {
     const missing=[...(!c.lobbyId?['ロビーVC']:[]),...(!c.targetIds.length?['入室先VC']:[])];
     description=missing.length?`**初期設定が必要です**\n${missing.join('・')}を「VC設定」から登録してください。`:'**よく使う操作**\n予定表・Botの更新は下のボタンから、再起動などは選択欄から開けます。';
-    description+='\n\n**カテゴリを選ぶ**\nカテゴリか設定名を選択欄から選んでください。\n設定名が分かる場合は /admin の「操作」から直接開けます。';
+    description+='\n\n設定名から直接開くか、カテゴリで絞り込めます。\n手順は「全機能の操作ガイド」で確認できます。';
     components=[
       row(button(s,missing.length?'nav-vc':'open-schedule',missing.length?'VC設定をはじめる':'予定表',ButtonStyle.Primary),button(s,'open-updates','バージョン管理')),
       row(new StringSelectMenuBuilder().setCustomId(`admin:${s.id}:destination`).setPlaceholder('設定名・目的から直接開く').addOptions(...adminDestinations.map(d=>({label:`${d.categoryLabel} / ${d.label}`,description:d.description,value:d.action})),{label:'全機能の操作ガイド',description:'準備・手順・反映のタイミングから探す',value:'nav-guides'})),
@@ -115,7 +115,7 @@ export function adminScreen(s,c,channelName=id=>id,note='') {
     title='✦  VC設定';description=summary(c)+'\n\nロビーは待機するVC、入室先はメンバーが選べるVCです。';
     components=[row(button(s,'pick-lobby','ロビーVCを設定',ButtonStyle.Primary),button(s,'pick-add','入室先を追加'),button(s,'pick-remove','入室先を削除').setDisabled(!c.targetIds.length)),row(button(s,'form-seconds','待機時間を変更'),button(s,'toggle-enforce',c.enforce?'直接入室を許可':'直接入室をロビーへ戻す')),back()];
   } else if(s.view==='audio') {
-    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n\n読み方辞書では、入室告知の名前や英単語の読みを指定できます。\n\n**バックアップ読み上げ**\nVCに参加し、読みたいチャンネルで /menu → 読み上げ → 開始。状態確認は /menu → 読み上げ、停止は /menu の「操作」で「読み上げを停止」。\n参加告知のON/OFFとは独立し、音量は共通です。有効化の状況は「動作診断」で確認できます。`;
+    title='✦  音声設定';description=`**音声** ずんだもん\n**参加告知** ${c.voice?'ON':'OFF'} · **音量** ${c.volume}%\n**読み方辞書** ${c.words.length}件\n入室告知の名前・英単語の読みを登録できます。\n\n**バックアップ読み上げ**\nVCに参加し、読みたいチャンネルで /menu → 読み上げ。\n参加告知とは別に開始・停止でき、音量は共通です。\n有効化の確認は「動作診断」、手順は下のリンクへ。`;
     components=[row(button(s,'toggle-voice',c.voice?'音声告知をOFF':'音声告知をON',ButtonStyle.Primary),button(s,'form-volume','音量を変更'),button(s,'nav-words','読み方辞書')),row(new ButtonBuilder().setLabel('読み上げの設定手順').setStyle(ButtonStyle.Link).setURL('https://github.com/astraldao/astral_discord/blob/main/docs/BACKUP_VOICE.md')),back()];
   } else if(s.view==='words') {
     title='✦  読み方辞書';
@@ -226,7 +226,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(action==='form-new-word'){delete s.formDraft;delete s.wordEditSurface;await interaction.showModal(adminModal(s,'word',settings.get()));return;}
       if(action.startsWith('form-')) {await interaction.showModal(adminModal(s,action.slice(5),settings.get()));return;}
       if(!interaction.deferred&&!interaction.replied){if(interaction.isModalSubmit() && !interaction.message)await interaction.deferReply({flags:MessageFlags.Ephemeral});else await interaction.deferUpdate();}
-      if(!await access(interaction))throw new Error('管理者権限がありません。');
+      if(!await access(interaction))throw new Error('管理者権限がありません。');sessions.get(s.id,s.userId);
       let note='',securityDownload;
       if(action==='guide-topic'){
         if(s.view!=='guides'||interaction.values?.length!==1||!adminGuideFor(interaction.values[0]))throw new Error('操作ガイドの一覧から選び直してください。');s.guideTopic=interaction.values[0];
@@ -256,6 +256,12 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
         const result=await jevTest.probe({beforeRequest});
         if(!await beforeRequest())throw new Error('画面の期限または管理者権限が変わりました。/admin から開き直してください。');
         s.jevResult=safeJevProbe(result);s.jevConfig=safeDiceJudgeState(jevTest.snapshot());if(s.diagnostics?.dice)s.diagnostics.dice.judge=s.jevConfig;
+      }
+      else if(action.startsWith('diagnostics-tab-')){
+        const tab=action.slice('diagnostics-tab-'.length);if(s.view!=='diagnostics'||!s.diagnostics||!Object.hasOwn(diagnosticTabs,tab))throw new Error('動作診断の選択欄から表示を選んでください。');s.diagnosticTab=tab;s.page=0;
+      }
+      else if(action==='diagnostics-prev'||action==='diagnostics-next'){
+        if(s.view!=='diagnostics'||s.diagnosticTab!=='channels'||!s.diagnostics)throw new Error('VC・権限の一覧から操作してください。');s.page+=action==='diagnostics-prev'?-1:1;
       }
       else if(action==='diagnostics-help'){if(s.view!=='diagnostics'||!s.diagnostics)throw new Error('動作診断から対処の手順を開いてください。');s.view='diagnostics-help';}
       else if(action==='diagnose'){if(!diagnose)throw new Error('診断を利用できません。');const result=await diagnose();sessions.get(s.id,s.userId);if(!await access(interaction))throw new Error('管理者権限がありません。');s.diagnostics=result;s.view='diagnostics';s.page=0;}
