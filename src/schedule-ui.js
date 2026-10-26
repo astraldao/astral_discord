@@ -79,12 +79,13 @@ export function scheduleScreen(s,store,note=''){
     }else if(s.view==='event'){
       if(!e)throw new ScheduleError('予定が削除されています。一覧から開き直してください。');
       const selected=selectedScheduleEvents(c,s),index=selected.findIndex(v=>v.id===e.id),stage=s.colorStage;if(!stage||stage.calendarId!==c.id||stage.eventId!==e.id||stage.revision!==e.revision||stage.turn!==s.turn)s.colorStage={calendarId:c.id,eventId:e.id,revision:e.revision,turn:s.turn};
-      m=payload(`📅  ${safe(e.title)}`,`${intro}**${dateLabel(e)} · ${e.date.slice(0,4)}年**\n**${eventTime(e)}** · 日本時間${e.color?`\n${scheduleColors[e.color].emoji} ${scheduleColors[e.color].label}`:''}${e.place?`\n\n場所 ${safe(e.place)}`:''}${e.description?`\n\n${safe(e.description)}`:''}\n\n${index>=0?`表示範囲の ${index+1}/${selected.length}件目`:'この予定は現在の一覧の表示条件外です。'}`,{components:[
+      m=payload(`📅  ${safe(e.title)}`,`${intro}**${dateLabel(e)} · ${e.date.slice(0,4)}年**\n**${eventTime(e)}** · 日本時間${e.color?`\n${scheduleColors[e.color].emoji} ${scheduleColors[e.color].label}`:''}\n\n${index>=0?`表示範囲の ${index+1}/${selected.length}件目`:'この予定は現在の一覧の表示条件外です。'}`,{components:[
         row(...(admin?[button(s,'edit-event','予定を編集',ButtonStyle.Primary)]:[]),button(s,'list','一覧へ戻る')),
         row(button(s,'event-prev','前の予定').setDisabled(index<=0),button(s,'event-next','次の予定').setDisabled(index<0||index===selected.length-1)),
         actionPicker(`schedule:${s.id}:${s.turn}:actions`,scheduleActions(s,c),'予定の操作を選ぶ'),
         ...(admin?[row(new StringSelectMenuBuilder().setCustomId(`schedule:${s.id}:${s.turn}:event-color`).setPlaceholder('予定の色を選ぶ').addOptions({label:'自動（予定名で決まる）',value:'auto',default:!e.color},...Object.entries(scheduleColors).map(([value,color])=>({label:color.label,emoji:color.emoji,value,default:value===e.color}))))]:[]),
       ]});
+      m.embeds[0].addFields({name:'場所',value:e.place?safe(e.place):'未指定',inline:true},{name:'予定表',value:safe(c.title),inline:true},...(e.description?[{name:'説明',value:safe(e.description)}]:[]));
     }else if(s.view==='days'){
       const picker=s.dayPicker,p=pickerDays(s,c);
       m=payload('📅  日付から予定を探す',`${intro}**${safe(c.title)} · ${monthName(picker.month)}**\n${picker.onlyHidden?'月画像で予定を省略した日だけを表示しています。日付を選ぶと、その日の予定を文字で全件確認できます。':picker.onlyEvents?'予定がある日だけを表示しています。':'すべての日を表示しています。'}${picker.onlyHidden?'':'\n日付を選ぶと、その日の予定を開けます。'}${!p.items.length?picker.onlyHidden?'\n省略のある日はなくなりました。「予定がある日を表示」でほかの日も確認できます。':'\n予定がある日はまだありません。「すべての日を表示」で日付を選べます。':''}${p.count>1?`\n${picker.page+1}/${p.count}ページ`:''}`,{components:[

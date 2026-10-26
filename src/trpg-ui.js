@@ -1,6 +1,6 @@
-import {selectedAction} from './compact-controls.js';
+import {actionPicker,selectedAction} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ChannelSelectMenuBuilder,ChannelType,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,AttachmentBuilder,escapeMarkdown,PermissionFlagsBits as P} from 'discord.js';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {AdminSessions} from './admin.js';
 import {canConfigure} from './commands.js';
 import {themed,text,adminHomeButton,adminSectionButton,adminFeatureButton,menuHomeButton,acknowledgePrivate} from './ui.js';
@@ -19,6 +19,9 @@ const input=(id,label,max,required=true,value='')=>{
   if(value)field.setValue(String(value).slice(0,max));
   return row(field);
 };
+export const trpgHomeActions=[{value:'scenarios',label:'ベース卓を探す',description:'シナリオ名で登録済みのURLを探す'},{value:'form-scenario',label:'ベース卓を登録',description:'シナリオ名とココフォリアのURLを登録'},{value:'archives',label:'PCの控えを確認',description:'パネルごとのPC・TXTを確認'},{value:'install',label:'キャラシパネルを設置',description:'共有・秘匿を選んで設置'},{value:'repairs',label:'キャラシパネルを復旧',description:'消えた投稿・結果未確認のパネルを確認'}];
+export const characterActionKey=s=>createHash('sha256').update(JSON.stringify([s.panelId,s.ownOnly??false,s.pcQuery??'',s.page??0,s.entry])).digest('hex');
+export function characterActions(s){return [{value:'characters',label:'一覧を更新',description:'保存済みのPC一覧を更新'},{value:'form-pc-search',label:'PC名で検索',description:'閲覧できるPCを名前で検索'},{value:'backup-panel',label:s.isAdmin?'このパネルの控えをZIPで保存':'自分の控えをZIPで保存',description:'現在閲覧を許可されたTXTだけを保存'},{value:'mine',label:s.ownOnly?'すべてのPCを表示':'自分のPCだけ表示',description:'PC一覧の表示範囲を切り替える'},...(s.ownOnly||s.pcQuery?[{value:'clear-pc-filter',label:'条件を解除',description:'名前・自分のPCの絞り込みを解除'}]:[])];}
 function form(s,kind){
   if(kind==='repair-result'){s.repairToken=randomUUID().slice(0,12);return new ModalBuilder().setCustomId(`trpg:${s.id}:submit-repair-result:${s.repairToken}`).setTitle('パネルの投稿を登録').addComponents(input('message','Bot投稿のリンク、またはメッセージID',200,true,s.repairMessageDraft));}
   if(kind==='table-copy'){const source=s.copySource;s.copyModal={token:randomUUID().slice(0,12),id:source.id,revision:JSON.stringify(source)};return new ModalBuilder().setCustomId(`trpg:${s.id}:submit-table-copy:${s.copyModal.token}`).setTitle('卓セットを複製').addComponents(input('name','新しい卓名（伝助・参加PCは引き継がない）',100,true,s.copyName??`${source.name}（複製）`.slice(0,100)));}
@@ -54,12 +57,13 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
   function screen(s,note=''){
     if(s.view==='backup'){if(!s.backup || s.backup.admin&&!s.isAdmin)throw new Error('控えの取得に必要な権限を確認できません。画面を開き直してください。');return backupScreen(s);}
     if(['home','install','scenarios','archives','tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table','repairs','repair','repair-clear'].includes(s.view) && !managementSession(s))throw new Error('管理者専用の画面です。');
-    const d=store.metadata();let title='✦  卓・キャラシ',body='',components=[];
+    const d=store.metadata();let title='✦  卓・キャラシ',body='',components=[],fields=[];
     const back=()=>row(button(s,'home','卓・キャラシのメニューへ'));
     const pagination=(page,pages)=>pages>1?[button(s,'prev','前のページ').setDisabled(page===0),button(s,'next','次のページ').setDisabled(page>=pages-1)]:[];
     if(s.view==='home'){
-      body='**卓セット**\nシナリオ・伝助・参加PCを卓ごとにまとめます。\n\n**ベース卓**\nシナリオ名から、ココフォリアの卓を探せます。URLは管理者だけに表示します。\n\n**キャラシ**\nメンバー用の登録パネルを設置し、PCの控えを確認できます。';
-      components=[row(button(s,'tables','卓セット',ButtonStyle.Primary)),row(button(s,'scenarios','ベース卓を探す'),button(s,'form-scenario','ベース卓を登録')),row(button(s,'archives','PCの控えを確認'),button(s,'install','キャラシパネルを設置'),button(s,'repairs','キャラシパネルを復旧')),row(adminSectionButton('schedule'),adminHomeButton())];
+      body='**卓の準備・参加PCの管理**\n卓セットからシナリオ・伝助・参加PCをまとめて確認できます。内容は管理者だけに表示します。';
+      fields=[{name:'卓セット',value:`進行中 ${d.tables.filter(t=>!t.completed).length}件 · 完了 ${d.tables.filter(t=>t.completed).length}件`,inline:true},{name:'ベース卓',value:`登録 ${d.scenarios.length}件`,inline:true},{name:'キャラシ',value:`パネル ${d.panels.length}件 · PC ${d.characters.length}件`}];
+      components=[row(button(s,'tables','卓セット',ButtonStyle.Primary)),actionPicker(`trpg:${s.id}:home-actions`,trpgHomeActions,'ベース卓・キャラシの操作を選ぶ'),row(adminSectionButton('schedule'),adminHomeButton())];
     } else if(s.view==='install'){
       title='✦  キャラシパネルを設置';s.installToken??=randomUUID().slice(0,12);
       body=`**公開範囲** ${s.mode==='shared'?'共有':'秘匿'}\n**設置先** ${s.channelId?`<#${s.channelId}>`:'チャンネルを選んでください'}\n\n**秘匿** · PC名・URLは本人と管理者だけ\n**共有** · PC名・URLをメンバーに表示\nTXTはどちらも本人と管理者だけに表示します。\n既存パネルの公開範囲は変更しません。`;
@@ -92,7 +96,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
       else{body+='元のパネルが残っている場合は同じメッセージを更新します。失われた場合だけ再設置します。';components.push(row(new ChannelSelectMenuBuilder().setCustomId(`trpg:${s.id}:repair-channel`).setPlaceholder('復旧先のチャンネル').addChannelTypes(ChannelType.GuildText)),row(button(s,'confirm-repair','この内容で復旧',ButtonStyle.Primary)));}
       components.push(row(button(s,'repairs','復旧対象の一覧へ')));
     } else if(['tables','table','table-scenario','table-pcs','table-remove-pcs','delete-table'].includes(s.view)){
-      const result=tableScreen(s,d);title=result.title;body=result.body;components=result.components;
+      const result=tableScreen(s,d);title=result.title;body=result.body;components=result.components;fields=result.fields??[];
     } else {
       if(s.tableReturn)requireAdmin(s);const p=d.panels.find(x=>x.id===s.panelId);if(!p)throw new Error('パネルが見つかりません。');
       title='✦  PC一覧';
@@ -122,12 +126,12 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         body=`${p.mode==='secret'?'秘匿':'共有'}モード · ${s.ownOnly?'自分のPC':'閲覧できるPC'} ${items.length}件 · ${s.page+1}/${pages}ページ${s.pcQuery?`\n検索：**${text(s.pcQuery)}**`:''}\n\n${part.map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||(filtered?'条件に合うPCがありません。条件を解除するか、新しい共有URLを登録してください。':'キャラシは未登録です。「共有URLを登録」から追加できます。')}\n\nTXTは本人と管理者だけが閲覧できます。`;
         const own=part.filter(c=>d.characters.some(x=>x.id===c.id && (x.ownerId===s.userId || s.isAdmin)));
         if(own.length)components.push(row(menu(s,'character','TXTの控えを確認するPC',own.map(c=>({label:c.name,value:c.id,description:c.url})))));
-        components.push(row(button(s,'form-register','共有URLを登録',ButtonStyle.Primary),button(s,'characters','一覧を更新'),button(s,'form-pc-search','PC名で検索'),button(s,'backup-panel',s.isAdmin?'このパネルの控えをZIPで保存':'自分の控えをZIPで保存')));
-        components.push(row(button(s,'mine',s.ownOnly?'すべてのPCを表示':'自分のPCだけ表示'),...(filtered?[button(s,'clear-pc-filter','条件を解除')]:[]),...pagination(s.page,pages)));
-        if(managementSession(s))components.push(row(button(s,'archives','パネル一覧へ')));
+        components.push(actionPicker(`trpg:${s.id}:character-actions:${characterActionKey(s)}`,characterActions(s),'検索・表示・控えの操作を選ぶ'));
+        components.push(row(button(s,'form-register','共有URLを登録',ButtonStyle.Primary),...pagination(s.page,pages)));
+        components.push(managementSession(s)?row(button(s,'archives','パネル一覧へ')):row(menuHomeButton()));
       }
     }
-    const message=payload(title,(note?`${note}\n\n`:'')+body,{components});message.attachments=[];
+    const message=payload(title,(note?`${note}\n\n`:'')+body,{components});message.attachments=[];if(fields.length)message.embeds[0].addFields(...fields);
     return message;
   }
   async function authorizeSave(i,s,{admin=false,owner=s.userId,characterId}={}){
@@ -165,6 +169,7 @@ export function createTrpgController({store,guild,iachara=createIacharaClient(),
         return;
       }
       s=sessions.get(parts[1],i.user.id);if(s.originChannelId && s.originChannelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');let action=parts[2];if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
+      if(action==='home-actions'||action==='character-actions'){const home=action==='home-actions';if(home?!managementSession(s)||s.view!=='home':s.view!=='characters'||!s.panelId||parts[3]!==characterActionKey(s))throw new Error('現在の操作一覧から選び直してください。');action=selectedAction(i.values,home?trpgHomeActions:characterActions(s));if(!action)throw new Error('この画面の選択欄から選び直してください。');}
       if(action==='table-actions'){if(s.entry!=='admin'||s.view!=='table')throw new Error('管理用の卓セットから操作してください。');const t=store.table(s.tableId);if(parts[3]!==tableActionKey(t))throw new Error('卓セットが変わりました。開き直して確認してください。');action=selectedAction(i.values,tableActions(t));if(!action)throw new Error('この卓の操作一覧から選び直してください。');}
       if(action.startsWith('form-')){s.isAdmin=await isAdmin(i);sessions.get(s.id,s.userId);if(s.entry==='admin'||s.tableReturn)requireAdmin(s);const kind=action.slice(5);if(!['register','pc-search'].includes(kind))requireAdmin(s);if(['register','pc-search'].includes(kind) && !s.panelId)throw new Error('パネルから開いてください。');if(kind==='repair-result'){const p=store.metadata().panels.find(x=>x.id===s.repairId);if(!p?.repairPending)throw new Error('未確認の復旧処理はありません。');s.repairStage={id:p.id,channelId:p.repairPending.channelId,revision:JSON.stringify(p)};}if(kind==='scenario'){s.view='scenarios';if(s.scenarioDraftId)delete s.scenarioDraft;s.scenarioDraftId=null;}if(kind==='scenario-edit'){const id=s.scenario?.id;if(s.scenarioDraftId!==id)delete s.scenarioDraft;s.scenario=store.metadata().scenarios.find(x=>x.id===id);if(!s.scenario)throw new Error('ベース卓を選んでください。');s.scenarioDraftId=id;}if(kind==='table'){if(s.tableEditId)delete s.tableDraft;s.tableForm=null;s.tableEditId=null;}if(kind==='table-copy'){const source=store.table(s.tableId);if(s.copySource?.id!==source.id)delete s.copyName;s.copySource=source;}if(kind==='table-edit'){s.tableForm=store.table(s.tableId);s.tableEditId=s.tableId;}await i.showModal(form(s,kind));return;}
       // Always create a private response, including forged/public component requests.

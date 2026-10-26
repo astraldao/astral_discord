@@ -24,7 +24,7 @@ export function tableActions(t){
   ];
 }
 export function tableScreen(s,d){
-  let title='✦  卓セット',body='',components=[];
+  let title='✦  卓セット',body='',components=[],fields=[];
   if(s.view==='tables'){
     const filter=s.tableFilter??'active';const found=searchScenarios(d.tables,s.tableQuery??'');const items=found.filter(t=>s.tableQuery || filter==='all' || (filter==='completed'?!!t.completed:!t.completed)).sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned));const n=nav(s,items,20);
     components.push(row(menu(s,'table-filter','表示する卓',[{label:'進行中',value:'active',default:filter==='active'},{label:'完了',value:'completed',default:filter==='completed'},{label:'すべて',value:'all',default:filter==='all'}])));s.tableListPage=s.page;body=n.label+(s.tableQuery?`\n検索：**${text(s.tableQuery)}**`:'')+`\n\n${s.tableQuery?'すべての卓から検索しています。':filter==='completed'?'完了した卓を表示しています。':filter==='all'?'進行中・完了した卓を表示しています。':'進行中の卓を表示しています。'}固定した卓は先頭に表示します。内容は管理者だけに表示します。`;
@@ -41,7 +41,9 @@ export function tableScreen(s,d){
     }else if(s.view==='table'){
       const next=t.completed?null:!scenario?'「シナリオを選ぶ」でベース卓を設定してください。':!pcs.length?'「参加PCを追加」で、この卓のPCを選んでください。':!t.answerUrl?'日程調整を使う場合は「卓名・伝助を編集」で回答URLを登録できます。':null;
       if(next)body+=`\n\n**次の操作**\n${next}`;
-      body+=`\n\n**シナリオ**\n${scenario?`${text(scenario.name)}\n${scenario.url}`:'未選択'}\n\n**伝助**\n${t.answerUrl||'未登録'}\n\n**参加PC** ${pcs.length}件\n${pcs.slice(0,5).map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||'未登録'}${pcs.length>5?`\nほか ${pcs.length-5}件 · 「参加PCを確認・外す」で確認`:''}`;
+      fields=[{name:'シナリオ',value:scenario?`${text(scenario.name)}\n${scenario.url}`:'未選択',inline:true},{name:'伝助',value:t.answerUrl||'未登録',inline:true},{name:`参加PC ${pcs.length}件`,value:pcs.slice(0,3).map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n')||'未登録'}];
+      if(pcs.length>3)fields[2].value+=`\nほか ${pcs.length-3}件 · 「参加PCを確認・外す」で全件確認`;
+
       const links=[...(scenario?[link('ベース卓を開く',scenario.url)]:[]),...(t.answerUrl?[link('伝助を開く',t.answerUrl)]:[])];if(links.length)components.push(row(...links));
       components.push(row(button(s,'table-scenario',scenario?'シナリオを変更':'シナリオを選ぶ',scenario?ButtonStyle.Secondary:ButtonStyle.Primary),button(s,'table-pcs','参加PCを追加',scenario&&!pcs.length?ButtonStyle.Primary:ButtonStyle.Secondary)),actionPicker(`trpg:${s.id}:table-actions:${tableActionKey(t)}`,tableActions(t),'確認・編集・その他の操作'),row(button(s,t.pinned?'unpin-table':'pin-table',t.pinned?'固定を解除':'この卓を固定'),button(s,t.completed?'reopen-table':'complete-table',t.completed?'進行中に戻す':'完了にする')),row(button(s,'tables','卓セット一覧へ')));
     }else if(s.view==='table-scenario'){
@@ -50,7 +52,7 @@ export function tableScreen(s,d){
       else body+=s.tableScenarioQuery?'\n\n条件に合うシナリオがありません。':'\n\n先にベース卓を登録してください。';
       components.push(row(button(s,'form-table-scenario-search','名前で検索'),...(s.tableScenarioQuery?[button(s,'clear-table-scenario-search','検索を解除')]:[])),...n.buttons,row(button(s,'table','卓セットへ')));
     }else{
-      const removing=s.view==='table-remove-pcs',query=removing?s.tableRemoveQuery:s.tableAddQuery,items=searchScenarios(removing?pcs:d.characters.filter(c=>!t.characterIds.includes(c.id)),query??'');const n=nav(s,items,20);
+      const removing=s.view==='table-remove-pcs',query=removing?s.tableRemoveQuery:s.tableAddQuery,items=searchScenarios(removing?pcs:d.characters.filter(c=>!t.characterIds.includes(c.id)),query??'');const n=nav(s,items,8);
       title=removing?'✦  参加PCを確認・外す':'✦  参加PCを追加';body+=`\n\n${n.label}${query?`\n検索：**${text(query)}**`:''}\n\n`+(removing?n.part.map(c=>`**${text(c.name)}**\n${c.url}`).join('\n\n'):'登録済みのPCから選んでください。複数選択できます。');
       if(n.part.length){
         const options=n.part.map(c=>({label:c.name,value:c.id,description:c.url}));
@@ -61,5 +63,5 @@ export function tableScreen(s,d){
       components.push(row(button(s,'form-table-pc-search','PC名で検索'),...(query?[button(s,'clear-table-pc-search','検索を解除')]:[])),...n.buttons,row(button(s,'table','卓セットへ')));
     }
   }
-  return {title,body,components};
+  return {title,body,components,fields};
 }

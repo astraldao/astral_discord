@@ -1,0 +1,878 @@
+{
+  "calendar": {
+    "embeds": [
+      {
+        "color": 2846641,
+        "title": "📅  週末のセッション",
+        "description": "**10/31(土) · 2026年**\n**20:00〜翌日 01:00** · 日本時間\n🟦 青\n\n場所 いつものVC\n\nキャラクターシートを用意してください。\n開始10分前から集まれます。\n\n表示範囲の 1/1件目",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "schedule:preview:0:edit-event",
+            "label": "予定を編集",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "schedule:preview:0:list",
+            "label": "一覧へ戻る",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "emoji": {
+              "name": "◀️"
+            },
+            "custom_id": "schedule:preview:0:event-prev",
+            "label": "前の予定",
+            "style": 2,
+            "disabled": true
+          },
+          {
+            "type": 2,
+            "emoji": {
+              "name": "▶️"
+            },
+            "custom_id": "schedule:preview:0:event-next",
+            "label": "次の予定",
+            "style": 2,
+            "disabled": true
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "schedule:preview:0:actions",
+            "placeholder": "予定の操作を選ぶ",
+            "min_values": 1,
+            "max_values": 1,
+            "options": [
+              {
+                "label": "この予定だけ保存（ICS）",
+                "value": "export-event",
+                "description": "端末のカレンダー用に取り出す"
+              },
+              {
+                "label": "複製して編集",
+                "value": "copy-event",
+                "description": "元の予定を残して新しく追加する"
+              },
+              {
+                "label": "繰り返して追加",
+                "value": "repeat",
+                "description": "日付と追加件数を確認する"
+              },
+              {
+                "label": "この予定の履歴",
+                "value": "event-history",
+                "description": "変更前後と復元の可否を確認する"
+              },
+              {
+                "label": "予定を削除…",
+                "value": "delete-event",
+                "description": "次の画面で削除を確認する"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "schedule:preview:0:event-color",
+            "placeholder": "予定の色を選ぶ",
+            "options": [
+              {
+                "label": "自動（予定名で決まる）",
+                "value": "auto",
+                "default": false
+              },
+              {
+                "label": "青",
+                "value": "blue",
+                "default": true,
+                "emoji": {
+                  "name": "🟦",
+                  "animated": false
+                }
+              },
+              {
+                "label": "緑",
+                "value": "green",
+                "default": false,
+                "emoji": {
+                  "name": "🟩",
+                  "animated": false
+                }
+              },
+              {
+                "label": "赤",
+                "value": "red",
+                "default": false,
+                "emoji": {
+                  "name": "🟥",
+                  "animated": false
+                }
+              },
+              {
+                "label": "紫",
+                "value": "purple",
+                "default": false,
+                "emoji": {
+                  "name": "🟪",
+                  "animated": false
+                }
+              },
+              {
+                "label": "黄",
+                "value": "yellow",
+                "default": false,
+                "emoji": {
+                  "name": "🟨",
+                  "animated": false
+                }
+              },
+              {
+                "label": "グレー",
+                "value": "slate",
+                "default": false,
+                "emoji": {
+                  "name": "⬜",
+                  "animated": false
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "densuke": {
+    "embeds": [
+      {
+        "color": 2923663,
+        "title": "🗳️  内容を確認して作成",
+        "description": "**イベント名**\n週末のセッション\n\n**候補日程 · 3件**\n10/31 20:00〜\n11/1 20:00〜\n11/3 20:00〜\n\n**イベント説明**\n参加できる候補に回答してください。\n\n**パスワード** 設定あり（非表示）\n**回答の選択肢** ◎○△×\n\n内容がよければ「この内容で作成」を押してください。控えメールは設定済みの固定宛先に送信します。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "densuke:preview:choice:fixed",
+            "placeholder": "回答の選択肢を選ぶ",
+            "options": [
+              {
+                "label": "○△×",
+                "value": "1",
+                "default": false
+              },
+              {
+                "label": "○×",
+                "value": "2",
+                "default": false
+              },
+              {
+                "label": "◎○△×",
+                "value": "3",
+                "default": true
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "densuke:preview:form:fixed",
+            "label": "内容を修正",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "densuke:preview:create:fixed",
+            "label": "この内容で作成",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "densuke:preview:cancel:fixed",
+            "label": "作成をキャンセル",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "densuke:preview:form-email:fixed",
+            "label": "控えメールの宛先",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "densuke:preview:form-recover:fixed",
+            "label": "作成済みURLを登録",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:open-section:schedule",
+            "label": "予定・卓へ",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:open",
+            "label": "管理メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "trpg": {
+    "embeds": [
+      {
+        "color": 11895642,
+        "title": "📜  卓・キャラシ",
+        "description": "**卓セット**\nシナリオ・伝助・参加PCを卓ごとにまとめます。\n\n**ベース卓**\nシナリオ名から、ココフォリアの卓を探せます。URLは管理者だけに表示します。\n\n**キャラシ**\nメンバー用の登録パネルを設置し、PCの控えを確認できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:e4062d8a-a6e:tables",
+            "label": "卓セット",
+            "style": 1
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:e4062d8a-a6e:scenarios",
+            "label": "ベース卓を探す",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:e4062d8a-a6e:form-scenario",
+            "label": "ベース卓を登録",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:e4062d8a-a6e:archives",
+            "label": "PCの控えを確認",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:e4062d8a-a6e:install",
+            "label": "キャラシパネルを設置",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:e4062d8a-a6e:repairs",
+            "label": "キャラシパネルを復旧",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "admin:open-section:schedule",
+            "label": "予定・卓へ",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "admin:open",
+            "label": "管理メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "table": {
+    "embeds": [
+      {
+        "color": 11895642,
+        "title": "📜  卓セット",
+        "description": "**週末のセッション**\n進行中 · ★ 固定中\n\n**シナリオ**\n星を探す夜\nhttps://ccfolia.com/rooms/fictional\n\n**伝助**\nhttps://densuke.biz/list?cd=example\n\n**参加PC** 5件\n**架空の探索者1**\nhttps://iachara.com/view/1000\n\n**架空の探索者2**\nhttps://iachara.com/view/1001\n\n**架空の探索者3**\nhttps://iachara.com/view/1002\n\n**架空の探索者4**\nhttps://iachara.com/view/1003\n\n**架空の探索者5**\nhttps://iachara.com/view/1004",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "label": "ベース卓を開く",
+            "style": 5,
+            "url": "https://ccfolia.com/rooms/fictional"
+          },
+          {
+            "type": 2,
+            "label": "伝助を開く",
+            "style": 5,
+            "url": "https://densuke.biz/list?cd=example"
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:preview:table-scenario",
+            "label": "シナリオを変更",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:preview:table-pcs",
+            "label": "参加PCを追加",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "trpg:preview:table-actions:fb6fadcea17b6f2b94717660acb3b9f155d4c63493546e03b6cc1db2db94085a",
+            "placeholder": "確認・編集・その他の操作",
+            "min_values": 1,
+            "max_values": 1,
+            "options": [
+              {
+                "label": "参加PCを確認・外す",
+                "value": "table-remove-pcs",
+                "description": "PC登録・TXTの控えは保持する"
+              },
+              {
+                "label": "卓名・伝助を編集",
+                "value": "form-table-edit",
+                "description": "入力フォームで修正する"
+              },
+              {
+                "label": "この卓を複製",
+                "value": "form-table-copy",
+                "description": "元の卓を残して複製名を入力する"
+              },
+              {
+                "label": "卓セットを削除…",
+                "value": "delete-table",
+                "description": "次の画面で削除を確認する"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:preview:unpin-table",
+            "label": "固定を解除",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:preview:complete-table",
+            "label": "完了にする",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:preview:tables",
+            "label": "卓セット一覧へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "characters": {
+    "embeds": [
+      {
+        "color": 11895642,
+        "title": "📜  PC一覧",
+        "description": "秘匿モード · 閲覧できるPC 12件 · 1/2ページ\n\n**架空の探索者1**\nhttps://iachara.com/view/1000\n\n**架空の探索者2**\nhttps://iachara.com/view/1001\n\n**架空の探索者3**\nhttps://iachara.com/view/1002\n\n**架空の探索者4**\nhttps://iachara.com/view/1003\n\n**架空の探索者5**\nhttps://iachara.com/view/1004\n\n**架空の探索者6**\nhttps://iachara.com/view/1005\n\n**架空の探索者7**\nhttps://iachara.com/view/1006\n\n**架空の探索者8**\nhttps://iachara.com/view/1007\n\n**架空の探索者9**\nhttps://iachara.com/view/1008\n\n**架空の探索者10**\nhttps://iachara.com/view/1009\n\nTXTは本人と管理者だけが閲覧できます。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "trpg:7f8e253a-ed0:character",
+            "placeholder": "TXTの控えを確認するPC",
+            "options": [
+              {
+                "label": "架空の探索者1",
+                "value": "pc0",
+                "description": "https://iachara.com/view/1000"
+              },
+              {
+                "label": "架空の探索者2",
+                "value": "pc1",
+                "description": "https://iachara.com/view/1001"
+              },
+              {
+                "label": "架空の探索者3",
+                "value": "pc2",
+                "description": "https://iachara.com/view/1002"
+              },
+              {
+                "label": "架空の探索者4",
+                "value": "pc3",
+                "description": "https://iachara.com/view/1003"
+              },
+              {
+                "label": "架空の探索者5",
+                "value": "pc4",
+                "description": "https://iachara.com/view/1004"
+              },
+              {
+                "label": "架空の探索者6",
+                "value": "pc5",
+                "description": "https://iachara.com/view/1005"
+              },
+              {
+                "label": "架空の探索者7",
+                "value": "pc6",
+                "description": "https://iachara.com/view/1006"
+              },
+              {
+                "label": "架空の探索者8",
+                "value": "pc7",
+                "description": "https://iachara.com/view/1007"
+              },
+              {
+                "label": "架空の探索者9",
+                "value": "pc8",
+                "description": "https://iachara.com/view/1008"
+              },
+              {
+                "label": "架空の探索者10",
+                "value": "pc9",
+                "description": "https://iachara.com/view/1009"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:7f8e253a-ed0:form-register",
+            "label": "共有URLを登録",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:7f8e253a-ed0:characters",
+            "label": "一覧を更新",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:7f8e253a-ed0:form-pc-search",
+            "label": "PC名で検索",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "trpg:7f8e253a-ed0:backup-panel",
+            "label": "このパネルの控えをZIPで保存",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:7f8e253a-ed0:mine",
+            "label": "自分のPCだけ表示",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "emoji": {
+              "name": "◀️"
+            },
+            "custom_id": "trpg:7f8e253a-ed0:prev",
+            "label": "前のページ",
+            "style": 2,
+            "disabled": true
+          },
+          {
+            "type": 2,
+            "emoji": {
+              "name": "▶️"
+            },
+            "custom_id": "trpg:7f8e253a-ed0:next",
+            "label": "次のページ",
+            "style": 2,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "trpg:7f8e253a-ed0:archives",
+            "label": "パネル一覧へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "four": {
+    "embeds": [
+      {
+        "color": 9933280,
+        "title": "🟡  4目並べ",
+        "description": "**あなたの番 · 列を選ぶ**\n🟡 あなた · 🟣 Bot\n\n左から1〜7列 · 下から積み上がります。\n\nいつでも無料 · チップ不要",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        },
+        "image": {
+          "url": "attachment://four.png"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-0",
+            "label": "1列目",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-1",
+            "label": "2列目",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-2",
+            "label": "3列目",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-3",
+            "label": "4列目",
+            "style": 1,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-4",
+            "label": "5列目",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-5",
+            "label": "6列目",
+            "style": 1,
+            "disabled": false
+          },
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:col-6",
+            "label": "7列目",
+            "style": 1,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:again",
+            "label": "やり直す",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "four:preview:0:rules",
+            "label": "遊び方",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "game:open",
+            "label": "ゲーム選択へ",
+            "style": 2
+          }
+        ]
+      }
+    ],
+    "previewImage": "data:image/png;base64,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"
+  },
+  "workshop": {
+    "embeds": [
+      {
+        "color": 5793266,
+        "title": "✦  画像工房",
+        "description": "**完成しました**\n元画像 512×512px · 8KiB\n\n**用途** 絵文字 · 128×128px・透明PNG\n**仕上げ** 全体を残す\n\n完成 128×128px · 2.0KiB\n添付の画像を保存してください。設定を変えると元画像から作り直せます。\n\n画像は本人だけに表示し、サーバーへの登録や公開投稿は行いません。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        },
+        "image": {
+          "url": "attachment://astral-emoji.png"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "image:preview:0:preset",
+            "placeholder": "用途を選ぶ",
+            "options": [
+              {
+                "label": "絵文字",
+                "value": "emoji",
+                "description": "128×128px・透明PNG",
+                "default": true
+              },
+              {
+                "label": "スタンプ",
+                "value": "sticker",
+                "description": "320×320px・透明PNG",
+                "default": false
+              },
+              {
+                "label": "共有用",
+                "value": "share",
+                "description": "最大1024px・軽量JPEG・白い背景",
+                "default": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 3,
+            "custom_id": "image:preview:0:crop",
+            "placeholder": "切り抜き・余白を選ぶ",
+            "options": [
+              {
+                "label": "全体を残す",
+                "value": "contain",
+                "description": "絵文字・スタンプは透明な余白を追加",
+                "default": true
+              },
+              {
+                "label": "中央を切り抜く",
+                "value": "centre",
+                "default": false
+              },
+              {
+                "label": "上を中心に切り抜く",
+                "value": "north",
+                "default": false
+              },
+              {
+                "label": "下を中心に切り抜く",
+                "value": "south",
+                "default": false
+              },
+              {
+                "label": "左を中心に切り抜く",
+                "value": "west",
+                "default": false
+              },
+              {
+                "label": "右を中心に切り抜く",
+                "value": "east",
+                "default": false
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "image:preview:0:create",
+            "label": "同じ設定で作成",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "image:preview:0:upload",
+            "label": "画像を選び直す",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "image:preview:0:close",
+            "label": "操作を終了",
+            "style": 2
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "profile": {
+    "embeds": [
+      {
+        "color": 4034513,
+        "title": "🔊  自分の読み方",
+        "description": "**登録した読み方** あすとらる\n\n**告知の読み上げ文**\nアストラルさんが、まもなく参加するのだ。\n\n自分の名前の読み方だけを変更できます。表示名やサーバーの辞書は変わりません。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "profile:preview:form",
+            "label": "読み方を修正",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "profile:preview:delete",
+            "label": "登録を解除",
+            "style": 4,
+            "disabled": false
+          }
+        ]
+      },
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "vc:open",
+            "label": "入室先を選ぶ",
+            "style": 2
+          },
+          {
+            "type": 2,
+            "custom_id": "menu:open",
+            "label": "メニューへ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  }
+}

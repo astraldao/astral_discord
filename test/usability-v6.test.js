@@ -92,7 +92,7 @@ test('empty forum tags explain the prerequisite and do not offer a misleading ap
 });
 
 test('candidate and calendar page counts describe what is visible without broadening stored data',async()=>{
-  const m=densukeScreen({id:'s',phase:'review',channelId:LOBBY,event:{name:'候補',schedule:'10/25\n\n10/26\r\n10/27',description:'',password:'SECRET_PASS',choice:Object.keys(choices)[0]}});compact(m);assert.match(body(m),/候補日程 · 3件/);assert.ok(!body(m).includes('SECRET_PASS'));
+  const m=densukeScreen({id:'s',phase:'review',channelId:LOBBY,event:{name:'候補',schedule:'10/25\n\n10/26\r\n10/27',description:'',password:'SECRET_PASS',choice:Object.keys(choices)[0]}});compact(m);assert.match(JSON.stringify(m.embeds.map(e=>e.toJSON())),/候補日程 · 3件/);assert.ok(!JSON.stringify(m).includes('SECRET_PASS'));
   const store=new ScheduleStore(),id=await store.create('予定');for(let n=0;n<10;n++)await store.putEvent(id,null,{title:`予定${n}`,date:'2026/10/25',time:'',place:'',description:''});const before=structuredClone(store.data);
   for(const [page,count] of [[0,8],[1,2]]){const screen=scheduleScreen({id:'s',turn:0,scope:'viewer',calendarId:id,view:'list',display:'list',month:'2026-10',page},store);compact(screen);assert.ok(body(screen).includes(`表示 ${count}件 / 全10件`));}assert.deepEqual(store.data,before);
 });

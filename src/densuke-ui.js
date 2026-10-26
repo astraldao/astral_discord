@@ -16,10 +16,11 @@ const safe=(value,max)=>{const escaped=escapeMarkdown(String(value)).replace(/@/
 export function densukeScreen(s,note='') {
   s.controlToken??=randomUUID().slice(0,12);
   if(s.phase==='review')s.reviewToken??=randomUUID().slice(0,12);
-  const e=s.inputDraft??s.event;let title='✦  日程調整',description,components=[];
+  const e=s.inputDraft??s.event;let title='✦  日程調整',description,components=[],fields=[];
   if(s.phase==='done') {
     title=s.result.recovered?'✦  作成済みの日程調整を登録しました':'✦  日程調整を作成しました';
-    description=`**${safe(e.name,250)}**\n\n**回答用URL**\n${s.result.answer}${s.result.edit?`\n\n**編集用URL · 非公開**\n${s.result.edit}`:''}\n\n共有先：<#${s.channelId}>\n共有ボタンで、回答用URLだけをこのチャンネルに投稿します。編集用URLとパスワードは投稿しません。`;
+    description=`**${safe(e.name,250)}**\n${s.shared?s.shareUncertain?'共有結果は未確認です。実際の投稿を確認してください。':'回答用URLは共有済みです。':'作成できました。次は回答用URLを共有できます。'}\n\n共有先 <#${s.channelId}>\n共有ボタンは回答用URLだけを投稿します。編集用URLとパスワードは投稿しません。`;
+    fields=[{name:'回答用URL',value:s.result.answer},...(s.result.edit?[{name:'編集用URL · 非公開',value:s.result.edit}]:[])];
     components=[row(new ButtonBuilder().setLabel('回答ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.answer),...(s.result.edit?[new ButtonBuilder().setLabel('編集ページを開く').setStyle(ButtonStyle.Link).setURL(s.result.edit)]:[])),row(button(s,'share',s.shared?(s.shareUncertain?'共有結果は未確認':'回答URLは共有済み'):'回答URLを共有',ButtonStyle.Primary).setDisabled(!!s.shared)),row(button(s,'restart','別のイベントを作る'))];
   } else if(s.phase==='uncertain'){
     title='✦  作成結果の確認が必要です';
@@ -29,12 +30,18 @@ export function densukeScreen(s,note='') {
     title='✦  作成をキャンセルしました';description='伝助には作成リクエストを送信していません。';components=[row(button(s,'restart','新しいイベントを入力',ButtonStyle.Primary))];
   } else {
     title=s.phase==='review'?'✦  内容を確認して作成':'✦  日程調整を準備';
-    description=e.name?`**イベント名**\n${safe(e.name,250)}\n\n**候補日程 · ${String(e.schedule??'').split(/\r?\n/).filter(line=>line.trim()).length}件**\n${safe(e.schedule,1200)}\n\n**イベント説明**\n${e.description?safe(e.description,800):'なし'}\n\n**パスワード** ${e.password?'設定あり（非表示）':'なし'}\n**回答の選択肢** ${choices[e.choice]}\n\n${s.inputDraft?'入力に修正が必要です。「内容を修正」で直してください。':'内容がよければ「この内容で作成」を押してください。'}控えメールは設定済みの固定宛先に送信します。`:'**1**  回答の選択肢を選ぶ\n**2**  イベント名と候補日程を入力する\n**3**  内容を確認して伝助を作成する\n\nイベント説明・パスワードは任意です。候補日程は1行に1候補を入力してください。';
+    description=e.name?`**${safe(e.name,250)}**\n${s.inputDraft?'入力に修正が必要です。「内容を修正」で直してください。':'候補日程と説明を確認し、よければ「この内容で作成」を押してください。'}\n控えメールは設定済みの固定宛先へ送信します。`:'**選択肢を選ぶ → 内容を入力 → 確認して作成**\n候補日程は1行に1候補。説明・パスワードは任意です。';
+    if(e.name){
+      const schedule=safe(e.schedule,1200),count=String(e.schedule??'').split(/\r?\n/).filter(line=>line.trim()).length;
+      const chunks=[];let chunk='';for(const line of schedule.split('\n')){if(chunk&&chunk.length+line.length+1>1000){chunks.push(chunk);chunk='';}let rest=line;while(rest.length>1000){chunks.push(rest.slice(0,1000));rest=rest.slice(1000);}chunk+=(chunk?'\n':'')+rest;}if(chunk)chunks.push(chunk);
+      fields.push(...chunks.map((value,n)=>({name:n?'候補日程（続き）':`候補日程 · ${count}件`,value})));
+      fields.push({name:'イベント説明',value:e.description?safe(e.description,800):'なし'},{name:'回答の選択肢',value:choices[e.choice],inline:true},{name:'パスワード',value:e.password?'設定あり（非表示）':'なし',inline:true});
+    }
     if(escapeMarkdown(e.schedule).length>1200 || escapeMarkdown(e.description).length>800)description+='\n\n表示は一部省略しています。「内容を修正」で全文を確認できます。伝助には全文を送ります。';
     components=[row(new StringSelectMenuBuilder().setCustomId(`densuke:${s.id}:choice:${s.controlToken}`).setPlaceholder('回答の選択肢を選ぶ').addOptions(Object.entries(choices).map(([value,label])=>({value,label,default:e.choice===value})))),row(button(s,'form',e.name?'内容を修正':'イベント内容を入力',s.phase==='review'?ButtonStyle.Secondary:ButtonStyle.Primary),...(s.phase==='review'?[button(s,`create:${s.reviewToken}`,'この内容で作成',ButtonStyle.Primary)]:[]),button(s,'cancel','作成をキャンセル')),row(button(s,'form-email','控えメールの宛先'),button(s,'form-recover','作成済みURLを登録'))];
   }
   if(s.phase!=='creating'&&components.length<5)components.push(row(adminSectionButton('schedule'),adminHomeButton()));
-  return {...payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?'success':s.phase==='uncertain'?'error':'normal',components}),attachments:[]};
+  const m={...payload(title,note?`${note}\n\n${description}`:description,{state:s.phase==='done'?s.shareUncertain?'warning':'success':s.phase==='uncertain'?'error':s.inputDraft?'warning':'normal',components}),attachments:[]};if(fields.length)m.embeds[0].addFields(...fields);return m;
 }
 export function densukeModal(s) {
   s.eventToken=randomUUID().slice(0,12);

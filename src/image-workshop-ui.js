@@ -9,13 +9,17 @@ class WorkshopError extends Error{}
 const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`image:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
 export function workshopModal(s){return new ModalBuilder().setCustomId(`image:${s.id}:${s.turn}:submit:${s.upload}`).setTitle('画像工房 / 画像を選ぶ').addLabelComponents(new LabelBuilder().setLabel('PNG・JPEGを1枚').setDescription('4MiB・約400万画素以内。アニメーションには対応していません。').setFileUploadComponent(new FileUploadBuilder().setCustomId('image').setMinValues(1).setMaxValues(1).setRequired(true)));}
 export function workshopScreen(s,note=''){
-  const p=workshopPresets[s.preset],crop=workshopCrops[s.crop],body=s.input?`**${s.output?'完成しました':'用途と仕上げを選んでください'}**\n元画像 ${s.input.width}×${s.input.height}px · ${(s.input.buffer.length/1024).toFixed(0)}KiB\n\n**用途** ${p.label} · ${p.description}\n**仕上げ** ${crop.label}${s.preset==='share'?'\n共有用はJPEG・白い背景です。':''}\n\n${s.output?`完成 ${s.output.width}×${s.output.height}px · ${(s.output.buffer.length/1024).toFixed(1)}KiB\n添付の画像を保存してください。設定を変えると元画像から作り直せます。`:'選択した設定で「画像を作成」を押してください。'}\n\n画像は本人だけに表示し、サーバーへの登録や公開投稿は行いません。`:'**画像を選ぶ → 用途・仕上げ → 作成・保存**\n\n絵文字・スタンプ・共有用に画像を整えます。\nPNG・JPEG、4MiB・約400万画素以内。\n\n全体を残すか、中央・上下左右を中心に正方形へ切り抜けます。操作は本人だけに表示され、10分で終了します。';
+  const p=workshopPresets[s.preset],crop=workshopCrops[s.crop],body=s.input?`**${s.output?'完成画像を保存できます':'用途と仕上げを選んでください'}**\n${s.output?'添付の画像を保存してください。設定を変えると元画像から作り直せます。':'用途・仕上げを選び、「画像を作成」を押してください。'}\n\n画像は本人だけに表示します。サーバーへの自動登録・公開投稿は行いません。`:'**画像を選ぶ → 用途・仕上げ → 作成・保存**\n絵文字・スタンプ・共有用に画像を整えます。\n\nPNG・JPEG、4MiB・約400万画素以内。\n全体を残すか、中央・上下左右を中心に切り抜けます。\n操作は本人だけに表示され、10分で終了します。';
   const controls=s.input?[
     row(new StringSelectMenuBuilder().setCustomId(`image:${s.id}:${s.turn}:preset`).setPlaceholder('用途を選ぶ').addOptions(Object.entries(workshopPresets).map(([value,x])=>({value,label:x.label,description:x.description,default:value===s.preset})))),
     row(new StringSelectMenuBuilder().setCustomId(`image:${s.id}:${s.turn}:crop`).setPlaceholder('切り抜き・余白を選ぶ').addOptions(Object.entries(workshopCrops).map(([value,x])=>({value,label:x.label,...(x.description?{description:x.description}:{}),default:value===s.crop})))),
     row(button(s,'create',s.output?'同じ設定で作成':'画像を作成',ButtonStyle.Primary),button(s,'upload','画像を選び直す'),button(s,'close','操作を終了')),
   ]:[row(button(s,'upload','画像を選ぶ',ButtonStyle.Primary),button(s,'close','操作を終了'))];
   const m={...payload('画像工房',`${note?`${note}\n\n`:''}${body}`,{components:[...controls,row(menuHomeButton())]}),attachments:[]};
+  if(s.input){
+    m.embeds[0].addFields({name:'元画像',value:`${s.input.width}×${s.input.height}px\n${(s.input.buffer.length/1024).toFixed(1)} KiB`,inline:true},...(s.output?[{name:'完成画像',value:`${s.output.width}×${s.output.height}px\n${(s.output.buffer.length/1024).toFixed(1)} KiB · ${s.output.extension.toUpperCase()}`,inline:true}]:[]),{name:'用途・仕上げ',value:`${p.label} · ${p.description}\n${crop.label}${s.preset==='share'?' · JPEG・白い背景':''}`});
+    if(s.output&&s.input.buffer.length>0){const percent=(s.output.buffer.length/s.input.buffer.length-1)*100;m.embeds[0].addFields({name:'容量の変化',value:Math.abs(percent)<.1?'ほぼ同じ容量です。':percent<0?`元画像から **${(-percent).toFixed(1)}%小さく** なりました。`:`元画像より **${percent.toFixed(1)}%大きく** なりました。小さな元画像は整形により容量が増える場合があります。`});}
+  }
   if(s.output){const name=`astral-${s.preset}.${s.output.extension}`;m.files=[new AttachmentBuilder(s.output.buffer,{name,description:`${p.label}向けに整形した画像`})];m.embeds[0].setImage(`attachment://${name}`);}
   return m;
 }
