@@ -1,0 +1,3 @@
+export const workshopPresets=Object.freeze({emoji:{label:'絵文字',description:'128×128px・透明PNG',size:128,format:'png',maxBytes:256*1024},sticker:{label:'スタンプ',description:'320×320px・透明PNG',size:320,format:'png',maxBytes:512*1024},share:{label:'共有用',description:'最大1024px・軽量JPEG・白い背景',size:1024,format:'jpeg',maxBytes:512*1024}});
+export const workshopCrops=Object.freeze({contain:{label:'全体を残す',description:'絵文字・スタンプは透明な余白を追加'},centre:{label:'中央を切り抜く'},north:{label:'上を中心に切り抜く'},south:{label:'下を中心に切り抜く'},west:{label:'左を中心に切り抜く'},east:{label:'右を中心に切り抜く'}});
+export const workshopOptions=(preset,crop)=>Object.hasOwn(workshopPresets,preset)&&Object.hasOwn(workshopCrops,crop);

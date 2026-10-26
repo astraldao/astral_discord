@@ -5,8 +5,8 @@
 
 ## プロジェクト概要
 
-- 単一のDiscordサーバー（`GUILD_ID`）向けBot「astral-voice-lobby」。現行 v6.10.0。
-- 主な機能：VC入室読み上げ（VOICEVOX Core）、バックアップ読み上げ、予定表・カレンダー画像・ICS、伝助（日程調整）、TRPG卓・キャラシパネル、ゲーム・チップ台帳、チャットダイス、管理画面（更新・再起動・診断・脆弱性診断）。
+- 単一のDiscordサーバー（`GUILD_ID`）向けBot「astral-voice-lobby」。現行 v6.11.0。
+- 主な機能：VC入室読み上げ（VOICEVOX Core）、バックアップ読み上げ、予定表・カレンダー画像・ICS、伝助（日程調整）、TRPG卓・キャラシパネル、ゲーム・チップ台帳、チャットダイス、画像工房、管理画面（更新・再起動・診断・脆弱性診断）。
 - コマンドは `/menu`（利用者）と `/admin`（管理者）の2つだけ。新しいスラッシュコマンドは増やさず、既存メニューに統合する方針。
 - 外部DBなし。保存は `data/*.json`。本番ホストは Quaxly。mainへのpushだけでは本番は更新されず、管理者が `/admin → バージョン管理` から手動適用する。
 
@@ -15,9 +15,9 @@
 ```sh
 npm ci            # acorn（devDependency）が check に必要
 npm run check     # 構文 + コード実行ポリシー検査（scripts/check.js, scripts/security.js）
-npm test          # node --test test/*.test.js（2026-10-25時点 1219件すべて成功）
+npm test          # node --test test/*.test.js（2026-10-26時点 1244件すべて成功）
 python3 test/voice-assets.test.py && python3 test/backup-query.test.py   # Python側（音声資産・バックアップ検索）
-npm audit         # 2026-10-25時点 0件
+npm audit         # 2026-10-26時点 0件
 ```
 
 - `package.json` の engines は Node.js >= 24.17.0（CI は Node 24）。Node 22 でも check/test は通るが、正式な検証は Node 24 で行う。
@@ -35,7 +35,7 @@ npm audit         # 2026-10-25時点 0件
 
 ## コードスタイル
 
-- ESM（`"type": "module"`）、Node標準 `node:` 接頭辞、依存は最小（discord.js / @discordjs/voice / opusscript / parse5）。
+- ESM（`"type": "module"`）、Node標準 `node:` 接頭辞、依存は最小（discord.js / @discordjs/voice / opusscript / parse5 / sharp）。
 - 既存コードは1行が長めの密な書き方で、コメントは少なく「なぜ」だけを書く。周辺コードの書き方・命名に合わせる。
 - UI文言・ドキュメントは日本語。コミットメッセージは英語の Conventional Commits（`feat:` `fix:` `docs:` `security:` `perf:` `refactor:`）。
 - テストは `node:test`＋`node:assert`。新機能・修正には `test/*.test.js` を追加する。
@@ -54,6 +54,7 @@ npm audit         # 2026-10-25時点 0件
 | 伝助 | `src/densuke*.js`（HTML解析は Worker に隔離） |
 | TRPG | `src/trpg-*.js`、`src/iachara.js` |
 | ゲーム・チップ | `src/blackjack*.js`、`src/casino*.js`、`src/baccarat.js`、`src/four*.js`、`src/rps*.js`、`src/game-*.js`、`src/chip-*.js` |
+| 画像工房 | `src/image-workshop-*.js`、`scripts/image-workshop-worker.js`（sharpは専用プロセス内だけで使用） |
 | チャットダイス | `src/chat-dice.js`、`src/dice-request.js`、`src/dice-expression.js`、`src/dice-evaluate.js`、`src/dice-expression-ui.js`、`src/roll-route.js`、`src/roll-ui.js` |
 | 更新・再起動 | `scripts/manual-update.js`、`scripts/auto-update.js`、`scripts/manual-restart.js`、`src/update-*.js`、`src/restart-ui.js` |
 

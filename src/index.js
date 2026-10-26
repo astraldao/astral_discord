@@ -6,6 +6,7 @@ import {createRestartController} from './restart-ui.js';
 import {RuntimeEnvStore} from './runtime-env.js';
 import {createRuntimeEnvController} from './runtime-env-ui.js';
 import {createBackupReader} from './backup-reader.js';
+import {createImageWorkshop} from './image-workshop-ui.js';
 import {createBannerController} from './banner-ui.js';
 import {createMainMenu} from './main-menu.js';
 import {lobbyEntryGuide} from './vc-entry-ui.js';
@@ -76,7 +77,7 @@ const updateClient=createUpdateClient({version:botVersion});
 const versions=createVersionController({updater:updateClient,estimateCapacity:createUpdateCapacity(),access:async i=>(await guild.members.fetch({user:i.user.id,force:true})).permissions.has(P.Administrator),beforeStart:async()=>{if(voiceProbe?.busy)throw new EntryError('処理速度を測定中です。中断または完了後に更新してください。');if(backupReader?.active)throw new EntryError('バックアップ読み上げ中です。/menu の「操作」で「読み上げを停止」を選んでから更新してください。');}});
 const queue=new SerialQueue(), pending=new Map(),grants=new Map();
 const limits=new InteractionLimits();
-let guild,chatDice,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,interactionHandlers,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
+let guild,chatDice,voiceProbe,speedMeasurements,restarts,runtimeSettings,mainMenu,backupReader,banner,imageWorkshop,admin,densuke,trpg,profile,blackjack,casino,rps,four,schedule,sharedSchedules,interactionHandlers,chipAccount,chipTools,forumTags,refreshPanel,ready=false,stopping=false,revision=0;
 const quiet=async operation=>{try{await operation();}catch{}};
 const updateJob=(job,message)=>job.updates=(job.updates??Promise.resolve()).then(()=>quiet(()=>job.interaction.editReply(message)));
 const status=(job,title,description,components=[],state='normal')=>updateJob(job,payload(title,description,{components,state}));
@@ -199,6 +200,7 @@ client.once('clientReady', async () => {
     backupReader=createBackupReader({guild,enabled:backupEnabled,voiceBusy:()=>voiceProbe.busy||pending.size>0||queue.size>0||resourcePresence.activeCount>1,volume:()=>settings.get().volume??30,activity:()=>resourcePresence.activity(),onDiagnostic:failure=>console.warn('読み上げ停止:',failure.code,`v${botVersion}`,JSON.stringify(failure.info??{}))});
     const bannerState=user=>({key:user.banner??null,url:user.bannerURL({extension:'png',size:1024})??null});
     banner=createBannerController({guild,current:async()=>{try{return bannerState(await client.user.fetch(true));}catch{throw new EntryError('現在のバナーを取得できませんでした。少し待ってから「現在を確認」を押してください。');}},update:async image=>{try{return bannerState(await client.user.setBanner(image));}catch{throw new EntryError('バナーの反映を確認できませんでした。「現在を確認」で状態を確認してからお試しください。');}}});
+    imageWorkshop=createImageWorkshop({guild,canProcess:()=>!voiceProbe.busy&&!backupReader.active&&!pending.size&&!queue.size});
     refreshPanel=createPanelRefresher({settings,guild});
     await registerCommands(guild);
     densuke=createDensukeController({email:env.DENSUKE_EMAIL,settings,guild});
@@ -212,12 +214,12 @@ client.once('clientReady', async () => {
     casino=createCasinoController({guild,wallet:gameWallets,openWork:i=>chipTools.openWork(i)});
     blackjack=createBlackjackController({guild,wallet:gameWallets,openWallet:i=>chipAccount.openSelf(i),openTransfer:i=>chipTools.openTransfer(i),openCasual:i=>rps.open(i),openFour:i=>four.open(i),openWork:i=>chipTools.openWork(i),openCasino:(i,kind)=>casino.open(i,kind),casinoCurrent:i=>casino.current(i)});
     profile=createProfileController({store:personalReadings,guild,words:()=>settings.get().words});
-    mainMenu=createMainMenu({guild,capabilities:()=>({readingEnabled:backupEnabled,diceEnabled:settings.get().chatDice!==false,diceFullContent:client.options.intents.has(GatewayIntentBits.MessageContent)}),openVc:i=>choose(i),openRead:(i,action)=>backupReader.handle(i,action),openGame:i=>blackjack.lobby(i),openProfile:i=>profile.open(i),openWallet:i=>chipAccount.openSelf(i),openCalendar:i=>sharedSchedules.open(i)});
+    mainMenu=createMainMenu({guild,capabilities:()=>({readingEnabled:backupEnabled,diceEnabled:settings.get().chatDice!==false,diceFullContent:client.options.intents.has(GatewayIntentBits.MessageContent)}),openVc:i=>choose(i),openRead:(i,action)=>backupReader.handle(i,action),openGame:i=>blackjack.lobby(i),openProfile:i=>profile.open(i),openWallet:i=>chipAccount.openSelf(i),openCalendar:i=>sharedSchedules.open(i),openWorkshop:i=>imageWorkshop.open(i)});
     trpg=createTrpgController({store:trpgStore,guild});
     restarts=createRestartController({guild,store:runtimeEnv,rpc:updateClient,supported:env.ASTRAL_RESTART_PROTOCOL==='1'&&process.connected,beforeStart:()=>{if(updateBusy({active:Math.max(0,resourcePresence.activeCount-1)+(backupReader?.active?1:0),pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}))throw new EntryError('読み上げ・VC入室・ゲームなどが進行中です。終了後に再起動してください。');}});
     runtimeSettings=createRuntimeEnvController({guild,store:runtimeEnv});
     admin=createAdminController({settings,guild,securityScan:createSecurityScan(),refreshPanel,changed:settingsChanged,pendingCount:()=>[...pending.values()].filter(job=>!job.moving && !job.abort.signal.aborted).length,openDensuke:i=>densuke.open(i),openTrpg:i=>trpg.open(i),openForum:i=>forumTags.open(i),openChips:i=>chipAccount.openAdmin(i),openSchedule:i=>schedule.openAdmin(i),openUpdates:i=>versions.open(i),openBanner:i=>banner.open(i),openRuntime:i=>runtimeSettings.open(i),openRestart:i=>restarts.open(i),openPerformance:i=>speedMeasurements.open(i),jevTest:diceJudge,diagnose:createDiagnostics({settings,guild,diceState:()=>({enabled:settings.get().chatDice!==false,fullContent:client.options.intents.has(GatewayIntentBits.MessageContent),judge:diceJudge.snapshot()}),version:botVersion,pendingCount:()=>pending.size,backupState:()=>({enabled:backupEnabled,active:backupReader.active,lastFailure:backupReader.lastFailure})})});
-    interactionHandlers=createInteractionHandlers({mainMenu,backupReader,speedMeasurements,restarts,runtimeSettings,banner,versions,admin,densuke,trpg,profile,forumTags,sharedSchedules,schedule,blackjack,casino,rps,four,chipAccount,chipTools});
+    interactionHandlers=createInteractionHandlers({mainMenu,backupReader,speedMeasurements,restarts,runtimeSettings,banner,imageWorkshop,versions,admin,densuke,trpg,profile,forumTags,sharedSchedules,schedule,blackjack,casino,rps,four,chipAccount,chipTools});
     resourcePresence.start();
     void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).then(updated=>{if(!updated)console.warn('プロフィールの説明が長いため、バージョンはステータスに表示しています。');}).catch(()=>console.warn('プロフィールのバージョンを更新できませんでした。ステータスには表示しています。'));
     ready = process.env.ASTRAL_SUPERVISED!=='1'; console.log(`準備完了: ${client.user.tag} / v${botVersion} / 通知音 ${settings.get().voice ? 'ON' : 'OFF'}`);
@@ -251,6 +253,7 @@ client.on('interactionCreate', async interaction => {
     }
     finishActivity=resourcePresence.activity();
     speedMeasurements?.leave(interaction);
+    imageWorkshop?.leave(interaction);
     if(route.target!=='vc'){
       if(stopping)throw new EntryError('Botを終了しています。');
       await interactionHandlers.get(route.target)(interaction);return;
@@ -311,7 +314,7 @@ client.on('voiceStateUpdate',(before,after) => {
   }
 });
 client.on('error',error => console.error('Discord接続:',error.code ?? error.name));
-const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();banner?.close();voiceProbe?.close();void backupReader?.close();};
+const freeze=()=>{stopping=true;ready=false;resourcePresence.stop();banner?.close();imageWorkshop?.close();voiceProbe?.close();void backupReader?.close();};
 const drain=async()=>{await backupReader?.close();updateClient.close();await Promise.all([runtimeEnv.tail,settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);await client.destroy();};
 if(process.env.ASTRAL_SUPERVISED==='1' && process.connected){
   const lifecycle=createUpdateLifecycle({snapshot:()=>runtimeEnv.snapshot().running,accept:m=>m.runtimeRevision===undefined||m.runtimeRevision===runtimeEnv.snapshot().revision,busy:()=>updateBusy({active:resourcePresence.activeCount+(backupReader?.active?1:0),pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]}),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});

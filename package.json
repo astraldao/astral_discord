@@ -1,6 +1,6 @@
 {
   "name": "astral-voice-lobby",
-  "version": "6.10.0",
+  "version": "6.11.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -19,7 +19,8 @@
     "@discordjs/voice": "0.19.2",
     "discord.js": "14.27.0",
     "opusscript": "0.0.8",
-    "parse5": "8.0.1"
+    "parse5": "8.0.1",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "acorn": "8.19.0"

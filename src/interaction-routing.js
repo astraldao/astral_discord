@@ -3,7 +3,7 @@
 const definitions=[
   ['menu','mainMenu','handle'],['read','backupReader','handle'],
   ['perf','speedMeasurements','handle'],['restart','restarts','handle'],['runtime','runtimeSettings','handle'],
-  ['banner','banner','handle'],['updates','versions','handle'],['admin','admin','handle'],
+  ['image','imageWorkshop','handle'],['banner','banner','handle'],['updates','versions','handle'],['admin','admin','handle'],
   ['densuke','densuke','handle'],['trpg','trpg','handle'],['profile','profile','handle'],['forum','forumTags','handle'],
   ['calendars','sharedSchedules','handle'],['schedule','schedule','handle'],
   ['bj','blackjack','handle'],['casino','casino','handle'],['rps','rps','handle'],['four','four','handle'],

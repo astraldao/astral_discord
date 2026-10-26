@@ -8,7 +8,7 @@ test('hub keeps two common buttons and every purpose in a picker, with admin con
   for(const admin of [false,true]){
     const m=mainMenuScreen({admin}),b=controls(m);
     assert.deepEqual(b.slice(0,2).map(c=>c.custom_id),['menu:vc','menu:calendar']);
-    assert.ok(b.some(c=>c.custom_id==='menu:help'));const purposes=b.find(c=>c.custom_id==='menu:find').options.map(o=>o.value);assert.deepEqual(purposes,['vc','read','game','calendar','profile','wallet']);assert.equal(b.filter(c=>c.type===2).length,admin?4:3);
+    assert.ok(b.some(c=>c.custom_id==='menu:help'));const purposes=b.find(c=>c.custom_id==='menu:find').options.map(o=>o.value);assert.deepEqual(purposes,['vc','read','game','calendar','workshop','profile','wallet']);assert.equal(b.filter(c=>c.type===2).length,admin?4:3);
     assert.equal(b.some(c=>c.custom_id==='admin:open'),admin);
     assert.equal(b.filter(c=>c.style===1).length,1);
     assert.deepEqual(m.attachments,[]);assert.deepEqual(m.allowedMentions.parse,[]);
@@ -19,7 +19,7 @@ test('hub keeps two common buttons and every purpose in a picker, with admin con
 const recentOptions=i=>controls(i.result).find(c=>c.custom_id==='menu:recent')?.options??[];
 function fixture(){
   let stamp=1000,allowed=true;const calls=[],c=createMainMenu({now:()=>stamp,access:async()=>allowed?{admin:false}:false,
-    ...Object.fromEntries(['Vc','Game','Profile','Wallet','Calendar'].map(name=>[`open${name}`,async()=>calls.push(name.toLowerCase())])),
+    ...Object.fromEntries(['Vc','Game','Profile','Wallet','Calendar','Workshop'].map(name=>[`open${name}`,async()=>calls.push(name.toLowerCase())])),
     openRead:async(i,action)=>calls.push(action),
   });
   const run=async(action='menu:open',extra={})=>{const i=Object.assign(interaction(action,true),{user:{id:'PRIVATE_USER_SENTINEL'},channelId:'PRIVATE_CHANNEL_SENTINEL'},extra);await c.handle(i);return i;};
@@ -79,7 +79,7 @@ test('failed feature calls are not remembered and arbitrary permission or contro
 });
 test('guide topics explain the next step and open existing screens without starting a feature',async()=>{
   const f=fixture(),first=await f.run('menu:help');assert.deepEqual(f.calls,[]);assert.match(first.result.embeds[0].toJSON().description,/普段は/);
-  const choices=controls(first.result).find(c=>c.custom_id==='menu:help-topic').options;assert.equal(choices.length,7);
+  const choices=controls(first.result).find(c=>c.custom_id==='menu:help-topic').options;assert.equal(choices.length,8);
   for(const {value} of choices){
     const i=await f.run('menu:help-topic',{values:[value]}),buttons=controls(i.result);assert.equal(buttons.some(b=>b.custom_id===`menu:${value}`),value!=='dice');assert.ok(buttons.some(b=>b.custom_id==='menu:open'));
     assert.deepEqual(f.calls,[]);assert.deepEqual(i.result.attachments,[]);assert.deepEqual(i.result.allowedMentions.parse,[]);

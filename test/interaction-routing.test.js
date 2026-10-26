@@ -10,7 +10,7 @@ test('registered commands and legacy compatibility select the correct entry with
   for(const name of ['perf','schedule','calendars','chips','stop','unknown','constructor'])assert.equal(interactionRoute(interaction('command',name)),null);
 });
 test('buttons, forms and select types retain their supported namespaces; VC selection cannot become a general feature route',()=>{
-  const general=['perf','restart','runtime','banner','read','updates','admin','densuke','trpg','profile','forum','calendars','schedule','bj','casino','rps','four','wallet','chips','work','game'];
+  const general=['image','perf','restart','runtime','banner','read','updates','admin','densuke','trpg','profile','forum','calendars','schedule','bj','casino','rps','four','wallet','chips','work','game'];
   for(const kind of ['button','string','user','role','channel','modal']){
     for(const namespace of general){const route=interactionRoute(interaction(kind,`${namespace}:session:action`));assert.equal(route?.target,namespace);assert.equal(route?.kind,'component');}
     assert.equal(interactionRoute(interaction(kind,'menu:open'))?.target,kind==='button'?'menu':undefined);
@@ -30,7 +30,7 @@ test('only the two native menu string selectors enter the menu controller',()=>{
 });
 test('handler table preserves special entry methods and passes the original interaction exactly once',async()=>{
   const calls=[],controllers={};
-  for(const name of ['mainMenu','backupReader','speedMeasurements','restarts','runtimeSettings','banner','versions','admin','densuke','trpg','profile','forumTags','sharedSchedules','schedule','blackjack','casino','rps','four','chipAccount','chipTools']){
+  for(const name of ['mainMenu','backupReader','speedMeasurements','restarts','runtimeSettings','banner','imageWorkshop','versions','admin','densuke','trpg','profile','forumTags','sharedSchedules','schedule','blackjack','casino','rps','four','chipAccount','chipTools']){
     const controller={};for(const method of ['handle','lobby','openSelf'])controller[method]=function(i){assert.equal(this,controller);calls.push({name,method,i});};controllers[name]=controller;
   }
   const handlers=createInteractionHandlers(controllers);assert.equal(handlers.has('vc'),false);
@@ -39,7 +39,7 @@ test('handler table preserves special entry methods and passes the original inte
     ['button','wallet:open','chipAccount','openSelf'],['button','wallet:id:page','chipAccount','handle'],
     ['button','work:id:answer','chipTools','handle'],['modal','chips:id:confirm','chipTools','handle'],
     ['string','calendars:id:select','sharedSchedules','handle'],['modal','schedule:id:form','schedule','handle'],
-    ['button','perf:id:cancel','speedMeasurements','handle'],['command','admin','admin','handle'],['button','menu:calendar','mainMenu','handle'],
+    ['modal','image:id:0:submit','imageWorkshop','handle'],['button','perf:id:cancel','speedMeasurements','handle'],['command','admin','admin','handle'],['button','menu:calendar','mainMenu','handle'],
     ['string','menu:recent','mainMenu','handle'],['string','menu:help-topic','mainMenu','handle'],
   ]){
     const i=interaction(kind,id);i.values=['opaque-value'];i.deferred=true;const route=interactionRoute(i),before=calls.length;

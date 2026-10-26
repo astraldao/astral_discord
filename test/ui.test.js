@@ -67,7 +67,7 @@ test('command consolidation registers all entries before retiring chips and lega
   ]);
   const json=commands().map(c=>c.toJSON());
   assert.ok(json.every(c=>/^[a-z]+$/.test(c.name)));
-  assert.deepEqual(json.find(c=>c.name==='menu').options[0].choices.map(c=>c.value),['vc','read','game','calendar','stop','profile','wallet']);
+  assert.deepEqual(json.find(c=>c.name==='menu').options[0].choices.map(c=>c.value),['vc','read','game','calendar','stop','profile','wallet','workshop']);
   assert.equal(json.find(c=>c.name==='menu').options[0].required,false);
   // A partial registration must not remove the user's existing entry points.
   for(const failed of ['menu','admin']){

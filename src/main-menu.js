@@ -8,7 +8,7 @@ class MenuUiError extends Error{}
 export function mainMenuScreen({admin=false,recent=[],capabilities}={}){
   const items=[...new Set(recent.filter(destination))].slice(0,3),state=menuCapabilities(capabilities);
   const diceHint=state.diceEnabled===false?'チャットダイスは現在OFFです。':state.diceFullContent===false?'チャットダイスは @Bot 1D100 のようにメンションして使えます。':'チャットダイスは1D100などを投稿して使えます。';
-  return {...payload('メニュー',`**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · ${state.readingEnabled===false?'現在は未有効 · 使い方で手順を確認':'このチャンネルの投稿を、参加中のVCで聞く'}\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n読み上げ・ゲーム・個人設定は選択欄から開けます。「使い方」で手順を確認できます。${diceHint}`,{components:[
+  return {...payload('メニュー',`**やりたいことを選んでください**\n\n**VCに入る** · ロビーから行き先を選ぶ\n**読み上げ** · ${state.readingEnabled===false?'現在は未有効 · 使い方で手順を確認':'このチャンネルの投稿を、参加中のVCで聞く'}\n**ゲーム** · 無料ゲーム・チップゲームで遊ぶ\n**予定表** · このチャンネルの共有予定を見る\n\n画像工房・読み上げ・ゲーム・個人設定は選択欄から開けます。「使い方」で手順を確認できます。${diceHint}`,{components:[
     row(button('vc','VCに入る',ButtonStyle.Primary),button('calendar','予定表')),
     row(new StringSelectMenuBuilder().setCustomId('menu:find').setPlaceholder('目的・説明から機能を探す').addOptions(...Object.entries(destinations).map(([value,d])=>({value,label:d.label,description:d.summary})))),
     ...(items.length?[row(new StringSelectMenuBuilder().setCustomId('menu:recent').setPlaceholder('最近使った機能を開く').addOptions(...items.map(value=>({value,label:destinations[value].label,description:destinations[value].summary}))))]:[]),
@@ -23,7 +23,7 @@ export function mainMenuGuideScreen(topic,capabilities){
     row(...(selected&&destination(topic)?[button(topic,`${selected.label}を開く`,ButtonStyle.Primary)]:[]),menuHomeButton()),
   ]}),attachments:[]};
 }
-export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openWallet,openCalendar,capabilities=()=>({}),now=()=>Date.now(),access=async i=>{
+export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openWallet,openCalendar,openWorkshop,capabilities=()=>({}),now=()=>Date.now(),access=async i=>{
   const [member,channel]=await Promise.all([guild.members.fetch({user:i.user.id,force:true}),guild.channels.fetch(i.channelId,{force:true})]);
   if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new MenuUiError('このチャンネルの閲覧権限を確認してください。');
   return {admin:member.permissions.has(P.Administrator)};
@@ -39,10 +39,10 @@ export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openW
   };
   return {async handle(i){let recovery;try{
     if(!i.deferred&&!i.replied){if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
-    const click=i.customId?.match(/^menu:(open|vc|read|game|stop|profile|wallet|calendar|help|help-topic|recent|find)$/);
+    const click=i.customId?.match(/^menu:(open|vc|read|game|stop|profile|wallet|calendar|workshop|help|help-topic|recent|find)$/);
     if(i.customId&&!click)throw new MenuUiError('メニューを開き直してください。');
     let action=click?.[1]??i.options?.getString('操作')??'open';
-    if(!['open','vc','read','game','stop','profile','wallet','calendar','help','help-topic','recent','find'].includes(action))throw new MenuUiError('操作を選び直してください。');
+    if(!['open','vc','read','game','stop','profile','wallet','calendar','workshop','help','help-topic','recent','find'].includes(action))throw new MenuUiError('操作を選び直してください。');
     const permission=await access(i);
     if(!permission)throw new MenuUiError('このチャンネルの閲覧権限を確認してください。');
     if(action==='find'){if(i.values?.length!==1||!destination(i.values[0]))throw new MenuUiError('一覧から機能を選び直してください。');action=i.values[0];}
@@ -63,6 +63,7 @@ export function createMainMenu({guild,openVc,openRead,openGame,openProfile,openW
     else if(action==='profile')await openProfile(i);
     else if(action==='wallet')await openWallet(i);
     else if(action==='calendar')await openCalendar(i);
+    else if(action==='workshop')await openWorkshop(i);
     else await openRead(i,action==='stop'?'stop':'status');
     if(destination(action))remember(i,action);
   }catch(error){const message={...payload('メニュー',error instanceof MenuUiError?error.message:'操作を完了できませんでした。メニューから開き直してください。',{state:'error',components:[row(...(recovery?[button(recovery,`${destinations[recovery].label}を開き直す`,ButtonStyle.Primary)]:[]),button('help','使い方'),menuHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(message);else await i.reply({...message,flags:MessageFlags.Ephemeral});}}};
