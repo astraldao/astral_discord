@@ -36,7 +36,7 @@ async function ensureRuntime(id){
  loading.set(id,promise);try{return await promise;}finally{loading.delete(id);}
 }
 client.once('clientReady',async()=>{try{
- network=await createServerNetwork({client,primary:env.GUILD_ID,ensureRuntime,activity:()=>resourcePresence.activity(),enabled:()=>ready&&!stopping&&client.options.intents.has(GatewayIntentBits.MessageContent)});
+ network=await createServerNetwork({client,primary:env.GUILD_ID,ensureRuntime,onDiagnostic:info=>console.warn('サーバー連携:',`v${botVersion}`,JSON.stringify(info)),activity:()=>resourcePresence.activity(),enabled:()=>ready&&!stopping&&client.options.intents.has(GatewayIntentBits.MessageContent)});
  for(const id of network.ids()){try{await ensureRuntime(id);}catch(e){if(id===env.GUILD_ID)throw e;console.warn('サブサーバーの初期化を確認してください:',e.code??e.name);}}
  resourcePresence.start();void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).catch(()=>console.warn('プロフィール更新を確認してください。'));
  ready=env.ASTRAL_SUPERVISED!=='1';if(ready){for(const r of runtimes.values())r.activate();void network.start().catch(()=>{});}

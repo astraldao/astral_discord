@@ -1,3 +1,4 @@
+import {networkRead,readWelcome} from './server-network-fault.js';
 import {moderationSnapshot,moderationCopyOptions} from './server-copy-moderation.js';
 import {guildCopyAssets,copyGuildAssets} from './server-copy-assets.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -15,12 +16,16 @@ export function copySnapshot(guild,{onboarding=null,welcome=null}={}){
 }
 export const copyFingerprint=s=>createHash('sha256').update(JSON.stringify(s)).digest('hex');
 export async function inspectCopy(source,target){
- await source.fetch();await target.fetch();await source.roles.fetch();await target.roles.fetch();await source.channels.fetch();await target.channels.fetch();
- for(const guild of [source,target])for(const manager of [guild.emojis,guild.stickers,guild.soundboardSounds,guild.autoModerationRules])if(manager)await manager.fetch();
+ await networkRead('main-guild',()=>source.fetch());await networkRead('sub-guild',()=>target.fetch());
+ await networkRead('main-roles',()=>source.roles.fetch());await networkRead('sub-roles',()=>target.roles.fetch());
+ await networkRead('main-channels',()=>source.channels.fetch());await networkRead('sub-channels',()=>target.channels.fetch());
+ for(const [side,guild]of [['main',source],['sub',target]])for(const [key,manager]of [['emojis',guild.emojis],['stickers',guild.stickers],['sounds',guild.soundboardSounds],['automod',guild.autoModerationRules]])if(manager)await networkRead(`${side}-${key}`,()=>manager.fetch());
  let onboarding=null,welcome=null,targetOnboarding=null,targetWelcome=null;const warnings=[];
- if(target.features.includes('COMMUNITY')){targetOnboarding=await target.fetchOnboarding();targetWelcome=await target.fetchWelcomeScreen();}
- if(source.features?.includes('COMMUNITY')){onboarding=await source.fetchOnboarding();welcome=await source.fetchWelcomeScreen();if(!target.features?.includes('COMMUNITY'))warnings.push('コピー先のコミュニティが未設定：オンボーディング・ウェルカム・ルール用チャンネルは適用できません。');}
- const snapshot=copySnapshot(source,{onboarding,welcome});
+ if(target.features.includes('COMMUNITY')){targetOnboarding=await networkRead('sub-onboarding',()=>target.fetchOnboarding());targetWelcome=await readWelcome(target,'sub');}
+ if(source.features?.includes('COMMUNITY')){onboarding=await networkRead('main-onboarding',()=>source.fetchOnboarding());welcome=await readWelcome(source,'main');if(!target.features?.includes('COMMUNITY'))warnings.push('コピー先のコミュニティが未設定：オンボーディング・ウェルカム・ルール用チャンネルは適用できません。');}
+ if(source.features?.includes('COMMUNITY')&&welcome===null)warnings.push('メインのウェルカム画面は未設定です。この項目はコピーせず、サブの既存設定は変更しません。');
+ const snapshot=await networkRead('main-snapshot',()=>copySnapshot(source,{onboarding,welcome}));
+ const targetSnapshot=await networkRead('sub-snapshot',()=>copySnapshot(target,{onboarding:targetOnboarding,welcome:targetWelcome}));
  if(!target.features.includes('COMMUNITY')&&snapshot.channels.some(c=>[C.GuildAnnouncement,C.GuildStageVoice,C.GuildForum,C.GuildMedia].includes(c.type)))throw new ServerNetworkError('この構成にはコミュニティ用チャンネルがあります。先にサブのコミュニティを有効にしてください。');
  if(snapshot.channels.some(c=>[C.GuildVoice,C.GuildStageVoice].includes(c.type)&&c.bitrate>(c.type===C.GuildStageVoice?(target.maximumStageBitrate??64000):(target.maximumBitrate??96000))))warnings.push('VCのビットレートは、コピー先の利用可能な音質上限に合わせて下げます。');
  if(!snapshot.community&&target.features.includes('COMMUNITY'))warnings.push('サブのコミュニティ要件を保つため、認証レベル/コンテンツフィルターの最低条件と既存ルール/更新チャンネルを保持します。');
@@ -34,13 +39,13 @@ export async function inspectCopy(source,target){
  for(const [kind,label,feature]of [['banner','バナー','BANNER'],['splash','招待背景','INVITE_SPLASH'],['discoverySplash','発見ページ画像','DISCOVERABLE']])if(snapshot.assets.images[kind]&&!target.features.includes(feature))warnings.push(`${label}はコピー先のブースト/機能条件を満たしていないため適用しません。`);
  warnings.push('メンバー・参加済みロール割当・履歴・既存スレッド・招待・Webhook・連携・ブースト・独自URL・サーバーガイド/規約本文・ロールアイコンは対象外です。');
  if((target.autoModerationRules?.cache.size??0)>0)throw new ServerNetworkError('コピー先にAutoModルールがあります。新規サーバーの既存ルールを確認してください。');
- const targetBot=await target.members.fetchMe({force:true});if(!list(targetBot.roles.cache).some(r=>r.id!==target.id&&r.permissions.has(P.Administrator)))throw new ServerNetworkError('サブのBot専用ロールに管理者権限を付けてください。@everyoneをコピーしてもBotの権限を維持するために必要です。');
+ const targetBot=await networkRead('sub-bot',()=>target.members.fetchMe({force:true}));if(!list(targetBot.roles.cache).some(r=>r.id!==target.id&&r.permissions.has(P.Administrator)))throw new ServerNetworkError('サブのBot専用ロールに管理者権限を付けてください。@everyoneをコピーしてもBotの権限を維持するために必要です。');
  const editable=list(target.roles.cache).filter(r=>r.id!==target.id&&!r.managed);
  if(editable.length)throw new ServerNetworkError('コピー先に通常ロールがあります。権限の混在を防ぐため、通常ロールのない新しいサブサーバーを指定してください。');
  if(snapshot.roles.filter(r=>!r.managed&&r.id!==source.id).length+target.roles.cache.size>250||snapshot.channels.filter(c=>types.has(c.type)).length+target.channels.cache.size>500)throw new ServerNetworkError('コピー先のロールまたはチャンネル数の上限を超えます。');
 
  // Missing permissions must never be silently dropped, even for a private channel.
- for(const c of snapshot.channels.filter(c=>types.has(c.type))){for(const o of c.overwrites){if(o.type===0&&snapshot.roles.find(r=>r.id===o.id)?.managed&&!managedMap[o.id])throw new ServerNetworkError('管理ロールの上書き権限を含むチャンネルがあります。サービス管理ロールは移植できないためコピーを開始しません。');if(o.type===1){try{await target.members.fetch({user:o.id,force:true});}catch{throw new ServerNetworkError('個別権限の対象メンバーがコピー先にいません。参加後にプレビューを作り直してください。');}}}}
+ for(const c of snapshot.channels.filter(c=>types.has(c.type))){for(const o of c.overwrites){if(o.type===0&&snapshot.roles.find(r=>r.id===o.id)?.managed&&!managedMap[o.id])throw new ServerNetworkError('管理ロールの上書き権限を含むチャンネルがあります。サービス管理ロールは移植できないためコピーを開始しません。');if(o.type===1){await networkRead('sub-overwrite',async()=>{try{return await target.members.fetch({user:o.id,force:true});}catch(e){if(e.code===10007)throw new ServerNetworkError('個別権限の対象メンバーがコピー先にいません。参加後にプレビューを作り直してください。');throw e;}});}}}
  const roleRefs={...Object.fromEntries(snapshot.roles.filter(r=>!r.managed).map(r=>[r.id,r.id])),...managedMap},channelRefs=Object.fromEntries(snapshot.channels.filter(c=>types.has(c.type)).map(c=>[c.id,c.id]));
  for(const c of snapshot.channels.filter(c=>types.has(c.type)))channelCopyOptions(c,roleRefs,channelRefs);
  for(const id of [snapshot.settings.afkChannel,snapshot.settings.systemChannel])if(id&&!channelRefs[id])throw new ServerNetworkError('基本設定に未対応チャンネルの参照があります。');
@@ -48,7 +53,7 @@ export async function inspectCopy(source,target){
  if(snapshot.welcome&&target.features.includes('COMMUNITY'))for(const c of snapshot.welcome.channels)if(!channelRefs[c.channel])throw new ServerNetworkError('ウェルカム画面の参照先を確認してください。');
  for(const rule of snapshot.moderation)moderationCopyOptions(rule,roleRefs,channelRefs);
  for(const e of snapshot.assets.emojis)for(const id of e.roles)if(!roleRefs[id])throw new ServerNetworkError('絵文字の利用ロールを移植できません。');
- return {snapshot,managedMap,fingerprint:copyFingerprint(snapshot),warnings,targetFingerprint:copyFingerprint(copySnapshot(target,{onboarding:targetOnboarding,welcome:targetWelcome})),counts:{roles:snapshot.roles.filter(r=>!r.managed&&r.id!==source.id).length,channels:snapshot.channels.filter(c=>types.has(c.type)).length,tags:snapshot.channels.reduce((n,c)=>n+c.availableTags.length,0),prompts:snapshot.onboarding?.prompts.length??0,emojis:snapshot.assets.emojis.length,stickers:snapshot.assets.stickers.length,sounds:snapshot.assets.sounds.length,moderation:snapshot.moderation.length}};
+ return {snapshot,managedMap,fingerprint:copyFingerprint(snapshot),warnings,targetFingerprint:copyFingerprint(targetSnapshot),counts:{roles:snapshot.roles.filter(r=>!r.managed&&r.id!==source.id).length,channels:snapshot.channels.filter(c=>types.has(c.type)).length,tags:snapshot.channels.reduce((n,c)=>n+c.availableTags.length,0),prompts:snapshot.onboarding?.prompts.length??0,emojis:snapshot.assets.emojis.length,stickers:snapshot.assets.stickers.length,sounds:snapshot.assets.sounds.length,moderation:snapshot.moderation.length}};
 }
 const mapped=(map,id)=>{if(id===null||id===undefined)return null;if(!map[id])throw new ServerNetworkError('参照先の対応表がありません。権限を省略せず停止しました。');return map[id];};
 export function channelCopyOptions(c,roles,channels,emojis={},limits={}){

@@ -1,9 +1,10 @@
+import {networkRead} from './server-network-fault.js';
 import {PermissionFlagsBits as P} from 'discord.js';
 import {ServerNetworkError,snowflake} from './server-network-store.js';
 export async function networkAuthority(client,primary,target,user){
  if(!snowflake(primary)||!snowflake(target)||primary===target||!snowflake(user))throw new ServerNetworkError('異なる2つのサーバーIDを指定してください。');
- const [source,sub]=await Promise.all([client.guilds.fetch(primary),client.guilds.fetch(target)]);
- await Promise.all([source,sub].map(async guild=>{const [member,bot]=await Promise.all([guild.members.fetch({user,force:true}),guild.members.fetchMe({force:true})]);if(member.user?.bot||member.pending||!member.permissions.has(P.Administrator)||!bot.permissions.has(P.Administrator))throw new ServerNetworkError('両サーバーで、実行者とBotの管理者権限が必要です。');}));
+ const [source,sub]=await Promise.all([networkRead('main-guild',()=>client.guilds.fetch(primary)),networkRead('sub-guild',()=>client.guilds.fetch(target))]);
+ await Promise.all([['main',source],['sub',sub]].map(async([side,guild])=>{const [member,bot]=await Promise.all([networkRead(`${side}-member`,()=>guild.members.fetch({user,force:true})),networkRead(`${side}-bot`,()=>guild.members.fetchMe({force:true}))]);if(member.user?.bot||member.pending||!member.permissions.has(P.Administrator)||!bot.permissions.has(P.Administrator))throw new ServerNetworkError('両サーバーで、実行者とBotの管理者権限が必要です。');}));
  return {source,target:sub};
 }
 export const networkGuildRoot=(primary,id)=>{if(!snowflake(primary)||!snowflake(id))throw new ServerNetworkError('サーバーIDを確認してください。');return primary===id?'data':`data/guilds/${id}`;};

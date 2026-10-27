@@ -1,3 +1,4 @@
+import {networkRead,networkDiagnostic} from './server-network-fault.js';
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,GatewayIntentBits,PermissionFlagsBits as P} from 'discord.js';
 import {themed,text,acknowledgePrivate,adminHomeButton} from './ui.js';
@@ -7,11 +8,11 @@ import {inspectMirror} from './thread-mirror.js';
 const {payload}=themed('admin'),row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const states={active:'同期中',paused:'一時停止',copying:'コピー中',complete:'完了',stopped:'停止',uncertain:'結果不明'};
 const reasons={READY:'待機',MANUAL:'管理者の操作',RESTART:'再起動後の確認',LIMIT:'件数上限',PERMISSION:'権限・参照先・APIを確認',SOURCE_MISSING:'同期元を確認',API_UNKNOWN:'送信結果が不明：自動再送なし',STORAGE:'保存を確認',STOPPED:'停止',COMPLETE:'完了'};
-export function createServerNetworkUI({client,store,authority,ensureRuntime,copier,mirror,now=Date.now}){
+export function createServerNetworkUI({client,store,authority,ensureRuntime,copier,mirror,now=Date.now,onDiagnostic=()=>{}}){
  const sessions=new Map();
  const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`servers:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
  const get=(id,i,turn)=>{const s=sessions.get(id);if(!s||s.owner!==i.user.id||s.guild!==i.guildId||s.channel!==i.channelId||s.expires<=now()||String(s.turn)!==turn)throw new ServerNetworkError('この画面は終了しています。/admin の「サーバー連携」から開き直してください。');return s;};
- async function access(i){const d=store.get();if(![d.primary,d.sub].includes(i.guildId))throw new ServerNetworkError('連携元またはサブサーバーから操作してください。');const guild=await client.guilds.fetch(i.guildId),member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!member.permissions.has(P.Administrator)||!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new ServerNetworkError('現在のチャンネルで管理者権限が必要です。');if(d.sub)await authority(i.user.id);return d;}
+ async function access(i){const d=store.get();if(![d.primary,d.sub].includes(i.guildId))throw new ServerNetworkError('連携元またはサブサーバーから操作してください。');const side=i.guildId===d.primary?'main':'sub',guild=await networkRead(`${side}-guild`,()=>client.guilds.fetch(i.guildId)),member=await networkRead(`${side}-member`,()=>guild.members.fetch({user:i.user.id,force:true})),channel=await networkRead(`${side}-origin`,()=>guild.channels.fetch(i.channelId,{force:true}));if(!member.permissions.has(P.Administrator)||!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new ServerNetworkError('現在のチャンネルで管理者権限が必要です。');if(d.sub)await authority(i.user.id);return d;}
  const valid=s=>{if(s.expires<=now())throw new ServerNetworkError('確認の有効期限が切れました。');};
  const check=(s,i)=>async()=>{valid(s);await access(i);valid(s);};
  function screen(s,note=''){
@@ -37,13 +38,18 @@ export function createServerNetworkUI({client,store,authority,ensureRuntime,copi
   if(note)description=`**${note}**\n\n${description}`;
   return {...payload(title,description,{components}),attachments:[]};
  }
- async function open(i){await acknowledgePrivate(i);await access(i);for(const [id,s]of sessions)if(s.expires<=now()||s.owner===i.user.id&&!s.busy)sessions.delete(id);if([...sessions.values()].some(s=>s.owner===i.user.id&&s.busy))throw new ServerNetworkError('前の処理が進行中です。');if(sessions.size>=40)throw new ServerNetworkError('管理画面が多いため少し待ってください。');const s={id:randomUUID().slice(0,12),owner:i.user.id,guild:i.guildId,channel:i.channelId,expires:now()+600000,turn:0,view:'home',busy:false};sessions.set(s.id,s);await i.editReply(screen(s));}
+ async function open(i){let ackAttempted=false;try{ackAttempted=!i.deferred&&!i.replied;await acknowledgePrivate(i);await access(i);for(const [id,s]of sessions)if(s.expires<=now()||s.owner===i.user.id&&!s.busy)sessions.delete(id);if([...sessions.values()].some(s=>s.owner===i.user.id&&s.busy))throw new ServerNetworkError('前の処理が進行中です。');if(sessions.size>=40)throw new ServerNetworkError('管理画面が多いため少し待ってください。');const s={id:randomUUID().slice(0,12),owner:i.user.id,guild:i.guildId,channel:i.channelId,expires:now()+600000,turn:0,view:'home',busy:false};sessions.set(s.id,s);await i.editReply(screen(s));}catch(e){await failure(i,e,'open',undefined,false,ackAttempted);}}
  function modal(s,kind){const token=randomUUID().slice(0,12);s.form={kind,token};const m=new ModalBuilder().setCustomId(`servers:${s.id}:${s.turn}:form:${token}`).setTitle(kind==='bind'?'サブサーバーの登録':'スレッド同期の追加');for(const [id,label]of(kind==='bind'?[['target','サブサーバーID']]:[['source','メインの元チャンネルID'],['target','サブの同期先チャンネルID']]))m.addComponents(row(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMinLength(17).setMaxLength(20).setRequired(true)));return m;}
- async function handle(i){let s,locked=false;try{
-  const parts=i.customId?.split(':')??[];s=get(parts[1],i,parts[2]);let action=parts[3];
+ async function failure(i,e,stage,s,locked=false,attempted=false){try{onDiagnostic(networkDiagnostic(stage,e));}catch{}if([10062,40060].includes(e?.code)||attempted&&!i.deferred&&!i.replied)return;
+  let components=[row(adminHomeButton())],description=networkMessage(e);
+  if(stage==='copy-preview'){description='構成の確認中に停止しました。コピーは開始していません。\n\n'+description;if(locked&&s&&sessions.get(s.id)===s&&s.owner===i.user.id&&s.guild===i.guildId&&s.channel===i.channelId&&s.expires>now()){s.view='home';delete s.plan;s.previewRetry=true;s.turn++;components=[row(button(s,'retry-copy','確認をやり直す',ButtonStyle.Primary),adminHomeButton())];}}
+  const message={...payload('サーバー連携',description,{state:'error',components}),attachments:[]};if(i.deferred||i.replied)await i.editReply(message);else await i.reply({...message,flags:MessageFlags.Ephemeral});
+ }
+ async function handle(i){let s,locked=false,stage='interaction',ackAttempted=false,modalAttempted=false;try{
+  const parts=i.customId?.split(':')??[];s=get(parts[1],i,parts[2]);let action=parts[3];if(action==='retry-copy'||action==='action'&&i.values?.length===1&&i.values[0]==='copy')stage='copy-preview';else if(action==='save-copy')stage='copy-apply';
   // Show only a bound form before I/O; submission repeats all live checks before reading IDs.
-  if(action==='action'&&['bind','link'].includes(i.values?.[0])&&i.values.length===1&&s.view==='home'&&!s.busy){if(!i.memberPermissions?.has(P.Administrator))throw new ServerNetworkError('管理者専用です。');if(i.values[0]==='bind'&&store.get().sub||i.values[0]==='link'&&!store.get().sub)throw new ServerNetworkError('現在の一覧から選び直してください。');await i.showModal(modal(s,i.values[0]));return;}
-  await acknowledgePrivate(i);await access(i);get(s.id,i,String(s.turn));if(action==='stop-copy'&&s.copying){copier.cancel();await i.editReply(payload('構成コピーの停止を受付','実行中の1件が終わり次第停止します。作成済みの構成は残します。'));return;}if(s.busy)throw new ServerNetworkError('前の処理が進行中です。');s.busy=true;locked=true;let note='';
+  if(action==='action'&&['bind','link'].includes(i.values?.[0])&&i.values.length===1&&s.view==='home'&&!s.busy){if(!i.memberPermissions?.has(P.Administrator))throw new ServerNetworkError('管理者専用です。');if(i.values[0]==='bind'&&store.get().sub||i.values[0]==='link'&&!store.get().sub)throw new ServerNetworkError('現在の一覧から選び直してください。');modalAttempted=true;await i.showModal(modal(s,i.values[0]));return;}
+  ackAttempted=!i.deferred&&!i.replied;await acknowledgePrivate(i);await access(i);get(s.id,i,String(s.turn));if(action==='stop-copy'&&s.copying){copier.cancel();await i.editReply(payload('構成コピーの停止を受付','実行中の1件が終わり次第停止します。作成済みの構成は残します。'));return;}if(s.busy)throw new ServerNetworkError('前の処理が進行中です。');s.busy=true;locked=true;let note='';
   if(action==='form'){
    if(!i.isModalSubmit()||!s.form||parts[4]!==s.form.token)throw new ServerNetworkError('フォームを開き直してください。');const kind=s.form.kind;delete s.form;const target=i.fields.getTextInputValue('target').trim();if(!snowflake(target))throw new ServerNetworkError('サーバー/チャンネルIDを17〜20桁の数字で入力してください。');
    if(kind==='bind'){if(store.get().sub)throw new ServerNetworkError('サブは登録済みです。');const pair=await authority(i.user.id,target);s.target=target;s.targetName=pair.target.name;s.view='confirm-bind';}
@@ -51,8 +57,8 @@ export function createServerNetworkUI({client,store,authority,ensureRuntime,copi
   }else if(action==='save-bind'){
    if(s.view!=='confirm-bind')throw new ServerNetworkError('登録を確認してください。');await authority(i.user.id,s.target);await store.update(d=>{if(d.sub)throw new ServerNetworkError('サブは登録済みです。');d.sub=s.target;},async()=>{valid(s);await authority(i.user.id,s.target);valid(s);});await ensureRuntime(s.target);s.view='home';note='サブで同じメニューを使えるようになりました。';
   }else if(action==='action'&&i.values?.length===1&&i.values[0]==='activate'&&s.view==='home'){await ensureRuntime(store.get().sub);note='サブのメニューを有効化しました。';
-  }else if(action==='action'&&i.values?.length===1&&i.values[0]==='copy'&&s.view==='home'){
-   if(!store.get().sub)throw new ServerNetworkError('先にサブを登録してください。');if(copier.busy||store.get().copies.length)throw new ServerNetworkError('コピー記録があります。現在の状態を確認してください。');const pair=await authority(i.user.id);s.plan=await inspectCopy(pair.source,pair.target);s.view='confirm-copy';
+  }else if((action==='action'&&i.values?.length===1&&i.values[0]==='copy'||action==='retry-copy'&&s.previewRetry)&&s.view==='home'){
+   if(!store.get().sub)throw new ServerNetworkError('先にサブを登録してください。');if(copier.busy||store.get().copies.length)throw new ServerNetworkError('コピー記録があります。現在の状態を確認してください。');delete s.plan;delete s.previewRetry;const pair=await authority(i.user.id);s.plan=await inspectCopy(pair.source,pair.target);s.view='confirm-copy';
   }else if(action==='save-copy'){
    if(s.view!=='confirm-copy'||!s.plan)throw new ServerNetworkError('プレビューを作り直してください。');s.view='home';s.expires=now()+3600000;s.turn++;s.copying=true;let lastProgress=now();const progress=c=>payload('構成をコピー中',`ロール対応 **${Object.keys(c?.roles??{}).length}** · チャンネル **${Object.keys(c?.channels??{}).length}**\n絵文字 **${Object.keys(c?.emojis??{}).length}** · スタンプ **${Object.keys(c?.stickers??{}).length}** · サウンド **${Object.keys(c?.sounds??{}).length}**\n\n1件ずつ作成して対応表を保存します。結果不明時は自動再送しません。`,{components:[row(button(s,'stop-copy','コピーを停止',ButtonStyle.Danger))]});await i.editReply(progress());try{await copier.run(s.plan,s.owner,check(s,i),async c=>{if(now()-lastProgress<3000)return;lastProgress=now();await i.editReply(progress(c));});}finally{s.copying=false;}delete s.plan;note='構成コピーが完了しました。サブで権限・タグ・オンボーディングをご確認ください。';
   }else if(action==='save-link'){
@@ -61,6 +67,6 @@ export function createServerNetworkUI({client,store,authority,ensureRuntime,copi
   else if(action==='link-action'&&s.view==='link'&&i.values?.length===1){const l=store.get().links.find(l=>l.id===s.selected),a=i.values[0];if(!l)throw new ServerNetworkError('連携を選び直してください。');if(a==='pause'&&l.state==='active')await mirror.pause(l.id);else if(a==='catchup'&&l.state==='active'){void mirror.catchup(l.id).catch(()=>{});note='最近の差分を順に確認します。';}else if(a==='resume'&&l.state==='paused'&&!l.operation){void mirror.resume(l.id).catch(()=>{});note='権限を再確認して再開します。状態を更新して結果をご確認ください。';}else if(a==='repair'&&l.operation)await mirror.repair(l.id);else throw new ServerNetworkError('最新の状態から操作を選び直してください。');}
   else if(action==='home'){s.view='home';delete s.plan;delete s.pair;delete s.form;}else if(action!=='refresh')throw new ServerNetworkError('現在の画面から操作を選び直してください。');
   await check(s,i)();s.turn++;await i.editReply(screen(s,note));
- }catch(e){const message={...payload('サーバー連携',networkMessage(e),{state:'error',components:[row(adminHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(message);else if(![10062,40060].includes(e.code))await i.reply({...message,flags:MessageFlags.Ephemeral});}finally{if(locked)s.busy=false;}}
+ }catch(e){await failure(i,e,stage,s,locked,ackAttempted||modalAttempted);}finally{if(locked)s.busy=false;}}
  return {open,handle,sessions};
 }
