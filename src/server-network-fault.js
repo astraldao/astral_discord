@@ -12,7 +12,7 @@ export class NetworkReadError extends ServerNetworkError {
 }
 export async function networkRead(phase,operation){try{return await operation();}catch(e){if(e instanceof ServerNetworkError)throw e;throw new NetworkReadError(phase,e);}}
 export class NetworkWriteError extends ServerNetworkError {
- constructor(operation,error){const step=copyStepInfo(operation),code=safeNetworkCode(error),hint=error?.code===20001?'この操作はBotから利用できません。Discordの仕様を確認してください。':error?.code===40333?'Discord側の通信制限です。ホストからDiscordへの接続を確認してください。':error?.code===60003?'Discordが二要素認証を要求しました。サーバーの安全設定とBot所有者の認証設定を確認してください。':error?.code===50074?'コミュニティの必須チャンネル参照を確認してください。':[350000,350001].includes(error?.code)?'オンボーディングの既定チャンネル数・投稿権限などの条件を確認してください。':error?.code===50026?'Botの招待時のスコープを確認してください。':error?.status===403||[50001,50013].includes(error?.code)?'Discordが操作を拒否しました。Botの管理権限・ロール階層・操作対象の制約を確認してください。':'処理記録とDiscord側の状態を確認してください。';
+ constructor(operation,error){const step=copyStepInfo(operation),code=safeNetworkCode(error),hint=error?.code===40006?'Discordがこの機能を一時停止しています。制限が解消するまで処理記録を保持してください。':error?.code===20001?'この操作はBotから利用できません。Discordの仕様を確認してください。':error?.code===40333?'Discord側の通信制限です。ホストからDiscordへの接続を確認してください。':error?.code===60003?'Discordが二要素認証を要求しました。サーバーの安全設定とBot所有者の認証設定を確認してください。':error?.code===50074?'コミュニティの必須チャンネル参照を確認してください。':[350000,350001].includes(error?.code)?'オンボーディングの既定チャンネル数・投稿権限などの条件を確認してください。':error?.code===50026?'Botの招待時のスコープを確認してください。':error?.status===403||[50001,50013].includes(error?.code)?'Discordが操作を拒否しました。Botの管理権限・ロール階層・操作対象の制約を確認してください。':'処理記録とDiscord側の状態を確認してください。';
  super(`${step.label}処理で停止しました。${hint}\n診断コード：${step.phase} / ${code}\n削除済みの構成は元に戻せません。自動で再実行しません。`);this.phase=step.phase;this.safeCode=code;this.step=step.key;
  }
 }
