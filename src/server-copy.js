@@ -1,5 +1,7 @@
+import {reviewCopyPreparation} from './server-copy-review.js';
+import {emptyOnboarding,emptyWelcome,copyStepInfo} from './server-copy-steps.js';
 import {resetPlan,resetDestination} from './server-copy-reset.js';
-import {networkRead,readWelcome} from './server-network-fault.js';
+import {networkRead,networkWrite,networkDiagnostic,readWelcome} from './server-network-fault.js';
 import {moderationSnapshot,moderationCopyOptions} from './server-copy-moderation.js';
 import {guildCopyAssets,copyGuildAssets} from './server-copy-assets.js';
 import {createHash,randomUUID} from 'node:crypto';
@@ -73,18 +75,18 @@ export function channelCopyOptions(c,roles,channels,emojis={},limits={}){
 export function onboardingCopyOptions(o,roles,channels,emojis={}){return {enabled:o.enabled,mode:o.mode,defaultChannels:o.defaultChannels.map(id=>mapped(channels,id)),prompts:o.prompts.map(p=>({...p,options:p.options.map(x=>({title:x.title,description:x.description,roles:x.roles.map(id=>mapped(roles,id)),channels:x.channels.map(id=>mapped(channels,id)),...(x.emoji.id&&emojis[x.emoji.id]?{emoji:{id:emojis[x.emoji.id]}}:x.emoji.name&&!x.emoji.id?{emoji:{name:x.emoji.name}}:{})}))})),reason:'管理者確認済みサーバーコピー'};}
 export function createServerCopier({store,authority,activity=()=>()=>{}}){
  let running=false,closed=false,cancelled=false;
- return {get busy(){return running;},close(){closed=true;},cancel(){cancelled=true;},async run(plan,owner,check=()=>{},progress=()=>{}){
+ return {get busy(){return running;},async reviewPreparation(id,owner,check=()=>{}){if(running||closed)throw new ServerNetworkError('コピー処理中またはBot停止中です。');running=true;try{return await reviewCopyPreparation({store,authority,id,owner,check:async()=>{if(closed)throw new ServerNetworkError('Bot停止中です。');await check();if(closed)throw new ServerNetworkError('Bot停止中です。');}});}finally{running=false;}},close(){closed=true;},cancel(){cancelled=true;},async run(plan,owner,check=()=>{},progress=()=>{}){
  if(running||closed)throw new ServerNetworkError('コピー処理中またはBot停止中です。');running=true;cancelled=false;const finish=activity();let job;
  const guard=async()=>{if(closed||cancelled)throw new ServerNetworkError('コピーを停止しました。削除済みの構成は戻せず、作成済みの構成は残しています。');await check();const pair=await authority(owner);if(plan.mode==='replace'){if(pair.source.id!==plan.snapshot.id||pair.target.id!==store.get().sub||pair.target.id!==plan.reset?.target)throw new ServerNetworkError('コピー先の設定が変わったため停止しました。');await networkRead('sub-guild',()=>pair.target.fetch());if(pair.target.ownerId!==owner)throw new ServerNetworkError('サブの所有者が変わったため停止しました。削除済みの構成は戻せません。');if(store.get().links.length)throw new ServerNetworkError('スレッド同期の設定があるため停止しました。');}return pair;};
  const save=async change=>store.update(d=>change(d.copies.find(x=>x.id===job.id)));
- const step=async(name,operation,record=()=>{})=>{await guard();await save(c=>{c.operation=name;});await guard();const result=await operation();await save(c=>{record(c,result);c.operation=null;c.at=Date.now();});await Promise.resolve(progress(store.get().copies.find(c=>c.id===job.id))).catch(()=>{});return result;};
+ const step=async(name,operation,record=()=>{})=>{await guard();await save(c=>{c.operation=name;});await guard();const result=await networkWrite(name,operation);await save(c=>{record(c,result);c.operation=null;c.completed++;c.at=Date.now();});await Promise.resolve(progress(store.get().copies.find(c=>c.id===job.id))).catch(()=>{});return result;};
  try{
  const {source,target}=await guard();if(source.id!==plan.snapshot.id||target.id!==store.get().sub)throw new ServerNetworkError('サーバーの選択が変更されました。');
- if(store.get().copies.some(c=>c.target===target.id))throw new ServerNetworkError('このコピー先には実行記録があります。重複作成を防ぐため再実行しません。状態を確認してください。');
+ if(store.get().copies.some(c=>c.target===target.id&&!c.review))throw new ServerNetworkError('このコピー先には実行記録があります。重複作成を防ぐため再実行しません。状態を確認してください。');
  if(plan.mode==='replace'&&store.get().links.length)throw new ServerNetworkError('スレッド同期の設定があります。同期先を削除するコピーは開始できません。');
  const fresh=await inspectCopy(source,target,{mode:plan.mode??'add',owner});if(fresh.fingerprint!==plan.fingerprint||fresh.targetFingerprint!==plan.targetFingerprint)throw new ServerNetworkError('プレビュー後に構成が変わりました。プレビューを作り直してください。');
- job={id:randomUUID(),owner,source:source.id,target:target.id,state:'copying',code:'READY',mode:fresh.mode,staging:null,roles:{[source.id]:target.id,...fresh.managedMap},channels:{},tags:{},emojis:{},stickers:{},sounds:{},moderation:{},operation:null,at:Date.now()};
- await store.update(d=>{if(d.copies.length>=10||d.copies.some(c=>c.target===target.id))throw new ServerNetworkError('コピー記録を確認してください。');d.copies.push(job);},guard);
+ job={id:randomUUID(),owner,source:source.id,target:target.id,state:'copying',code:'READY',mode:fresh.mode,staging:null,completed:0,lastFailure:null,roles:{[source.id]:target.id,...fresh.managedMap},channels:{},tags:{},emojis:{},stickers:{},sounds:{},moderation:{},operation:null,at:Date.now()};
+ await store.update(d=>{if(d.copies.length>=10||d.copies.some(c=>c.target===target.id&&!c.review))throw new ServerNetworkError('コピー記録を確認してください。');d.copies.push(job);},guard);
  const staging=fresh.reset?await resetDestination({target,plan:fresh.reset,step}):null;
  await step('everyone',()=>target.roles.everyone.setPermissions(BigInt(plan.snapshot.roles.find(r=>r.id===source.id).permissions),'サーバーコピー'));
  for(const r of plan.snapshot.roles.filter(r=>r.id!==source.id&&!r.managed))await step(`role:${r.id}`,()=>target.roles.create({name:r.name,permissions:BigInt(r.permissions),color:r.color,hoist:r.hoist,mentionable:r.mentionable,reason:'サーバーコピー'}),(c,created)=>{c.roles[r.id]=created.id;job.roles[r.id]=created.id;});
@@ -96,9 +98,9 @@ export function createServerCopier({store,authority,activity=()=>()=>{}}){
  if(plan.snapshot.community&&target.features.includes('COMMUNITY'))Object.assign(data,{rulesChannel:mapped(job.channels,cfg.rulesChannel),publicUpdatesChannel:mapped(job.channels,cfg.publicUpdatesChannel)});
  await step('settings',()=>target.edit(data));
  if(staging)await step(`reset-staging-delete:${staging}`,()=>target.channels.delete(staging,'コミュニティ必須チャンネルの退避終了'));
- if(plan.snapshot.welcome&&target.features.includes('COMMUNITY')){const w=plan.snapshot.welcome;await step('welcome',()=>target.editWelcomeScreen({enabled:w.enabled,description:w.description,welcomeChannels:w.channels.map(c=>({channel:mapped(job.channels,c.channel),description:c.description,...(c.emoji.id&&job.emojis[c.emoji.id]?{emoji:job.emojis[c.emoji.id]}:c.emoji.name&&!c.emoji.id?{emoji:c.emoji.name}:{})})),reason:'サーバーコピー'}));}
- if(plan.snapshot.onboarding&&target.features.includes('COMMUNITY'))await step('onboarding',()=>target.editOnboarding(onboardingCopyOptions(plan.snapshot.onboarding,job.roles,job.channels,job.emojis)));
+ if(plan.snapshot.welcome&&target.features.includes('COMMUNITY')&&!(fresh.mode==='replace'&&emptyWelcome(plan.snapshot.welcome))){const w=plan.snapshot.welcome;await step('welcome',()=>target.editWelcomeScreen({enabled:w.enabled,description:w.description,welcomeChannels:w.channels.map(c=>({channel:mapped(job.channels,c.channel),description:c.description,...(c.emoji.id&&job.emojis[c.emoji.id]?{emoji:job.emojis[c.emoji.id]}:c.emoji.name&&!c.emoji.id?{emoji:c.emoji.name}:{})})),reason:'サーバーコピー'}));}
+ if(plan.snapshot.onboarding&&target.features.includes('COMMUNITY')&&!(fresh.mode==='replace'&&emptyOnboarding(plan.snapshot.onboarding)))await step('onboarding',()=>target.editOnboarding(onboardingCopyOptions(plan.snapshot.onboarding,job.roles,job.channels,job.emojis)));
  await save(c=>{c.state='complete';c.code='COMPLETE';});return store.get().copies.find(c=>c.id===job.id);
- }catch(e){if(job)await save(c=>{c.state=c.operation?'uncertain':'stopped';c.code=c.operation?'API_UNKNOWN':'STOPPED';}).catch(()=>{});throw e;}finally{running=false;finish();}
+ }catch(e){if(job)await save(c=>{c.state=c.operation?'uncertain':'stopped';c.code=c.operation?'API_UNKNOWN':'STOPPED';const info=networkDiagnostic('copy-apply',e);c.lastFailure={step:copyStepInfo(c.operation).key,code:info.code,at:Date.now()};}).catch(()=>{});throw e;}finally{running=false;finish();}
  }};
 }
