@@ -1,3 +1,4 @@
+import {GameError} from './game-errors.js';
 import {ActionRowBuilder,StringSelectMenuBuilder} from 'discord.js';
 import {bets} from './casino.js';
 export const chipNumber=n=>n.toLocaleString('ja-JP');
@@ -25,5 +26,5 @@ export function wagerRow(prefix,s,balance){
 // Keep old dropdown interactions usable, while accepting only exact supported amounts.
 export function wagerChoice(action,values){
   const value=action==='bet'&&values?.length===1?values[0]:/^bet-(10|50|100)$/.test(action)?action.slice(4):null;
-  if(!bets.some(n=>String(n)===value))throw new Error('10・50・100枚から選んでください。');return Number(value);
+  if(!bets.some(n=>String(n)===value))throw new GameError('10・50・100枚から選んでください。');return Number(value);
 }

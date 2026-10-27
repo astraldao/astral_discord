@@ -1,5 +1,6 @@
+import {GameError,gameErrorMessage} from './game-errors.js';
 import {randomUUID} from 'node:crypto';
-import {ActionRowBuilder,ButtonBuilder,ButtonStyle,UserSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
+import {ActionRowBuilder,ButtonBuilder,ButtonStyle,UserSelectMenuBuilder,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,escapeMarkdown,PermissionFlagsBits as P} from 'discord.js';
 import {GameSessions} from './game-sessions.js';
 import {shortButtonRows} from './compact-controls.js';
 import {themed,text,adminHomeButton,menuHomeButton} from './ui.js';
@@ -9,6 +10,7 @@ const {payload}=themed('game','🪙');
 const row=(...c)=>new ActionRowBuilder().addComponents(...c);
 const button=(s,a,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`wallet:${s.id}:${s.turn}:${a}`).setLabel(label).setStyle(style);
 const names={blackjack:'ブラックジャック',...casinoNames};
+const reasonText=value=>escapeMarkdown(String(value)).replace(/@/g,'＠');
 const number=n=>n.toLocaleString('ja-JP'),signed=n=>`${n>=0?'+':''}${number(n)}`;
 const labels={initial:'初期チップ',carry:'履歴導入前の残高',casino:'ゲーム', 'blackjack-bet':'ブラックジャック開始','blackjack-result':'ブラックジャック精算','blackjack-double':'ブラックジャック · ダブル','blackjack-interrupted':'ブラックジャック中断',work:'お手伝いのお礼','gift-in':'チップ受取','gift-out':'チップ譲渡',adjust:'管理者の調整',other:'その他の増減'};
 const filters={all:'すべて',games:'ゲーム',gifts:'受取・譲渡',adjust:'管理者調整',work:'お手伝い'};
@@ -17,7 +19,7 @@ const modes={add:'追加する',remove:'減らす',set:'残高を指定する'};
 const home=(admin=false)=>admin?adminHomeButton():new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary);
 const checked=at=>Number.isFinite(at)?`\n履歴の取得 <t:${Math.floor(at/1000)}:R>`:'';
 const when=at=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(at));
-const eventBody=e=>[`残高 **${number(e.balance)}**`,e.game?`${names[e.game]}${e.wager!==undefined?` · 掛け ${number(e.stake??e.wager)}`:''}${e.payout!==undefined?` · 払い戻し ${number(e.payout)}`:''}`:'',e.peer?`相手 <@${e.peer}>`:'',e.actor?`実行者 <@${e.actor}>`:'',e.reason?`理由 ${text(e.reason)}`:''].filter(Boolean).join('\n');
+const eventBody=e=>[`残高 **${number(e.balance)}**`,e.game?`${names[e.game]}${e.wager!==undefined?` · 掛け ${number(e.stake??e.wager)}`:''}${e.payout!==undefined?` · 払い戻し ${number(e.payout)}`:''}`:'',e.peer?`相手 <@${e.peer}>`:'',e.actor?`実行者 <@${e.actor}>`:'',e.reason?`理由 ${reasonText(e.reason)}`:''].filter(Boolean).join('\n');
 function pages(s,items,size=5){const count=Math.max(1,Math.ceil(items.length/size));s.page=Math.max(0,Math.min(count-1,s.page??0));return {count,items:items.slice(s.page*size,(s.page+1)*size)};}
 function navigation(s,count,back){return row(...(count>1?[button(s,'prev','前へ').setDisabled(s.page===0),button(s,'next','次へ').setDisabled(s.page===count-1)]:[]),button(s,'refresh',s.view==='history'?'残高・履歴を更新':'履歴を更新'),button(s,back,s.scope==='admin'?(back==='summary'?'この人のチップへ':'チップ管理へ'):'自分のチップへ'));}
 export function chipAccountScreen(s,wallet,note=''){
@@ -32,7 +34,8 @@ export function chipAccountScreen(s,wallet,note=''){
   }else{
     const a=wallet.account(target),l=a.ledger,t=l.totals,back=admin?'list':'summary';
     if(s.view==='confirm'){
-      const d=s.adjustment;m=payload('✦  チップ調整の確認',`${intro}対象 <@${target}>\n\n**${number(d.expectedBalance)} → ${number(d.balance)}枚**\n変更 **${signed(d.balance-d.expectedBalance)}枚**\n\n理由 ${text(d.reason)}`,{components:[row(button(s,'save','この内容で保存',ButtonStyle.Primary),button(s,'summary','変更せず戻る'))]});
+      const d=s.adjustment,stale=a.balance!==d.expectedBalance||l.seq!==d.expectedRevision,pending=!!a.pending&&a.pending.expires>wallet.now();
+      m=payload('✦  チップ調整の確認',`${intro}${stale?'**残高・履歴が変わっています**\n変更せず戻り、最新の残高から入力し直してください。\n\n':pending?'**ブラックジャックの終了を待ってください**\n\n':''}対象 <@${target}>\n現在の残高 **${number(a.balance)}枚**\n\n調整案 **${number(d.expectedBalance)} → ${number(d.balance)}枚**\n変更 **${signed(d.balance-d.expectedBalance)}枚**\n\n理由 ${reasonText(d.reason)}`,{state:stale||pending?'warning':'normal',components:[row(button(s,'save','この内容で保存',ButtonStyle.Primary).setDisabled(stale||pending),button(s,'summary','変更せず戻る'))]});
     }else if(s.view==='history'){
       const filtered=(s.historySnapshot??[]).filter(e=>matches(e,s.historyFilter??'all')),p=pages(s,filtered);m=payload('✦  チップの内訳',`${intro}${admin?`<@${target}>\n`:''}**残高 ${number(a.balance)}枚**\n直近${s.historySnapshot?.length??0}件のうち ${filtered.length}件 · ${s.page+1}/${p.count}ページ${checked(s.historyCheckedAt)}\n残高は画面表示時、履歴は取得時点の内容です。${!filtered.length?'\n\nこの種類の履歴はありません。種類を「すべて」に戻すか、「残高・履歴を更新」を使ってください。':''}`, {components:[row(new StringSelectMenuBuilder().setCustomId(`wallet:${s.id}:${s.turn}:filter`).setPlaceholder('履歴の種類を選ぶ').addOptions(...Object.entries(filters).map(([value,label])=>({label,value,default:value===(s.historyFilter??'all')})))),navigation(s,p.count,'summary')]});for(const e of p.items)m.embeds[0].addFields({name:`${when(e.at)} · ${labels[e.type]} · ${signed(e.delta)}枚`,value:eventBody(e)});
     }else if(s.view==='stats'){
@@ -46,45 +49,55 @@ export function chipAccountScreen(s,wallet,note=''){
   if(!admin)m.components.at(-1).addComponents(menuHomeButton());
   return {...m,components:shortButtonRows(m.components),attachments:[]};
 }
-export function createChipAccountController({guild,wallet,now=()=>Date.now(),member=async user=>{const m=await guild.members.fetch({user,force:true});if(m.user.bot)throw new Error('Botのチップは調整できません。');return m;},access=async(i,admin)=>{const m=await guild.members.fetch({user:i.user.id,force:true}),c=await guild.channels.fetch(i.channelId,{force:true});if(!c?.permissionsFor(m)?.has(P.ViewChannel)||admin&&!m.permissions.has(P.Administrator))throw new Error(admin?'管理者権限がありません。':'このチャンネルでは操作できません。');}}){
+export function createChipAccountController({guild,wallet,now=()=>Date.now(),member=async user=>{const m=await guild.members.fetch({user,force:true});if(m.user.bot)throw new GameError('Botのチップは調整できません。');return m;},access=async(i,admin)=>{const m=await guild.members.fetch({user:i.user.id,force:true}),c=await guild.channels.fetch(i.channelId,{force:true});if(!c?.permissionsFor(m)?.has(P.ViewChannel)||admin&&!m.permissions.has(P.Administrator))throw new GameError(admin?'管理者権限がありません。':'このチャンネルでは操作できません。');}}){
   const sessions=new GameSessions(now);
-  const get=(id,i)=>{const s=sessions.get(id,i.user.id);if(s.channelId!==i.channelId)throw new Error('元のチャンネルから操作してください。');return s;};
+  const get=(id,i)=>{const s=sessions.get(id,i.user.id);if(s.channelId!==i.channelId)throw new GameError('元のチャンネルから操作してください。');return s;};
   async function ack(i){if(i.deferred||i.replied)return;if(i.message?.flags?.has(MessageFlags.Ephemeral))await i.deferUpdate();else await i.deferReply({flags:MessageFlags.Ephemeral});}
-  async function error(i,e){const m={...payload('✦  チップ',text(e.message),{state:'error',components:[row(home())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
-  async function open(i,admin=false){try{await ack(i);await access(i,admin);if([...sessions.sessions.values()].some(s=>s.userId===i.user.id&&s.busy))throw new Error('前の操作を処理中です。');const s=sessions.create(i.user.id);Object.assign(s,{scope:admin?'admin':'self',channelId:i.channelId,target:admin?undefined:i.user.id,view:admin?'list':'summary',turn:0});await i.editReply(chipAccountScreen(s,wallet));}catch(e){await error(i,e);}}
-  async function handle(i){let s,locked=false;try{
-    const [,id,turn,action,token]=i.customId.split(':');s=get(id,i);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
-    if(action!=='mode')await ack(i);await access(i,s.scope==='admin');get(id,i);
-    if(String(s.turn)!==turn)throw new Error('古い画面です。元のメニューから開き直してください。');
-    const admin=s.scope==='admin';let note='';
-    if(['target','mode','form','save','list','audit','sort'].includes(action)&&!admin)throw new Error('管理者専用の操作です。');
-    if(action==='mode'){
-      if(s.view!=='summary'||!s.target||i.values?.length!==1||!Object.hasOwn(modes,i.values[0]))throw new Error('調整方法を選び直してください。');await member(s.target);await access(i,true);get(id,i);
-      const a=wallet.account(s.target);if(a.pending&&a.pending.expires>now())throw new Error('ブラックジャックの終了後に調整してください。');
+  async function error(i,e,s,{ackAttempted=false,modalAttempted=false}={}){
+    if(e?.code===10062||e?.code===40060)return;
+    if(!i.deferred&&!i.replied){if(ackAttempted||modalAttempted)return;try{await ack(i);}catch{return;}}
+    let safe=false,adminEntry=false;const turn=s?.turn;
+    if(s)try{await access(i,s.scope==='admin');get(s.id,i);adminEntry=s.scope==='admin';if(s.scope==='admin'&&s.target){await member(s.target);await access(i,true);get(s.id,i);}safe=s.turn===turn;}catch{}
+    if(safe)s.recoveryToken=randomUUID().slice(0,12);
+    const m={...payload('✦  チップ',`${text(gameErrorMessage(e))}${safe&&s.adjustmentDraft?'\n\n入力は保持しています。元の画面から同じ調整方法を選ぶと修正できます。':safe&&s.view==='confirm'?'\n\n調整案を保持しています。元の画面で現在の残高と内容を確認してください。':''}`,{state:'error',components:[row(...(safe?[button(s,`recover:${s.recoveryToken}`,'元の画面を確認',ButtonStyle.Primary)]:[]),home(adminEntry))]}),attachments:[]};
+    if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});
+  }
+  async function open(i,admin=false){try{await ack(i);await access(i,admin);if([...sessions.sessions.values()].some(s=>s.userId===i.user.id&&s.busy))throw new GameError('前の操作を処理中です。');const s=sessions.create(i.user.id);Object.assign(s,{scope:admin?'admin':'self',channelId:i.channelId,target:admin?undefined:i.user.id,view:admin?'list':'summary',turn:0});await i.editReply(chipAccountScreen(s,wallet));}catch(e){await error(i,e,undefined,{ackAttempted:true});}}
+  async function handle(i){let s,locked=false,ackAttempted=false,modalAttempted=false;try{
+    const [,id,turn,action,token]=i.customId.split(':');s=get(id,i);if(s.busy)throw new GameError('前の操作を処理中です。');s.busy=true;locked=true;
+    if(action!=='mode'){ackAttempted=true;await ack(i);}await access(i,s.scope==='admin');get(id,i);
+    if(String(s.turn)!==turn)throw new GameError('古い画面です。元のメニューから開き直してください。');
+    const admin=s.scope==='admin';let note='';if(action!=='recover')delete s.recoveryToken;
+    if(['target','mode','form','save','list','audit','sort'].includes(action)&&!admin)throw new GameError('管理者専用の操作です。');
+    if(action==='recover'){if(!token||s.recoveryToken!==token)throw new GameError('最新のエラー画面から元の画面を確認してください。');if(admin&&s.target){await member(s.target);await access(i,true);get(id,i);}if(s.recoveryToken!==token)throw new GameError('元の画面が変わりました。最新のエラー画面から確認してください。');delete s.recoveryToken;}
+    else if(action==='mode'){
+      if(s.view!=='summary'||!s.target||i.values?.length!==1||!Object.hasOwn(modes,i.values[0]))throw new GameError('調整方法を選び直してください。');await member(s.target);await access(i,true);get(id,i);
+      const a=wallet.account(s.target);if(a.pending&&a.pending.expires>now())throw new GameError('ブラックジャックの終了後に調整してください。');
       s.form={token:randomUUID().slice(0,12),mode:i.values[0],target:s.target,expectedBalance:a.balance,expectedRevision:a.ledger.seq};
-      const input=(id,label,length)=>row(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(length));
-      await i.showModal(new ModalBuilder().setCustomId(`wallet:${s.id}:${s.turn}:form:${s.form.token}`).setTitle(modes[s.form.mode]).addComponents(input('amount',s.form.mode==='set'?'変更後の残高（0以上）':'変更する枚数（1以上）',9),input('reason','調整理由',100)));return;
+      const draft=s.adjustmentDraft;if(draft&&(draft.target!==s.target||draft.mode!==s.form.mode))delete s.adjustmentDraft;
+      const input=(id,label,length)=>{const f=new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(length),value=s.adjustmentDraft?.[id];if(value)f.setValue(value);return row(f);};
+      modalAttempted=true;await i.showModal(new ModalBuilder().setCustomId(`wallet:${s.id}:${s.turn}:form:${s.form.token}`).setTitle(modes[s.form.mode]).addComponents(input('amount',s.form.mode==='set'?'変更後の残高（0以上）':'変更する枚数（1以上）',9),input('reason','調整理由',100)));return;
     }else if(action==='form'){
-      const f=s.form;if(!f||f.token!==token||s.target!==f.target||s.view!=='summary')throw new Error('最新の調整フォームから操作してください。');
-      const raw=i.fields.getTextInputValue('amount').trim(),reason=i.fields.getTextInputValue('reason').normalize('NFKC').trim();if(!/^(0|[1-9]\d{0,8})$/.test(raw)||Number(raw)>MAX_CHIPS||(f.mode!=='set'&&Number(raw)===0)||!reason||reason.length>100||/[\u0000-\u001f\u007f]/u.test(reason))throw new Error('枚数と調整理由を確認してください。');
-      const value=Number(raw),balance=f.mode==='set'?value:f.mode==='add'?f.expectedBalance+value:f.expectedBalance-value;if(balance<0||balance>MAX_CHIPS||balance===f.expectedBalance)throw new Error('変更後の残高は0〜100,000,000枚で、現在と異なる値にしてください。');
-      s.adjustment={...f,value,reason,balance,id:randomUUID(),actor:s.userId};delete s.form;s.view='confirm';
+      const f=s.form;if(!f||f.token!==token||s.target!==f.target||s.view!=='summary')throw new GameError('最新の調整フォームから操作してください。');
+      const raw=i.fields.getTextInputValue('amount').trim(),reason=i.fields.getTextInputValue('reason').normalize('NFKC').trim();s.adjustmentDraft={target:f.target,mode:f.mode,amount:raw.replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,9),reason:reason.replace(/[\u0000-\u001f\u007f]/gu,' ').slice(0,100)};if(!/^(0|[1-9]\d{0,8})$/.test(raw)||Number(raw)>MAX_CHIPS||(f.mode!=='set'&&Number(raw)===0)||!reason||reason.length>100||/[\u0000-\u001f\u007f]/u.test(reason))throw new GameError('枚数と調整理由を確認してください。');
+      const value=Number(raw),balance=f.mode==='set'?value:f.mode==='add'?f.expectedBalance+value:f.expectedBalance-value;if(balance<0||balance>MAX_CHIPS||balance===f.expectedBalance)throw new GameError('変更後の残高は0〜100,000,000枚で、現在と異なる値にしてください。');
+      s.adjustment={...f,value,reason,balance,id:randomUUID(),actor:s.userId};delete s.form;delete s.adjustmentDraft;s.view='confirm';
     }else if(action==='save'){
-      if(s.view!=='confirm'||!s.adjustment)throw new Error('確認画面から保存してください。');
+      if(s.view!=='confirm'||!s.adjustment)throw new GameError('確認画面から保存してください。');
       await wallet.adjust(s.target,s.adjustment,async()=>{await member(s.target);await access(i,true);get(id,i);});delete s.adjustment;s.view='summary';note='✓ チップを調整しました。';
-    }else if(action==='sort'){if(s.view!=='list'||i.values?.length!==1||!['balance','profit'].includes(i.values[0]))throw new Error('並び順を選び直してください。');s.sort=i.values[0];s.page=0;
-    }else if(action==='filter'){if(s.view!=='history'||i.values?.length!==1||!Object.hasOwn(filters,i.values[0]))throw new Error('履歴の種類を選び直してください。');s.historyFilter=i.values[0];s.page=0;
+    }else if(action==='sort'){if(s.view!=='list'||i.values?.length!==1||!['balance','profit'].includes(i.values[0]))throw new GameError('並び順を選び直してください。');s.sort=i.values[0];s.page=0;
+    }else if(action==='filter'){if(s.view!=='history'||i.values?.length!==1||!Object.hasOwn(filters,i.values[0]))throw new GameError('履歴の種類を選び直してください。');s.historyFilter=i.values[0];s.page=0;
     }else if(action==='target'){
-      if(s.view!=='list'||i.values?.length!==1)throw new Error('チップ管理から人を選んでください。');await member(i.values[0]);await access(i,true);get(id,i);s.target=i.values[0];s.view='summary';s.page=0;delete s.form;delete s.adjustment;
-    }else if(action==='list'){s.view='list';s.page=0;delete s.target;delete s.form;delete s.adjustment;}
+      if(s.view!=='list'||i.values?.length!==1)throw new GameError('チップ管理から人を選んでください。');await member(i.values[0]);await access(i,true);get(id,i);s.target=i.values[0];s.view='summary';s.page=0;delete s.form;delete s.adjustment;delete s.adjustmentDraft;
+    }else if(action==='list'){s.view='list';s.page=0;delete s.target;delete s.form;delete s.adjustment;delete s.adjustmentDraft;}
     else if(action==='audit'){s.auditSnapshot=wallet.adjustmentAudit();s.auditCheckedAt=now();s.view='audit';s.page=0;}
     else if(action==='history'){s.historySnapshot=wallet.account(admin?s.target:s.userId).ledger.history.slice().reverse();s.historyCheckedAt=now();s.view='history';s.page=0;}
-    else if(action==='summary'){if(!s.target)throw new Error('人を選んでください。');s.view='summary';delete s.form;delete s.adjustment;s.page=0;}
-    else if(action==='stats'){if(!s.target)throw new Error('人を選んでください。');s.view='stats';s.page=0;}
-    else if(action==='prev'||action==='next'){if(!['list','history','audit'].includes(s.view))throw new Error('一覧から操作してください。');s.page+=action==='next'?1:-1;}
-    else if(action==='refresh'){if(s.view==='confirm')throw new Error('確認画面から戻ってください。');if(s.view==='history'){s.historySnapshot=wallet.account(admin?s.target:s.userId).ledger.history.slice().reverse();s.historyCheckedAt=now();}if(s.view==='audit'){s.auditSnapshot=wallet.adjustmentAudit();s.auditCheckedAt=now();}}
-    else throw new Error('操作を確認してください。');
+    else if(action==='summary'){if(!s.target)throw new GameError('人を選んでください。');s.view='summary';delete s.form;delete s.adjustment;delete s.adjustmentDraft;s.page=0;}
+    else if(action==='stats'){if(!s.target)throw new GameError('人を選んでください。');s.view='stats';s.page=0;}
+    else if(action==='prev'||action==='next'){if(!['list','history','audit'].includes(s.view))throw new GameError('一覧から操作してください。');s.page+=action==='next'?1:-1;}
+    else if(action==='refresh'){if(s.view==='confirm')throw new GameError('確認画面から戻ってください。');if(s.view==='history'){s.historySnapshot=wallet.account(admin?s.target:s.userId).ledger.history.slice().reverse();s.historyCheckedAt=now();}if(s.view==='audit'){s.auditSnapshot=wallet.adjustmentAudit();s.auditCheckedAt=now();}}
+    else throw new GameError('操作を確認してください。');
     s.turn++;await access(i,admin);get(id,i);await i.editReply(chipAccountScreen(s,wallet,note));
-  }catch(e){await error(i,e);}finally{if(locked)s.busy=false;}}
+  }catch(e){await error(i,e,s,{ackAttempted,modalAttempted});}finally{if(locked)s.busy=false;}}
   return {sessions,openSelf:i=>open(i),openAdmin:i=>open(i,true),handle};
 }

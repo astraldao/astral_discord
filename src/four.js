@@ -1,3 +1,4 @@
+import {GameError} from './game-errors.js';
 import {randomInt} from 'node:crypto';
 export const FOUR_COLUMNS=7,FOUR_ROWS=6;
 const order=[3,2,4,1,5,0,6];
@@ -10,9 +11,9 @@ export function fourLine(board){
   }return null;
 }
 export function dropFour(board,col,player){
-  if(!Number.isInteger(col)||col<0||col>=7||board[col]!==0)throw new Error('空いている列を選んでください。');
+  if(!Number.isInteger(col)||col<0||col>=7||board[col]!==0)throw new GameError('空いている列を選んでください。');
   const next=[...board];for(let row=5;row>=0;row--)if(next[row*7+col]===0){next[row*7+col]=player;return next;}
-  throw new Error('この列はいっぱいです。');
+  throw new GameError('この列はいっぱいです。');
 }
 function estimate(board){
   let score=0;for(let row=0;row<6;row++){const p=board[row*7+3];score+=p===2?4:p===1?-4:0;}
@@ -30,18 +31,18 @@ function search(board,depth,bot,alpha,beta){
   return best;
 }
 export function fourBot(board,random=randomInt){
-  const moves=fourMoves(board);if(!moves.length||fourLine(board))throw new Error('この勝負は終了しています。');
+  const moves=fourMoves(board);if(!moves.length||fourLine(board))throw new GameError('この勝負は終了しています。');
   const scores=moves.map(c=>search(dropFour(board,c,2),2,false,-Infinity,Infinity)),best=Math.max(...scores),choices=moves.filter((c,i)=>scores[i]===best);
-  const n=random(choices.length);if(!Number.isInteger(n)||n<0||n>=choices.length)throw new Error('Botの手を決められませんでした。');return choices[n];
+  const n=random(choices.length);if(!Number.isInteger(n)||n<0||n>=choices.length)throw new GameError('Botの手を決められませんでした。');return choices[n];
 }
 const finish=board=>{const line=fourLine(board);return line?{phase:'done',result:line.player===1?'win':'lose',winning:line.cells}:!fourMoves(board).length?{phase:'done',result:'draw',winning:[]}:{phase:'playing',winning:[]};};
 export function newFour(first='user',random){
-  if(!['user','bot'].includes(first))throw new Error('先攻・後攻を選んでください。');let board=Array(42).fill(0),lastBot;
+  if(!['user','bot'].includes(first))throw new GameError('先攻・後攻を選んでください。');let board=Array(42).fill(0),lastBot;
   if(first==='bot'){lastBot=fourBot(board,random);board=dropFour(board,lastBot,2);}
   return {board,first,...finish(board),...(lastBot!==undefined?{lastBot}:{})};
 }
 export function playFour(game,col,random){
-  if(game.phase!=='playing')throw new Error('勝負が終わっています。もう一度遊ぶから始めてください。');
+  if(game.phase!=='playing')throw new GameError('勝負が終わっています。もう一度遊ぶから始めてください。');
   let board=dropFour(game.board,col,1),state=finish(board),lastBot;
   if(state.phase==='playing'){lastBot=fourBot(board,random);board=dropFour(board,lastBot,2);state=finish(board);}
   return {board,first:game.first,...state,lastUser:col,...(lastBot!==undefined?{lastBot}:{})};

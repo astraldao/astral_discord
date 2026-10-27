@@ -1,3 +1,4 @@
+import {GameError,gameErrorMessage} from './game-errors.js';
 import {shortButtonRows} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {wagerRow,wagerChoice,chipDelta} from './game-ui.js';
@@ -34,35 +35,35 @@ export function casinoScreen(s,note='',{retained}={}){
   components.push(...shortButtonRows([row(button(s,'rules','遊び方・配当'),...(s.balance<s.bet?[button(s,'refresh','残高を更新')]:[]),...(s.balance<10?[new ButtonBuilder().setCustomId('work:open').setLabel('無料で遊ぶ').setStyle(ButtonStyle.Secondary)]:[]),home())]));
   const prompt=s.kind==='highlow'?`**基準カード ${rankName(s.card)}** · 次の大小を予想`:s.kind==='race'?'1着になる動物を選ぶ':s.kind==='slots'?'絵柄を揃える':'予想を選ぶ';
   const description=`${note?`${note}\n\n`:''}**残高 ${format(s.balance)} チップ**${s.balance<10?'\n無料のお手伝いでチップを獲得できます。':s.balance<s.bet?'\n残高以内の掛けチップに変更してください。':''}\n\n${prompt}\n${format(s.bet)}チップで開始${s.kind==='slots'?' · 3つ一致20倍 / 2つ一致1倍':' · ボタンの枚数は当選時の払い戻し'}${s.kind==='baccarat'?'\nバンカー6点勝利は1.5倍 · 同点時は両側の掛けを返却':''}${r?`\n\n${resultText(r)}`:''}`;
-  const m=payload(`✦  ${casinoNames[s.kind]}`,description,{state:r?.delta>0?'success':'normal',components});
+  const m=payload(`✦  ${casinoNames[s.kind]}`,description,{state:note?'warning':r?.delta>0?'success':'normal',components});
   const alt=r?r.kind==='baccarat'?`プレイヤー: ${r.player.map(cardName).join("・")} (${r.playerTotal}点)。バンカー: ${r.banker.map(cardName).join("・")} (${r.bankerTotal}点)。${label(r.kind,r.outcome)}`:r.kind==='slots'?`スロット: ${r.values.map(n=>symbols[n]).join('・')}`:r.kind==='dice'?`ダイス: ${r.values.join('と')}。合計 ${r.values[0]+r.values[1]}`:r.kind==='highlow'?`前のカード${rankName(r.values[0])}、次の基準${rankName(s.card)}`:r.kind==='race'?r.values.map((n,i)=>`${i+1}着${animals[n]}`).join('、'):`ルーレット: ${r.values[0]}、${r.outcome==='red'?'赤':r.outcome==='black'?'黒':'緑'}`:s.kind==='highlow'?`基準カード${rankName(s.card)}。次のカードは未抽選です。`:s.kind==='race'?'ウサギ、ネコ、ニワトリ、カメがスタート前に並んでいます。':'抽選前のゲーム画面';
   return gameImage(m,{name:'casino.png',description:alt,render:()=>casinoImage(s.kind,r,{card:s.card}),retained});
 }
 export function casinoRules(s){return payload(`✦  ${casinoNames[s.kind]}の遊び方`,`${instructions[s.kind]}\n\n**払い戻しは掛けチップを含む合計**です。例えば10チップで2倍なら20が戻り、残高は10増えます。\n\n初期残高は3,000チップ。全ゲームで共通し、再起動後も保持されます。画面を開くだけではチップを消費しません。`,{components:[row(button(s,'resume','ゲームに戻る',ButtonStyle.Primary),home())]});}
-export function createCasinoController({guild,now=()=>Date.now(),random,openWork,wallet=new GameWalletStore(null,{now}),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルではゲームを操作できません。');}}){
+export function createCasinoController({guild,now=()=>Date.now(),random,openWork,wallet=new GameWalletStore(null,{now}),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new GameError('このチャンネルではゲームを操作できません。');}}){
   const sessions=new GameSessions(now);
   const screen=(s,note,retained)=>{s.balance=wallet.balance(s.userId);return casinoScreen(s,note,{retained});};
   const send=(s,i,note,reuse)=>editGameImage(i,s,{key:casinoImageKey(s),name:'casino.png',reuse,build:retained=>screen(s,note,retained)});
-  const get=(id,i)=>{let s;try{s=sessions.get(id,i.user.id);}catch{throw new Error('この画面は終了しています。ゲーム選択から開き直してください。');}if(s.channelId!==i.channelId)throw new Error('ゲームを始めたチャンネルから操作してください。');return s;};
+  const get=(id,i)=>{let s;try{s=sessions.get(id,i.user.id);}catch{throw new GameError('この画面は終了しています。ゲーム選択から開き直してください。');}if(s.channelId!==i.channelId)throw new GameError('ゲームを始めたチャンネルから操作してください。');return s;};
   async function acknowledge(i,separate=false){if(i.deferred||i.replied)return false;if(!separate&&i.message?.flags?.has(MessageFlags.Ephemeral)){await i.deferUpdate();return true;}await i.deferReply({flags:MessageFlags.Ephemeral});return false;}
-  const error=async(i,e,s,reuse)=>{if(s){await send(s,i,e.message,reuse);return;}const m=payload('✦  GAME',e.message,{state:'error',components:[row(home())],icon:'🎲'});m.attachments=[];if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});};
+  const error=async(i,e,s,reuse)=>{if(s)try{await access(i);get(s.id,i);}catch{s=undefined;}if(s)try{await send(s,i,gameErrorMessage(e),reuse);return;}catch{}const m=payload('✦  GAME',gameErrorMessage(e),{state:'error',components:[row(home())],icon:'🎲'});m.attachments=[];if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});};
   async function open(i,kind){let s,locked=false,authorized=false,reuse=false;try{
-    if(!casinoKinds.includes(kind))throw new Error('ゲームを選び直してください。');reuse=await acknowledge(i);await access(i);
+    if(!casinoKinds.includes(kind))throw new GameError('ゲームを選び直してください。');reuse=await acknowledge(i);await access(i);
     s=[...sessions.sessions.values()].find(x=>x.userId===i.user.id && x.channelId===i.channelId && x.expires>now());
-    if([...sessions.sessions.values()].some(x=>x.userId===i.user.id&&x.busy))throw new Error('前の操作を処理中です。');
+    if([...sessions.sessions.values()].some(x=>x.userId===i.user.id&&x.busy))throw new GameError('前の操作を処理中です。');
     const card=kind==='highlow'&&s?.card===undefined?drawRank(random):s?.card;
     if(!s){s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,balance:wallet.balance(i.user.id),bet:10,results:{},turn:0,rounds:0});}
     s.busy=true;locked=true;authorized=true;if(card!==undefined)s.card=card;s.kind=kind;s.turn++;s.expires=now()+600000;await send(s,i,undefined,reuse);
   }catch(e){await error(i,e,authorized?s:undefined,reuse);}finally{if(locked)s.busy=false;}}
   async function handle(i){let s,locked=false,authorized=false,reuse=false;try{
-    const [,id,turn,action]=i.customId.split(':');s=get(id,i);if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
+    const [,id,turn,action]=i.customId.split(':');s=get(id,i);if(s.busy)throw new GameError('前の操作を処理中です。');s.busy=true;locked=true;
     reuse=await acknowledge(i,action==='rules');await access(i);get(id,i);authorized=true;
     const commitCheck=async()=>{authorized=false;await access(i);get(id,i);authorized=true;};
     if(action==='rules'){await i.editReply(casinoRules(s));return;}
     if(action==='resume'||action==='refresh'){await send(s,i,undefined,reuse);return;}
     s.balance=wallet.balance(s.userId);
-    if(String(s.turn)!==turn)throw new Error('画面を最新の状態に戻しました。もう一度選んでください。');
-    if(['refill','confirm-refill'].includes(action)){if(openWork){await openWork(i);return;}throw new Error('無料のお手伝いからチップを獲得してください。');}
+    if(String(s.turn)!==turn)throw new GameError('画面を最新の状態に戻しました。もう一度選んでください。');
+    if(['refill','confirm-refill'].includes(action)){if(openWork){await openWork(i);return;}throw new GameError('無料のお手伝いからチップを獲得してください。');}
     else{
       if(action==='bet'||action.startsWith('bet-')){s.bet=wagerChoice(action,i.values);}
       else{const r=await wallet.playCasino(s.userId,{kind:s.kind,choice:action,bet:s.bet,card:s.card},random,commitCheck);s.results[s.kind]=r;if(s.kind==='highlow')s.card=r.values[1];s.balance=r.balance;s.rounds++;}

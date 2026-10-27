@@ -1,0 +1,93 @@
+{
+  "unexpected": {
+    "embeds": [
+      {
+        "color": 13193057,
+        "title": "✊  じゃんけん",
+        "description": "架空エラー: EXAMPLE_INTERNAL_PATH /example/private/file",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "game:open",
+            "label": "ゲーム選択へ",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  },
+  "correction": {
+    "embeds": [
+      {
+        "color": 13193057,
+        "title": "🪙  チップ",
+        "description": "枚数と調整理由を確認してください。",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "game:open",
+            "label": "ゲーム選択へ",
+            "style": 2
+          }
+        ]
+      }
+    ],
+    "form": [
+      {
+        "label": "変更する枚数（1以上）",
+        "value": ""
+      },
+      {
+        "label": "調整理由",
+        "value": ""
+      }
+    ]
+  },
+  "stale": {
+    "embeds": [
+      {
+        "color": 9933280,
+        "title": "🪙  チップ調整の確認",
+        "description": "対象 <@222222222222222222>\n\n**3,000 → 3,100枚**\n変更 **+100枚**\n\n理由 イベントのお礼",
+        "footer": {
+          "text": "created by あすとらる · 2026/10/27"
+        }
+      }
+    ],
+    "components": [
+      {
+        "type": 1,
+        "components": [
+          {
+            "type": 2,
+            "custom_id": "wallet:7f477e2c-c79:2:save",
+            "label": "この内容で保存",
+            "style": 1
+          },
+          {
+            "type": 2,
+            "custom_id": "wallet:7f477e2c-c79:2:summary",
+            "label": "変更せず戻る",
+            "style": 2
+          }
+        ]
+      }
+    ]
+  }
+}

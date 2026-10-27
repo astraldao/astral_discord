@@ -1,3 +1,4 @@
+import {GameError,gameErrorMessage} from './game-errors.js';
 import {gameLobbyChoices} from './game-ui.js';
 import {shortButtonRows} from './compact-controls.js';
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,MessageFlags,StringSelectMenuBuilder,PermissionFlagsBits as P} from 'discord.js';
@@ -38,45 +39,45 @@ export function blackjackScreen(s,note='',{retained}={}){
   const components=s.confirmStop?[row(button(s,'confirm-stop','終了する'),button(s,'resume','プレイを続ける',ButtonStyle.Primary))]:active?[row(button(s,'hit','1枚引く',ButtonStyle.Primary),button(s,'stand','この手で勝負'),...(g.player.length===2&&s.roundBet!==undefined?[button(s,'double',`ダブル · 追加${s.roundBet}`).setDisabled(s.balance<s.roundBet)]:[])),row(button(s,'rules','遊び方'),button(s,'stop','終了する'))]:[row(button(s,'again',`${s.bet??10}枚で次のラウンド`,ButtonStyle.Primary).setDisabled(s.balance!==undefined && s.balance<(s.bet??10)),...(s.balance===undefined?[button(s,'rules','遊び方')]:[])),...(s.balance!==undefined?[row(button(s,'rules','遊び方'))]:[])];
   if(s.balance!==undefined&&s.balance<(active?(s.roundBet??10):(s.bet??10)))components.at(-1).addComponents(button(s,'refresh','残高を更新'));
   if(!active && s.balance!==undefined){components.unshift(betRow());if(s.balance<10)components.at(-1).addComponents(new ButtonBuilder().setCustomId('work:open').setLabel('無料で遊ぶ').setStyle(ButtonStyle.Secondary));}
-  const message=payload('♠  ブラックジャック',(note?`${note}\n\n`:'')+body+budgetNote,{state:!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});gameImage(message,{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`,render:()=>blackjackImage(g),retained});message.components.at(-1).addComponents(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary));message.components=shortButtonRows(message.components);return message;
+  const message=payload('♠  ブラックジャック',(note?`${note}\n\n`:'')+body+budgetNote,{state:note?'warning':!active && ['blackjack','win','dealer-bust'].includes(g.result)?'success':'normal',components});gameImage(message,{name:'blackjack.png',description:`ディーラー: ${active?cardName(g.dealer[0])+'・伏せたカード':g.dealer.map(cardName).join('・')}${active?'':` (${handValue(g.dealer).total}点)`}。あなた: ${g.player.map(cardName).join('・')} (${handValue(g.player).total}点)`,render:()=>blackjackImage(g),retained});message.components.at(-1).addComponents(new ButtonBuilder().setCustomId('game:open').setLabel('ゲーム選択へ').setStyle(ButtonStyle.Secondary));message.components=shortButtonRows(message.components);return message;
 }
-export function createBlackjackController({guild,now=()=>Date.now(),deal=newRound,openFour,openCasual,openCasino,casinoCurrent=()=>undefined,openWork,openWallet,openTransfer,wallet=new GameWalletStore(null,{now}),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new Error('このチャンネルではゲームを操作できません。');}}){
+export function createBlackjackController({guild,now=()=>Date.now(),deal=newRound,openFour,openCasual,openCasino,casinoCurrent=()=>undefined,openWork,openWallet,openTransfer,wallet=new GameWalletStore(null,{now}),access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new GameError('このチャンネルではゲームを操作できません。');}}){
   const sessions=new GameSessions(now,s=>s.game?.phase==='playing');
   const screen=(s,note,retained)=>{s.balance=wallet.balance(s.userId);return blackjackScreen(s,note,{retained});};
   const send=(s,i,note,reuse)=>editGameImage(i,s,{key:blackjackImageKey(s.game),name:'blackjack.png',reuse,build:retained=>screen(s,note,retained)});
   async function begin(s,i,check){const game=deal(),roundId=randomUUID(),expires=now()+600000;const settled=await wallet.beginBlackjack(s.userId,roundId,s.bet,game.phase==='done'?game.result:null,expires,check??(async()=>{await access(i);get(s.id,s.userId);}));Object.assign(s,{game,roundId,expires,roundBet:s.bet,payout:settled.payout,balance:settled.balance});record(s);}
-  const get=(id,user)=>{try{return sessions.get(id,user);}catch{throw new Error('この画面は終了しています。下のボタンか /menu → ゲーム から開き直せます。');}};
+  const get=(id,user)=>{try{return sessions.get(id,user);}catch{throw new GameError('この画面は終了しています。下のボタンか /menu → ゲーム から開き直せます。');}};
   async function acknowledge(i,separate=false){if(i.deferred||i.replied)return false;if(!separate&&i.message?.flags?.has(MessageFlags.Ephemeral)){await i.deferUpdate();return true;}await i.deferReply({flags:MessageFlags.Ephemeral});return false;}
   const current=i=>[...sessions.sessions.values()].find(x=>x.userId===i.user.id && x.channelId===i.channelId && x.expires>now());
   async function lobby(i){await acknowledge(i);await access(i);await i.editReply({...gameLobby(current(i),wallet.balance(i.user.id),casinoCurrent(i)),attachments:[]});}
-  async function open(i){const reuse=await acknowledge(i);await access(i);let s=current(i);if([...sessions.sessions.values()].some(x=>x.userId===i.user.id&&x.busy))throw new Error('前の操作を処理中です。');if(s){await send(s,i,undefined,reuse);return;}if(wallet.hasActiveBlackjack(i.user.id))throw new Error('進行中のブラックジャックを元のチャンネルで終了してください。');s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,game:{phase:'ready'},bet:10,turn:0,round:1,stats:{win:0,lose:0,draw:0},busy:true});try{await send(s,i,undefined,reuse);}finally{s.busy=false;}}
+  async function open(i){const reuse=await acknowledge(i);await access(i);let s=current(i);if([...sessions.sessions.values()].some(x=>x.userId===i.user.id&&x.busy))throw new GameError('前の操作を処理中です。');if(s){await send(s,i,undefined,reuse);return;}if(wallet.hasActiveBlackjack(i.user.id))throw new GameError('進行中のブラックジャックを元のチャンネルで終了してください。');s=sessions.create(i.user.id);Object.assign(s,{channelId:i.channelId,game:{phase:'ready'},bet:10,turn:0,round:1,stats:{win:0,lose:0,draw:0},busy:true});try{await send(s,i,undefined,reuse);}finally{s.busy=false;}}
   return {sessions,wallet,open,lobby,async handle(i){let s,locked=false,authorized=false,reuse=false;
     try{
       if(i.customId==='game:open'){await lobby(i);return;}
-      if(i.customId==='game:account'){await acknowledge(i);await access(i);if(i.values?.length!==1||!['wallet','transfer'].includes(i.values[0]))throw new Error('チップの操作を選び直してください。');const openAccount=i.values[0]==='wallet'?openWallet:openTransfer;if(!openAccount)throw new Error('メニューからチップの操作を開き直してください。');await openAccount(i);return;}
-      if(i.customId==='game:select'){if(i.values?.length!==1 || !['blackjack',...casinoKinds,'rps','work','four'].includes(i.values[0]))throw new Error('ゲームを選び直してください。');if(i.values[0]==='blackjack')await open(i);else if(i.values[0]==='four'&&openFour)await openFour(i);else if(i.values[0]==='work'&&openWork)await openWork(i);else if(i.values[0]==='rps'&&openCasual)await openCasual(i);else if(openCasino)await openCasino(i,i.values[0]);else throw new Error('このゲームは準備中です。');return;}
+      if(i.customId==='game:account'){await acknowledge(i);await access(i);if(i.values?.length!==1||!['wallet','transfer'].includes(i.values[0]))throw new GameError('チップの操作を選び直してください。');const openAccount=i.values[0]==='wallet'?openWallet:openTransfer;if(!openAccount)throw new GameError('メニューからチップの操作を開き直してください。');await openAccount(i);return;}
+      if(i.customId==='game:select'){if(i.values?.length!==1 || !['blackjack',...casinoKinds,'rps','work','four'].includes(i.values[0]))throw new GameError('ゲームを選び直してください。');if(i.values[0]==='blackjack')await open(i);else if(i.values[0]==='four'&&openFour)await openFour(i);else if(i.values[0]==='work'&&openWork)await openWork(i);else if(i.values[0]==='rps'&&openCasual)await openCasual(i);else if(openCasino)await openCasino(i,i.values[0]);else throw new GameError('このゲームは準備中です。');return;}
       if(i.customId==='bj:new'){await open(i);return;}
-      const [,id,turn,action]=i.customId.split(':');s=get(id,i.user.id);if(s.channelId!==i.channelId)throw new Error('ゲームを始めたチャンネルから操作してください。');if(s.busy)throw new Error('前の操作を処理中です。');s.busy=true;locked=true;
+      const [,id,turn,action]=i.customId.split(':');s=get(id,i.user.id);if(s.channelId!==i.channelId)throw new GameError('ゲームを始めたチャンネルから操作してください。');if(s.busy)throw new GameError('前の操作を処理中です。');s.busy=true;locked=true;
       reuse=await acknowledge(i,action==='rules');
       await access(i);get(s.id,s.userId);authorized=true;
       const commitCheck=async()=>{authorized=false;await access(i);get(s.id,s.userId);authorized=true;};
       if(action==='rules'){await i.editReply(blackjackRules(s));return;}
       if(action==='refresh'){await send(s,i,undefined,reuse);return;}
       if(action==='resume'){if(s.confirmStop){s.confirmStop=false;s.turn++;}await send(s,i,undefined,reuse);return;}
-      if(String(s.turn)!==turn)throw new Error('画面を最新の状態に戻しました。ボタンから続けてください。');
-      if(action==='again'){if(!['done','ready'].includes(s.game.phase))throw new Error('今のラウンドを終えてから操作してください。');const rematch=s.game.phase==='done';await begin(s,i,commitCheck);if(rematch)s.round=(s.round??1)+1;}
-      else if(action==='bet'||action.startsWith('bet-')){if(s.game.phase==='playing')throw new Error('掛け枚数は次のラウンドから変更できます。');s.bet=wagerChoice(action,i.values);}
-      else if(['refill','confirm-refill'].includes(action)){if(openWork){await openWork(i);return;}throw new Error('無料のお手伝いからチップを獲得してください。');}
+      if(String(s.turn)!==turn)throw new GameError('画面を最新の状態に戻しました。ボタンから続けてください。');
+      if(action==='again'){if(!['done','ready'].includes(s.game.phase))throw new GameError('今のラウンドを終えてから操作してください。');const rematch=s.game.phase==='done';await begin(s,i,commitCheck);if(rematch)s.round=(s.round??1)+1;}
+      else if(action==='bet'||action.startsWith('bet-')){if(s.game.phase==='playing')throw new GameError('掛け枚数は次のラウンドから変更できます。');s.bet=wagerChoice(action,i.values);}
+      else if(['refill','confirm-refill'].includes(action)){if(openWork){await openWork(i);return;}throw new GameError('無料のお手伝いからチップを獲得してください。');}
       else if(action==='double'){
-        if(s.confirmStop || s.game.phase!=='playing' || s.game.player.length!==2)throw new Error('ダブルは最初の2枚で選んでください。');
+        if(s.confirmStop || s.game.phase!=='playing' || s.game.player.length!==2)throw new GameError('ダブルは最初の2枚で選んでください。');
         wallet.assertBlackjack(s.userId,s.roundId);const game=structuredClone(s.game);play(game,'hit');if(game.phase==='playing')play(game,'stand');
         const settled=await wallet.doubleBlackjack(s.userId,s.roundId,game.result,commitCheck);s.game=game;s.roundBet=settled.bet;s.payout=settled.payout;record(s);
       }
-      else if(action==='stop'){if(s.game.phase!=='playing')throw new Error('このラウンドは終了しています。');s.confirmStop=true;}
-      else if(action==='confirm-stop'){if(!s.confirmStop)throw new Error('終了の確認画面から操作してください。');const game=structuredClone(s.game);play(game,'stop');const settled=await wallet.finishBlackjack(s.userId,s.roundId,game.result,commitCheck);s.game=game;s.payout=settled.payout;s.confirmStop=false;}
-      else{if(s.confirmStop)throw new Error('終了するか、プレイを続けるか選んでください。');wallet.assertBlackjack(s.userId,s.roundId);const game=structuredClone(s.game);play(game,action);if(game.phase==='done'){const settled=await wallet.finishBlackjack(s.userId,s.roundId,game.result,commitCheck);s.payout=settled.payout;}s.game=game;record(s);}
+      else if(action==='stop'){if(s.game.phase!=='playing')throw new GameError('このラウンドは終了しています。');s.confirmStop=true;}
+      else if(action==='confirm-stop'){if(!s.confirmStop)throw new GameError('終了の確認画面から操作してください。');const game=structuredClone(s.game);play(game,'stop');const settled=await wallet.finishBlackjack(s.userId,s.roundId,game.result,commitCheck);s.game=game;s.payout=settled.payout;s.confirmStop=false;}
+      else{if(s.confirmStop)throw new GameError('終了するか、プレイを続けるか選んでください。');wallet.assertBlackjack(s.userId,s.roundId);const game=structuredClone(s.game);play(game,action);if(game.phase==='done'){const settled=await wallet.finishBlackjack(s.userId,s.roundId,game.result,commitCheck);s.payout=settled.payout;}s.game=game;record(s);}
       s.turn++;await send(s,i,undefined,reuse);
-    }catch(e){let valid=false;if(authorized){try{get(s.id,s.userId);valid=true;}catch{}}if(valid)await send(s,i,e.message,reuse);else{const message=payload('♠  ブラックジャック',e.message,{state:'error',components:[startButton()]});message.attachments=[];if(i.deferred||i.replied)await i.editReply(message);else await i.reply({...message,flags:MessageFlags.Ephemeral});}}
+    }catch(e){let valid=false;if(authorized){try{await access(i);get(s.id,s.userId);valid=true;}catch{}}let displayed=false;if(valid)try{await send(s,i,gameErrorMessage(e),reuse);displayed=true;}catch{}if(!displayed){const message=payload('♠  ブラックジャック',gameErrorMessage(e),{state:'error',components:[startButton()]});message.attachments=[];if(i.deferred||i.replied)await i.editReply(message);else await i.reply({...message,flags:MessageFlags.Ephemeral});}}
     finally{if(locked)s.busy=false;}
   }};
 }

@@ -5,7 +5,7 @@
 
 ## プロジェクト概要
 
-- 単一のDiscordサーバー（`GUILD_ID`）向けBot「astral-voice-lobby」。現行 v6.15.0。
+- 単一のDiscordサーバー（`GUILD_ID`）向けBot「astral-voice-lobby」。現行 v6.16.0。
 - 主な機能：VC入室読み上げ（VOICEVOX Core）、バックアップ読み上げ、予定表・カレンダー画像・ICS、伝助（日程調整）、TRPG卓・キャラシパネル、ゲーム・チップ台帳、チャットダイス、画像工房、管理画面（更新・再起動・診断・脆弱性診断）。
 - コマンドは `/menu`（利用者）と `/admin`（管理者）の2つだけ。新しいスラッシュコマンドは増やさず、既存メニューに統合する方針。
 - 外部DBなし。保存は `data/*.json`。本番ホストは Quaxly。mainへのpushだけでは本番は更新されず、管理者が `/admin → バージョン管理` から手動適用する。
@@ -15,9 +15,9 @@
 ```sh
 npm ci            # acorn（devDependency）が check に必要
 npm run check     # 構文 + コード実行ポリシー検査（scripts/check.js, scripts/security.js）
-npm test          # node --test test/*.test.js（2026-10-26時点 1298件すべて成功）
+npm test          # node --test test/*.test.js（2026-10-27時点 1319件すべて成功）
 python3 test/voice-assets.test.py && python3 test/backup-query.test.py   # Python側（音声資産・バックアップ検索）
-npm audit         # 2026-10-26時点 0件
+npm audit         # 2026-10-27時点 0件
 ```
 
 - `package.json` の engines は Node.js >= 24.17.0（CI は Node 24）。Node 22 でも check/test は通るが、正式な検証は Node 24 で行う。
@@ -31,6 +31,7 @@ npm audit         # 2026-10-26時点 0件
 - **権限の再確認**：保存・投稿・更新の直前（保存キュー内）で、本人／チャンネル／管理者権限／操作の有効期限・世代を再確認するのが既存パターン。新しい操作もこれに合わせる。詳細は `SECURITY.md`。
 - **結果不明時は自動再送しない**：Discord投稿・伝助作成などで結果が不明な場合は重複防止のため停止し、復旧導線を出す。
 - **データ形式の変更**：旧データからの移行・復元を必ずテストで確認する。依存・ENV・保存形式・コマンドを増やす場合はドキュメントに明記する。
+- **ゲームのエラー表示**：ゲーム・チップの返信は `gameErrorMessage()` を通す。`GameError` はBot内で定義した固定の案内だけに使い、SDK/ファイルシステム等の `error.message` を `GameError` に包んで公開しない。
 - **依存はバージョン固定**（`package.json` は完全一致指定、Actions はSHA固定）。
 
 ## コードスタイル
