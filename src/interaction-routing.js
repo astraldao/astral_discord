@@ -2,7 +2,7 @@ import {menuGuideTopics} from './menu-catalog.js';
 // A namespace selects a controller, never an authorization level. Each
 // controller retains its own fresh permission, owner and session checks.
 const definitions=[
-  ['menu','mainMenu','handle'],['read','backupReader','handle'],
+  ['menu','mainMenu','handle'],['servers','serverNetwork','handle'],['read','backupReader','handle'],
   ['perf','speedMeasurements','handle'],['restart','restarts','handle'],['runtime','runtimeSettings','handle'],
   ['image','imageWorkshop','handle'],['banner','banner','handle'],['updates','versions','handle'],['admin','admin','handle'],
   ['densuke','densuke','handle'],['trpg','trpg','handle'],['profile','profile','handle'],['forum','forumTags','handle'],

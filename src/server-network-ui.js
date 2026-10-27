@@ -1,0 +1,66 @@
+import {randomUUID} from 'node:crypto';
+import {ActionRowBuilder,ButtonBuilder,ButtonStyle,StringSelectMenuBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,MessageFlags,GatewayIntentBits,PermissionFlagsBits as P} from 'discord.js';
+import {themed,text,acknowledgePrivate,adminHomeButton} from './ui.js';
+import {ServerNetworkError,networkMessage,snowflake} from './server-network-store.js';
+import {inspectCopy} from './server-copy.js';
+import {inspectMirror} from './thread-mirror.js';
+const {payload}=themed('admin'),row=(...c)=>new ActionRowBuilder().addComponents(...c);
+const states={active:'同期中',paused:'一時停止',copying:'コピー中',complete:'完了',stopped:'停止',uncertain:'結果不明'};
+const reasons={READY:'待機',MANUAL:'管理者の操作',RESTART:'再起動後の確認',LIMIT:'件数上限',PERMISSION:'権限・参照先・APIを確認',SOURCE_MISSING:'同期元を確認',API_UNKNOWN:'送信結果が不明：自動再送なし',STORAGE:'保存を確認',STOPPED:'停止',COMPLETE:'完了'};
+export function createServerNetworkUI({client,store,authority,ensureRuntime,copier,mirror,now=Date.now}){
+ const sessions=new Map();
+ const button=(s,action,label,style=ButtonStyle.Secondary)=>new ButtonBuilder().setCustomId(`servers:${s.id}:${s.turn}:${action}`).setLabel(label).setStyle(style);
+ const get=(id,i,turn)=>{const s=sessions.get(id);if(!s||s.owner!==i.user.id||s.guild!==i.guildId||s.channel!==i.channelId||s.expires<=now()||String(s.turn)!==turn)throw new ServerNetworkError('この画面は終了しています。/admin の「サーバー連携」から開き直してください。');return s;};
+ async function access(i){const d=store.get();if(![d.primary,d.sub].includes(i.guildId))throw new ServerNetworkError('連携元またはサブサーバーから操作してください。');const guild=await client.guilds.fetch(i.guildId),member=await guild.members.fetch({user:i.user.id,force:true}),channel=await guild.channels.fetch(i.channelId,{force:true});if(!member.permissions.has(P.Administrator)||!channel?.permissionsFor(member)?.has(P.ViewChannel))throw new ServerNetworkError('現在のチャンネルで管理者権限が必要です。');if(d.sub)await authority(i.user.id);return d;}
+ const valid=s=>{if(s.expires<=now())throw new ServerNetworkError('確認の有効期限が切れました。');};
+ const check=(s,i)=>async()=>{valid(s);await access(i);valid(s);};
+ function screen(s,note=''){
+  const d=store.get();let title='サーバー連携',description=d.sub?`**メイン** ${d.primary}\n**サブ** ${d.sub}\n\n各サーバーで /menu と /admin が使えます。予定・チップ・読み方・VC設定は別々に保存します。`:'**サブサーバーを追加**\n同じBotをサブに招待し、両サーバーで実行者とBotを管理者にしてください。\n\n追加後はサブでも同じメニューが使えます。データは混ざりません。';
+  const operations=d.sub?[['activate','サブのメニューを確認・有効化','初期化に失敗したときに再登録'],['copy','構成をコピー','権限・ロール・チャンネル・タグ・オンボーディング'],['link','スレッド同期を追加','指定チャンネルからサブへ片方向に反映']]:[['bind','サブサーバーを登録','招待済みのサーバーIDを入力']];
+  let components=[];
+  if(s.view==='confirm-bind'){title='サブサーバーを確認';description=`**${text(s.targetName)}**\nID ${s.target}\n\nこのサーバーに2コマンドを登録します。Bot設定・予定・チップはメインと分離し、メインの既存データを保持します。`;components=[row(button(s,'save-bind','サブを有効にする',ButtonStyle.Primary),button(s,'home','変更せず戻る'))];}
+  else if(s.view==='confirm-copy'){
+   const p=s.plan;title='構成コピー / 最終確認';description=`**メイン → サブ**\nロール **${p.counts.roles}** · チャンネル **${p.counts.channels}** · タグ **${p.counts.tags}** · 質問 **${p.counts.prompts}**\n絵文字 **${p.counts.emojis}** · スタンプ **${p.counts.stickers}** · サウンド **${p.counts.sounds}** · AutoMod **${p.counts.moderation}**\n\n**サブのサーバー名・基本設定・@everyone権限を変更します。**\nチャンネル・ロールは追加し、既存チャンネルは削除しません。Bot内の予定・チップはコピーしません。\n\n${p.warnings.map(w=>`• ${w}`).join('\n')}\n\nコピー中は画面の期限を延長します。途中失敗時は作成済みを残し、自動再実行しません。`;components=[row(button(s,'save-copy','構成コピーを実行',ButtonStyle.Danger),button(s,'home','実行せず戻る'))];
+  }else if(s.view==='confirm-link'){
+   title='スレッド同期 / 公開範囲を確認';description=`**${text(s.pair.source.name)} → ${text(s.pair.target.name)}**\n同期元 ${s.pair.source.id}\n同期先 ${s.pair.target.id}\n\n新規投稿・編集・削除、スレッド名・タグ・アーカイブ/ロックを片方向に反映します。**同期先の閲覧者にも内容が公開されます。** 両チャンネルの閲覧権限を確認してください。\n\n開始・再開時は最近20スレッド×各50投稿を確認。過去全履歴の移行ではありません。添付はリンク、リアクション・投票・スタンプ・非公開スレッドは対象外です。\n\n再起動後は権限と最近の差分を確認して再開します。結果不明時は停止します。通信のため同時反映・到着時間は保証できません。`;components=[row(button(s,'save-link','公開範囲を確認して同期',ButtonStyle.Primary),button(s,'home','同期せず戻る'))];
+  }else if(s.view==='link'){
+   const l=d.links.find(l=>l.id===s.selected);if(!l)throw new ServerNetworkError('同期設定を選び直してください。');title='スレッド同期 / 状態';description=`**${states[l.state]}** · ${reasons[l.code]}\n元 ${l.source} → 先 ${l.target}\n\nスレッド **${Object.keys(l.threads).length}/200** · 投稿 **${Object.keys(l.messages).length}/2000**\n最終記録 <t:${Math.floor(l.at/1000)}:R>\n${l.operation?`\n結果確認待ち：${l.operation.kind} / ${l.operation.source}\n「送信結果を探す」は新しい投稿を送信しません。`:''}`;
+   const actions=l.state==='active'?[['pause','一時停止'],['catchup','最近の差分を確認']]:l.operation?[['repair','送信結果を探す']]:[['resume','再開して最近の差分を確認']];
+   components=[row(new StringSelectMenuBuilder().setCustomId(`servers:${s.id}:${s.turn}:link-action`).setPlaceholder('同期の操作を選ぶ').addOptions(actions.map(([value,label])=>({value,label})))),row(button(s,'refresh','状態を更新'),button(s,'home','サーバー連携へ'))];
+  }else{
+   if(d.copies.length){description+='\n\n**構成コピーの記録**\n'+d.copies.map(c=>`${states[c.state]} · ロール${Object.keys(c.roles).length-1} / チャンネル${Object.keys(c.channels).length} · ${reasons[c.code]}${c.operation?` · ${c.operation}`:''}`).join('\n');}
+   components=[row(new StringSelectMenuBuilder().setCustomId(`servers:${s.id}:${s.turn}:action`).setPlaceholder('サーバー連携の操作を選ぶ').addOptions(operations.map(([value,label,description])=>({value,label,description}))))];
+   if(d.links.length)components.push(row(new StringSelectMenuBuilder().setCustomId(`servers:${s.id}:${s.turn}:select`).setPlaceholder(`スレッド同期 ${d.links.length}件 / 状態・停止・再開`).addOptions(d.links.map((l,n)=>({value:l.id,label:`連携 ${n+1} · ${states[l.state]}`,description:`${l.source} → ${l.target}`})))));
+   components.push(row(button(s,'refresh','状態を更新'),adminHomeButton()));
+   if(!d.sub)description+=`\n\n[Botを招待する](https://discord.com/oauth2/authorize?client_id=${client.user.id}&scope=bot%20applications.commands&permissions=8)`;
+  }
+  if(note)description=`**${note}**\n\n${description}`;
+  return {...payload(title,description,{components}),attachments:[]};
+ }
+ async function open(i){await acknowledgePrivate(i);await access(i);for(const [id,s]of sessions)if(s.expires<=now()||s.owner===i.user.id&&!s.busy)sessions.delete(id);if([...sessions.values()].some(s=>s.owner===i.user.id&&s.busy))throw new ServerNetworkError('前の処理が進行中です。');if(sessions.size>=40)throw new ServerNetworkError('管理画面が多いため少し待ってください。');const s={id:randomUUID().slice(0,12),owner:i.user.id,guild:i.guildId,channel:i.channelId,expires:now()+600000,turn:0,view:'home',busy:false};sessions.set(s.id,s);await i.editReply(screen(s));}
+ function modal(s,kind){const token=randomUUID().slice(0,12);s.form={kind,token};const m=new ModalBuilder().setCustomId(`servers:${s.id}:${s.turn}:form:${token}`).setTitle(kind==='bind'?'サブサーバーの登録':'スレッド同期の追加');for(const [id,label]of(kind==='bind'?[['target','サブサーバーID']]:[['source','メインの元チャンネルID'],['target','サブの同期先チャンネルID']]))m.addComponents(row(new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setMinLength(17).setMaxLength(20).setRequired(true)));return m;}
+ async function handle(i){let s,locked=false;try{
+  const parts=i.customId?.split(':')??[];s=get(parts[1],i,parts[2]);let action=parts[3];
+  // Show only a bound form before I/O; submission repeats all live checks before reading IDs.
+  if(action==='action'&&['bind','link'].includes(i.values?.[0])&&i.values.length===1&&s.view==='home'&&!s.busy){if(!i.memberPermissions?.has(P.Administrator))throw new ServerNetworkError('管理者専用です。');if(i.values[0]==='bind'&&store.get().sub||i.values[0]==='link'&&!store.get().sub)throw new ServerNetworkError('現在の一覧から選び直してください。');await i.showModal(modal(s,i.values[0]));return;}
+  await acknowledgePrivate(i);await access(i);get(s.id,i,String(s.turn));if(action==='stop-copy'&&s.copying){copier.cancel();await i.editReply(payload('構成コピーの停止を受付','実行中の1件が終わり次第停止します。作成済みの構成は残します。'));return;}if(s.busy)throw new ServerNetworkError('前の処理が進行中です。');s.busy=true;locked=true;let note='';
+  if(action==='form'){
+   if(!i.isModalSubmit()||!s.form||parts[4]!==s.form.token)throw new ServerNetworkError('フォームを開き直してください。');const kind=s.form.kind;delete s.form;const target=i.fields.getTextInputValue('target').trim();if(!snowflake(target))throw new ServerNetworkError('サーバー/チャンネルIDを17〜20桁の数字で入力してください。');
+   if(kind==='bind'){if(store.get().sub)throw new ServerNetworkError('サブは登録済みです。');const pair=await authority(i.user.id,target);s.target=target;s.targetName=pair.target.name;s.view='confirm-bind';}
+   else{if(!client.options.intents.has(GatewayIntentBits.MessageContent))throw new ServerNetworkError('Message Content Intentを有効化してBotを再起動してください。本文を読めない状態では同期を開始しません。');const source=i.fields.getTextInputValue('source').trim();if(!snowflake(source))throw new ServerNetworkError('元チャンネルIDを確認してください。');const pair=await authority(i.user.id);s.pair=await inspectMirror(pair.source,pair.target,source,target);s.view='confirm-link';}
+  }else if(action==='save-bind'){
+   if(s.view!=='confirm-bind')throw new ServerNetworkError('登録を確認してください。');await authority(i.user.id,s.target);await store.update(d=>{if(d.sub)throw new ServerNetworkError('サブは登録済みです。');d.sub=s.target;},async()=>{valid(s);await authority(i.user.id,s.target);valid(s);});await ensureRuntime(s.target);s.view='home';note='サブで同じメニューを使えるようになりました。';
+  }else if(action==='action'&&i.values?.length===1&&i.values[0]==='activate'&&s.view==='home'){await ensureRuntime(store.get().sub);note='サブのメニューを有効化しました。';
+  }else if(action==='action'&&i.values?.length===1&&i.values[0]==='copy'&&s.view==='home'){
+   if(!store.get().sub)throw new ServerNetworkError('先にサブを登録してください。');if(copier.busy||store.get().copies.length)throw new ServerNetworkError('コピー記録があります。現在の状態を確認してください。');const pair=await authority(i.user.id);s.plan=await inspectCopy(pair.source,pair.target);s.view='confirm-copy';
+  }else if(action==='save-copy'){
+   if(s.view!=='confirm-copy'||!s.plan)throw new ServerNetworkError('プレビューを作り直してください。');s.view='home';s.expires=now()+3600000;s.turn++;s.copying=true;let lastProgress=now();const progress=c=>payload('構成をコピー中',`ロール対応 **${Object.keys(c?.roles??{}).length}** · チャンネル **${Object.keys(c?.channels??{}).length}**\n絵文字 **${Object.keys(c?.emojis??{}).length}** · スタンプ **${Object.keys(c?.stickers??{}).length}** · サウンド **${Object.keys(c?.sounds??{}).length}**\n\n1件ずつ作成して対応表を保存します。結果不明時は自動再送しません。`,{components:[row(button(s,'stop-copy','コピーを停止',ButtonStyle.Danger))]});await i.editReply(progress());try{await copier.run(s.plan,s.owner,check(s,i),async c=>{if(now()-lastProgress<3000)return;lastProgress=now();await i.editReply(progress(c));});}finally{s.copying=false;}delete s.plan;note='構成コピーが完了しました。サブで権限・タグ・オンボーディングをご確認ください。';
+  }else if(action==='save-link'){
+   if(s.view!=='confirm-link'||!s.pair)throw new ServerNetworkError('公開範囲を確認してください。');const pair=await authority(i.user.id),current=await inspectMirror(pair.source,pair.target,s.pair.source.id,s.pair.target.id);if(JSON.stringify(current.tags)!==JSON.stringify(s.pair.tags))throw new ServerNetworkError('タグが変わりました。確認し直してください。');const id=randomUUID();await store.update(d=>{if(d.links.length>=8||d.links.some(l=>l.source===current.source.id||l.target===current.target.id))throw new ServerNetworkError('元または先のチャンネルは登録済み、または連携8件の上限です。');d.links.push({id,owner:s.owner,source:current.source.id,target:current.target.id,tags:current.tags,threads:{},messages:{},messageThreads:{},state:'active',code:'READY',revision:0,operation:null,at:now()});},check(s,i));s.selected=id;s.view='link';void mirror.catchup(id).catch(()=>{});note='同期を開始しました。最近の投稿を順に確認しています。';
+  }else if(action==='select'&&s.view==='home'&&i.values?.length===1&&store.get().links.some(l=>l.id===i.values[0])){s.selected=i.values[0];s.view='link';}
+  else if(action==='link-action'&&s.view==='link'&&i.values?.length===1){const l=store.get().links.find(l=>l.id===s.selected),a=i.values[0];if(!l)throw new ServerNetworkError('連携を選び直してください。');if(a==='pause'&&l.state==='active')await mirror.pause(l.id);else if(a==='catchup'&&l.state==='active'){void mirror.catchup(l.id).catch(()=>{});note='最近の差分を順に確認します。';}else if(a==='resume'&&l.state==='paused'&&!l.operation){void mirror.resume(l.id).catch(()=>{});note='権限を再確認して再開します。状態を更新して結果をご確認ください。';}else if(a==='repair'&&l.operation)await mirror.repair(l.id);else throw new ServerNetworkError('最新の状態から操作を選び直してください。');}
+  else if(action==='home'){s.view='home';delete s.plan;delete s.pair;delete s.form;}else if(action!=='refresh')throw new ServerNetworkError('現在の画面から操作を選び直してください。');
+  await check(s,i)();s.turn++;await i.editReply(screen(s,note));
+ }catch(e){const message={...payload('サーバー連携',networkMessage(e),{state:'error',components:[row(adminHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(message);else if(![10062,40060].includes(e.code))await i.reply({...message,flags:MessageFlags.Ephemeral});}finally{if(locked)s.busy=false;}}
+ return {open,handle,sessions};
+}

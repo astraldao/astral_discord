@@ -1,3 +1,4 @@
+import {SharedBotResourceError} from './shared-bot-resources.js';
 import {randomUUID} from 'node:crypto';
 import {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,FileUploadBuilder,LabelBuilder,ModalBuilder,StringSelectMenuBuilder,MessageFlags,PermissionFlagsBits as P} from 'discord.js';
 import {themed,menuHomeButton,acknowledgePrivate} from './ui.js';
@@ -32,7 +33,7 @@ export function createImageWorkshop({guild,read=readWorkshopImage,convert=proces
   function drop(s){sessions.delete(s.id);cancel(s.timer);s.abort.abort();s.input=null;s.output=null;}
   function get(id,i){const s=sessions.get(id);if(closed||!s||s.expires<=now()){if(s)drop(s);throw new WorkshopError('画面の期限が切れました。/menu の「画像工房」から開き直してください。');}if(s.owner!==i.user.id||s.channel!==i.channelId)throw new WorkshopError('開いた本人が元のチャンネルから操作してください。');return s;}
   async function check(i,s){if(!await allowed(i))throw new WorkshopError('現在の閲覧権限と、Botの送信・埋め込み・ファイル添付権限を確認してください。');if(s&&get(s.id,i)!==s)throw new WorkshopError('画像工房を開き直してください。');if(closed)throw new WorkshopError('Botを終了しています。');}
-  async function failure(i,s,error){if(s?.hidden)return;let safe=false;if(s)try{await check(i,s);safe=true;}catch{}const note=error instanceof WorkshopError?error.message:'画像を処理できませんでした。PNG・JPEGの小さな画像を選び直してください。';const m=safe?workshopScreen(s,note):{...payload('画像工房',note,{state:'error',components:[row(menuHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
+  async function failure(i,s,error){if(s?.hidden)return;let safe=false;if(s)try{await check(i,s);safe=true;}catch{}const note=error instanceof WorkshopError||error instanceof SharedBotResourceError?error.message:'画像を処理できませんでした。PNG・JPEGの小さな画像を選び直してください。';const m=safe?workshopScreen(s,note):{...payload('画像工房',note,{state:'error',components:[row(menuHomeButton())]}),attachments:[]};if(i.deferred||i.replied)await i.editReply(m);else await i.reply({...m,flags:MessageFlags.Ephemeral});}
   return {sessions,get busy(){return active;},close(){closed=true;for(const s of sessions.values())drop(s);cooldowns.clear();},
     leave(i){
       if(i.customId?.startsWith('image:')||i.customId==='menu:workshop'||['menu:find','menu:recent'].includes(i.customId)&&i.values?.[0]==='workshop'||i.isChatInputCommand?.()&&i.commandName==='menu'&&i.options?.getString('操作')==='workshop')return;
@@ -65,9 +66,9 @@ export function createImageWorkshop({guild,read=readWorkshopImage,convert=proces
       }else if(action==='create'){
         if(!s.input||!workshopOptions(s.preset,s.crop))throw new WorkshopError('先に画像と用途を選んでください。');if(active)throw new WorkshopError('別の画像を作成中です。完了してからお試しください。');
         for(const [user,until] of cooldowns)if(until<=now())cooldowns.delete(user);const wait=Math.max(nextGlobal,cooldowns.get(s.owner)??0)-now();if(wait>0)throw new WorkshopError(`続けて作成する場合は、あと${Math.ceil(wait/1000)}秒お待ちください。`);
-        if(!canProcess())throw new WorkshopError('音声の処理中です。終了してから画像を作成してください。');if(cooldowns.size>=200)throw new WorkshopError('少し待ってから作成してください。');
+        if(!canProcess())throw new WorkshopError('別サーバーを含む音声・画像の処理中です。終了してから画像を作成してください。');if(cooldowns.size>=200)throw new WorkshopError('少し待ってから作成してください。');
         s.turn++;active=true;try{
-          await check(i,s);if(!canProcess())throw new WorkshopError('音声の処理中です。終了してから画像を作成してください。');cooldowns.set(s.owner,now()+10000);nextGlobal=now()+2000;
+          await check(i,s);if(!canProcess())throw new WorkshopError('別サーバーを含む音声・画像の処理中です。終了してから画像を作成してください。');cooldowns.set(s.owner,now()+10000);nextGlobal=now()+2000;
           await i.editReply({...payload('画像工房','画像を作成しています。完了までお待ちください。\nメニューへ戻った場合は、完了後に画像工房を開き直すと結果を確認できます。',{components:[row(menuHomeButton())]}),attachments:[]});
           await check(i,s);const output=await convert(s.input.buffer,{preset:s.preset,crop:s.crop,signal:s.abort.signal});await check(i,s);s.output=output;
         }finally{active=false;}

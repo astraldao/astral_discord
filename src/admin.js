@@ -158,7 +158,7 @@ export function adminModal(s,kind,c) {
   else modal.addComponents(input('value',kind==='seconds'?'待機秒数（3〜15秒）':'音量（10〜60%）',2,draft??String(c[kind])));
   return modal;
 }
-export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,diagnose,jevTest,securityScan,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});if(!canConfigure(member.permissions))return false;const channel=await guild.channels.fetch(i.channelId,{force:true});return channel?.permissionsFor(member)?.has(P.ViewChannel)===true;}}) {
+export function createAdminController({settings,guild,refreshPanel,changed,pendingCount,openDensuke,openTrpg,openForum,openChips,openSchedule,openUpdates,openBanner,openRuntime,openRestart,openPerformance,openServers,diagnose,jevTest,securityScan,access=async i=>{const member=await guild.members.fetch({user:i.user.id,force:true});if(!canConfigure(member.permissions))return false;const channel=await guild.channels.fetch(i.channelId,{force:true});return channel?.permissionsFor(member)?.has(P.ViewChannel)===true;}}) {
   const sessions=new AdminSessions();
   const screen=(s,note='')=>({...(s.view==='jev-test'?jevDiagnosticsScreen(s):s.view==='diagnostics-help'?diagnosticsHelpScreen(s):s.view==='security'?securityScreen(s):s.view==='diagnostics'?diagnosticsScreen(s):adminScreen(s,settings.get(),id=>guild.channels.cache.get(id)?.name??`削除済みのVC (${id})`,note)),attachments:[]});
   async function validateChannel(action,value) {
@@ -211,6 +211,7 @@ export function createAdminController({settings,guild,refreshPanel,changed,pendi
       if(s.busy)throw new Error('前の操作を処理中です。少し待ってからお試しください。');
       s.busy=true;locked=true;
       if(action==='measure-voice'){if(!['diagnostics','diagnostics-help'].includes(s.view)||!openPerformance)throw new Error('動作診断から処理速度の測定を開いてください。');await openPerformance(interaction);return;}
+      if(action==='open-servers'){if(!openServers)throw new Error('サーバー連携を利用できません。');await openServers(interaction);return;}
       if(action==='open-restart'){if(!openRestart)throw new Error('再起動を利用できません。');await openRestart(interaction);return;}
       if(action==='open-runtime'){if(!openRuntime)throw new Error('起動設定を利用できません。');await openRuntime(interaction);return;}
       if(action==='open-banner'){if(!openBanner)throw new Error('バナー設定を利用できません。');await openBanner(interaction);return;}

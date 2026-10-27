@@ -22,7 +22,7 @@ export const themes={
 const statusColors={success:0x29856d,error:0xc94f61,warning:0xb77920};
 const namespaceThemes={menu:'menu',image:'menu',vc:'voice',read:'voice',profile:'voice',calendars:'schedule',schedule:'schedule',densuke:'densuke',trpg:'trpg',
   game:'game',bj:'game',casino:'game',rps:'game',four:'game',wallet:'game',chips:'game',work:'game',
-  admin:'admin',perf:'admin',restart:'admin',runtime:'admin',banner:'admin',updates:'admin',forum:'admin'};
+  servers:'admin',admin:'admin',perf:'admin',restart:'admin',runtime:'admin',banner:'admin',updates:'admin',forum:'admin'};
 export const themeForNamespace=namespace=>Object.hasOwn(namespaceThemes,namespace)?namespaceThemes[namespace]:undefined;
 // Older titles carried their own marks; strip only known marks so user-provided names keep their emoji.
 const legacyMarks=['✦','✧','♠','✊','🐔','📅'];

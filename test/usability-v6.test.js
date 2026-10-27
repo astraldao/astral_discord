@@ -36,10 +36,10 @@ async function fixture(){
   return {controller,s,act,settings,calls,allowed:v=>allowed=v,writes:()=>writes,changed:()=>changed};
 }
 
-test('all fifteen admin guides have real instructions, local documentation and a safe destination',()=>{
-  assert.equal(adminDestinations.length,15);assert.deepEqual(Object.keys(adminGuides).sort(),adminDestinations.map(d=>d.action).sort());
+test('all admin guides have real instructions, local documentation and a safe destination',()=>{
+  assert.equal(adminDestinations.length,16);assert.deepEqual(Object.keys(adminGuides).sort(),adminDestinations.map(d=>d.action).sort());
   for(const d of adminDestinations){const guide=adminGuideFor(d.action);for(const key of ['prepare','steps','effect','recovery'])assert.ok(guide[key].length>10);assert.ok(existsSync(new URL(`../docs/${guide.doc}`,import.meta.url)));
-    const m=adminScreen({id:'session',view:'guides',guideTopic:d.action},config());compact(m);assert.equal(controls(m).find(c=>c.custom_id?.endsWith(':guide-topic')).options.length,15);assert.ok(controls(m).some(c=>c.custom_id===`admin:session:${d.action}`));assert.match(body(m),/反映・保存/);
+    const m=adminScreen({id:'session',view:'guides',guideTopic:d.action},config());compact(m);assert.equal(controls(m).find(c=>c.custom_id?.endsWith(':guide-topic')).options.length,16);assert.ok(controls(m).some(c=>c.custom_id===`admin:session:${d.action}`));assert.match(body(m),/反映・保存/);
   }
   for(const value of ['__proto__','constructor','save','install-panel',null,{}])assert.equal(adminGuideFor(value),null);
 });

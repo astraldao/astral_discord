@@ -1,0 +1,91 @@
+import {moderationSnapshot,moderationCopyOptions} from './server-copy-moderation.js';
+import {guildCopyAssets,copyGuildAssets} from './server-copy-assets.js';
+import {createHash,randomUUID} from 'node:crypto';
+import {ChannelType as C,PermissionFlagsBits as P} from 'discord.js';
+import {ServerNetworkError} from './server-network-store.js';
+const types=new Set([C.GuildCategory,C.GuildText,C.GuildVoice,C.GuildAnnouncement,C.GuildStageVoice,C.GuildForum,C.GuildMedia]);
+const list=x=>[...(x?.values?.()??[])];
+const bits=x=>String(x?.bitfield??x??0);
+const emoji=e=>e?.id?{id:e.id,name:e.name??null}:{id:null,name:e?.name??null};
+export function copySnapshot(guild,{onboarding=null,welcome=null}={}){
+ const roles=list(guild.roles.cache).sort((a,b)=>a.rawPosition-b.rawPosition).map(r=>({id:r.id,name:r.name,permissions:bits(r.permissions),color:r.color,hoist:!!r.hoist,mentionable:!!r.mentionable,managed:!!r.managed,botId:r.tags?.botId??null,position:r.rawPosition}));
+ const channels=list(guild.channels.cache).filter(c=>!c.isThread?.()).sort((a,b)=>(a.type===C.GuildCategory?0:1)-(b.type===C.GuildCategory?0:1)||a.rawPosition-b.rawPosition).map(c=>({id:c.id,name:c.name,type:c.type,parent:c.parentId??null,position:c.rawPosition,topic:c.topic??null,nsfw:!!c.nsfw,bitrate:c.bitrate??null,userLimit:c.userLimit??null,rateLimitPerUser:c.rateLimitPerUser??0,rtcRegion:c.rtcRegion??null,videoQualityMode:c.videoQualityMode??null,defaultAutoArchiveDuration:c.defaultAutoArchiveDuration??null,defaultThreadRateLimitPerUser:c.defaultThreadRateLimitPerUser??0,defaultSortOrder:c.defaultSortOrder??null,defaultForumLayout:c.defaultForumLayout??null,defaultReactionEmoji:emoji(c.defaultReactionEmoji),availableTags:(c.availableTags??[]).map(t=>({id:t.id,name:t.name,moderated:!!t.moderated,emoji:emoji(t.emoji)})),overwrites:list(c.permissionOverwrites?.cache).map(o=>({id:o.id,type:o.type,allow:bits(o.allow),deny:bits(o.deny)})).sort((a,b)=>a.id.localeCompare(b.id))}));
+ const prompts=list(onboarding?.prompts).map(p=>({title:p.title,type:p.type,singleSelect:!!p.singleSelect,required:!!p.required,inOnboarding:!!p.inOnboarding,options:list(p.options).map(o=>({title:o.title,description:o.description??null,roles:[...o.roles.keys()],channels:[...o.channels.keys()],emoji:emoji(o.emoji)}))}));
+ return {moderation:moderationSnapshot(guild),assets:guildCopyAssets(guild),features:[...(guild.features??[])].sort(),premiumTier:guild.premiumTier??0,id:guild.id,name:guild.name,roles,channels,onboarding:onboarding?{enabled:!!onboarding.enabled,mode:onboarding.mode,defaultChannels:[...onboarding.defaultChannels.keys()],prompts}:null,welcome:welcome?{enabled:!!welcome.enabled,description:welcome.description??null,channels:list(welcome.welcomeChannels).map(c=>({channel:c.channelId,description:c.description,emoji:emoji(c.emoji)}))}:null,settings:{verificationLevel:guild.verificationLevel,defaultMessageNotifications:guild.defaultMessageNotifications,explicitContentFilter:guild.explicitContentFilter,afkTimeout:guild.afkTimeout,afkChannel:guild.afkChannelId??null,systemChannel:guild.systemChannelId??null,systemChannelFlags:bits(guild.systemChannelFlags),rulesChannel:guild.rulesChannelId??null,publicUpdatesChannel:guild.publicUpdatesChannelId??null,preferredLocale:guild.preferredLocale},community:guild.features?.includes('COMMUNITY')===true};
+}
+export const copyFingerprint=s=>createHash('sha256').update(JSON.stringify(s)).digest('hex');
+export async function inspectCopy(source,target){
+ await source.fetch();await target.fetch();await source.roles.fetch();await target.roles.fetch();await source.channels.fetch();await target.channels.fetch();
+ for(const guild of [source,target])for(const manager of [guild.emojis,guild.stickers,guild.soundboardSounds,guild.autoModerationRules])if(manager)await manager.fetch();
+ let onboarding=null,welcome=null,targetOnboarding=null,targetWelcome=null;const warnings=[];
+ if(target.features.includes('COMMUNITY')){targetOnboarding=await target.fetchOnboarding();targetWelcome=await target.fetchWelcomeScreen();}
+ if(source.features?.includes('COMMUNITY')){onboarding=await source.fetchOnboarding();welcome=await source.fetchWelcomeScreen();if(!target.features?.includes('COMMUNITY'))warnings.push('コピー先のコミュニティが未設定：オンボーディング・ウェルカム・ルール用チャンネルは適用できません。');}
+ const snapshot=copySnapshot(source,{onboarding,welcome});
+ if(!target.features.includes('COMMUNITY')&&snapshot.channels.some(c=>[C.GuildAnnouncement,C.GuildStageVoice,C.GuildForum,C.GuildMedia].includes(c.type)))throw new ServerNetworkError('この構成にはコミュニティ用チャンネルがあります。先にサブのコミュニティを有効にしてください。');
+ if(snapshot.channels.some(c=>[C.GuildVoice,C.GuildStageVoice].includes(c.type)&&c.bitrate>(c.type===C.GuildStageVoice?(target.maximumStageBitrate??64000):(target.maximumBitrate??96000))))warnings.push('VCのビットレートは、コピー先の利用可能な音質上限に合わせて下げます。');
+ if(!snapshot.community&&target.features.includes('COMMUNITY'))warnings.push('サブのコミュニティ要件を保つため、認証レベル/コンテンツフィルターの最低条件と既存ルール/更新チャンネルを保持します。');
+ const managedMap={};for(const r of snapshot.roles.filter(r=>r.managed&&r.botId)){const match=list(target.roles.cache).filter(t=>t.managed&&t.tags?.botId===r.botId);if(match.length===1)managedMap[r.id]=match[0].id;}
+ const managed=snapshot.roles.filter(r=>r.managed&&!managedMap[r.id]).length,unsupported=snapshot.channels.filter(c=>!types.has(c.type)).length;
+ if(managed)warnings.push(`連携サービス・Bot管理ロール ${managed}件は移植できません。権限が参照するチャンネルは停止して報告します。`);
+ if(unsupported)warnings.push(`非対応チャンネル ${unsupported}件は作成しません。`);
+ if(list(source.emojis?.cache).some(e=>e.managed))warnings.push('連携管理の絵文字は移植できません。対応できないタグ・反応・質問・サウンドの絵文字は省略します。');
+ if(Object.values(snapshot.assets.images).some(url=>url?.includes('.gif')))warnings.push('動くアイコン/バナーは、コピー先が未対応の場合は静止画にします。');
+ if(snapshot.assets.emojis.length||snapshot.assets.stickers.length||snapshot.assets.sounds.length)warnings.push('絵文字・スタンプ・サウンドはコピー先の枠とサイズ制限に従います。Discordが拒否すると、その時点で停止します。');
+ for(const [kind,label,feature]of [['banner','バナー','BANNER'],['splash','招待背景','INVITE_SPLASH'],['discoverySplash','発見ページ画像','DISCOVERABLE']])if(snapshot.assets.images[kind]&&!target.features.includes(feature))warnings.push(`${label}はコピー先のブースト/機能条件を満たしていないため適用しません。`);
+ warnings.push('メンバー・参加済みロール割当・履歴・既存スレッド・招待・Webhook・連携・ブースト・独自URL・サーバーガイド/規約本文・ロールアイコンは対象外です。');
+ if((target.autoModerationRules?.cache.size??0)>0)throw new ServerNetworkError('コピー先にAutoModルールがあります。新規サーバーの既存ルールを確認してください。');
+ const targetBot=await target.members.fetchMe({force:true});if(!list(targetBot.roles.cache).some(r=>r.id!==target.id&&r.permissions.has(P.Administrator)))throw new ServerNetworkError('サブのBot専用ロールに管理者権限を付けてください。@everyoneをコピーしてもBotの権限を維持するために必要です。');
+ const editable=list(target.roles.cache).filter(r=>r.id!==target.id&&!r.managed);
+ if(editable.length)throw new ServerNetworkError('コピー先に通常ロールがあります。権限の混在を防ぐため、通常ロールのない新しいサブサーバーを指定してください。');
+ if(snapshot.roles.filter(r=>!r.managed&&r.id!==source.id).length+target.roles.cache.size>250||snapshot.channels.filter(c=>types.has(c.type)).length+target.channels.cache.size>500)throw new ServerNetworkError('コピー先のロールまたはチャンネル数の上限を超えます。');
+
+ // Missing permissions must never be silently dropped, even for a private channel.
+ for(const c of snapshot.channels.filter(c=>types.has(c.type))){for(const o of c.overwrites){if(o.type===0&&snapshot.roles.find(r=>r.id===o.id)?.managed&&!managedMap[o.id])throw new ServerNetworkError('管理ロールの上書き権限を含むチャンネルがあります。サービス管理ロールは移植できないためコピーを開始しません。');if(o.type===1){try{await target.members.fetch({user:o.id,force:true});}catch{throw new ServerNetworkError('個別権限の対象メンバーがコピー先にいません。参加後にプレビューを作り直してください。');}}}}
+ const roleRefs={...Object.fromEntries(snapshot.roles.filter(r=>!r.managed).map(r=>[r.id,r.id])),...managedMap},channelRefs=Object.fromEntries(snapshot.channels.filter(c=>types.has(c.type)).map(c=>[c.id,c.id]));
+ for(const c of snapshot.channels.filter(c=>types.has(c.type)))channelCopyOptions(c,roleRefs,channelRefs);
+ for(const id of [snapshot.settings.afkChannel,snapshot.settings.systemChannel])if(id&&!channelRefs[id])throw new ServerNetworkError('基本設定に未対応チャンネルの参照があります。');
+ if(snapshot.onboarding&&target.features.includes('COMMUNITY'))onboardingCopyOptions(snapshot.onboarding,roleRefs,channelRefs);
+ if(snapshot.welcome&&target.features.includes('COMMUNITY'))for(const c of snapshot.welcome.channels)if(!channelRefs[c.channel])throw new ServerNetworkError('ウェルカム画面の参照先を確認してください。');
+ for(const rule of snapshot.moderation)moderationCopyOptions(rule,roleRefs,channelRefs);
+ for(const e of snapshot.assets.emojis)for(const id of e.roles)if(!roleRefs[id])throw new ServerNetworkError('絵文字の利用ロールを移植できません。');
+ return {snapshot,managedMap,fingerprint:copyFingerprint(snapshot),warnings,targetFingerprint:copyFingerprint(copySnapshot(target,{onboarding:targetOnboarding,welcome:targetWelcome})),counts:{roles:snapshot.roles.filter(r=>!r.managed&&r.id!==source.id).length,channels:snapshot.channels.filter(c=>types.has(c.type)).length,tags:snapshot.channels.reduce((n,c)=>n+c.availableTags.length,0),prompts:snapshot.onboarding?.prompts.length??0,emojis:snapshot.assets.emojis.length,stickers:snapshot.assets.stickers.length,sounds:snapshot.assets.sounds.length,moderation:snapshot.moderation.length}};
+}
+const mapped=(map,id)=>{if(id===null||id===undefined)return null;if(!map[id])throw new ServerNetworkError('参照先の対応表がありません。権限を省略せず停止しました。');return map[id];};
+export function channelCopyOptions(c,roles,channels,emojis={},limits={}){
+ const permissionOverwrites=c.overwrites.map(o=>({id:o.type===0?mapped(roles,o.id):o.id,type:o.type,allow:BigInt(o.allow),deny:BigInt(o.deny)}));
+ const data={name:c.name,type:c.type,parent:mapped(channels,c.parent),position:c.position,permissionOverwrites,reason:'管理者確認済みサーバーコピー'};
+ if(c.type!==C.GuildCategory)Object.assign(data,{nsfw:c.nsfw,rateLimitPerUser:c.rateLimitPerUser});
+ if([C.GuildText,C.GuildAnnouncement,C.GuildForum,C.GuildMedia].includes(c.type))Object.assign(data,{topic:c.topic,defaultAutoArchiveDuration:c.defaultAutoArchiveDuration??undefined,defaultThreadRateLimitPerUser:c.defaultThreadRateLimitPerUser});
+ if([C.GuildVoice,C.GuildStageVoice].includes(c.type))Object.assign(data,{bitrate:Math.min(c.bitrate,c.type===C.GuildStageVoice?(limits.maximumStageBitrate??64000):(limits.maximumBitrate??c.bitrate)),userLimit:c.userLimit,rtcRegion:c.rtcRegion,videoQualityMode:c.videoQualityMode});
+ if([C.GuildForum,C.GuildMedia].includes(c.type))Object.assign(data,{availableTags:c.availableTags.map(t=>({name:t.name,moderated:t.moderated,...(t.emoji.id&&emojis[t.emoji.id]?{emoji:{id:emojis[t.emoji.id]}}:t.emoji.name&&!t.emoji.id?{emoji:{name:t.emoji.name}}:{})})),defaultReactionEmoji:c.defaultReactionEmoji.id&&emojis[c.defaultReactionEmoji.id]?{id:emojis[c.defaultReactionEmoji.id]}:c.defaultReactionEmoji.name&&!c.defaultReactionEmoji.id?{name:c.defaultReactionEmoji.name}:null,defaultSortOrder:c.defaultSortOrder,defaultForumLayout:c.defaultForumLayout});
+ return data;
+}
+export function onboardingCopyOptions(o,roles,channels,emojis={}){return {enabled:o.enabled,mode:o.mode,defaultChannels:o.defaultChannels.map(id=>mapped(channels,id)),prompts:o.prompts.map(p=>({...p,options:p.options.map(x=>({title:x.title,description:x.description,roles:x.roles.map(id=>mapped(roles,id)),channels:x.channels.map(id=>mapped(channels,id)),...(x.emoji.id&&emojis[x.emoji.id]?{emoji:{id:emojis[x.emoji.id]}}:x.emoji.name&&!x.emoji.id?{emoji:{name:x.emoji.name}}:{})}))})),reason:'管理者確認済みサーバーコピー'};}
+export function createServerCopier({store,authority,activity=()=>()=>{}}){
+ let running=false,closed=false,cancelled=false;
+ return {get busy(){return running;},close(){closed=true;},cancel(){cancelled=true;},async run(plan,owner,check=()=>{},progress=()=>{}){
+ if(running||closed)throw new ServerNetworkError('コピー処理中またはBot停止中です。');running=true;cancelled=false;const finish=activity();let job;
+ const guard=async()=>{if(closed||cancelled)throw new ServerNetworkError('コピーを停止しました。作成済みの構成は残しています。');await check();return authority(owner);};
+ const save=async change=>store.update(d=>change(d.copies.find(x=>x.id===job.id)));
+ const step=async(name,operation,record=()=>{})=>{await guard();await save(c=>{c.operation=name;});await guard();const result=await operation();await save(c=>{record(c,result);c.operation=null;c.at=Date.now();});await Promise.resolve(progress(store.get().copies.find(c=>c.id===job.id))).catch(()=>{});return result;};
+ try{
+ const {source,target}=await guard();if(source.id!==plan.snapshot.id||target.id!==store.get().sub)throw new ServerNetworkError('サーバーの選択が変更されました。');
+ if(store.get().copies.some(c=>c.target===target.id))throw new ServerNetworkError('このコピー先には実行記録があります。重複作成を防ぐため再実行しません。状態を確認してください。');
+ const fresh=await inspectCopy(source,target);if(fresh.fingerprint!==plan.fingerprint||fresh.targetFingerprint!==plan.targetFingerprint)throw new ServerNetworkError('プレビュー後に構成が変わりました。プレビューを作り直してください。');
+ job={id:randomUUID(),owner,source:source.id,target:target.id,state:'copying',code:'READY',roles:{[source.id]:target.id,...fresh.managedMap},channels:{},tags:{},emojis:{},stickers:{},sounds:{},moderation:{},operation:null,at:Date.now()};
+ await store.update(d=>{if(d.copies.length>=10||d.copies.some(c=>c.target===target.id))throw new ServerNetworkError('コピー記録を確認してください。');d.copies.push(job);},guard);
+ await step('everyone',()=>target.roles.everyone.setPermissions(BigInt(plan.snapshot.roles.find(r=>r.id===source.id).permissions),'サーバーコピー'));
+ for(const r of plan.snapshot.roles.filter(r=>r.id!==source.id&&!r.managed))await step(`role:${r.id}`,()=>target.roles.create({name:r.name,permissions:BigInt(r.permissions),color:r.color,hoist:r.hoist,mentionable:r.mentionable,reason:'サーバーコピー'}),(c,created)=>{c.roles[r.id]=created.id;job.roles[r.id]=created.id;});
+ await step('role-order',()=>target.roles.setPositions(plan.snapshot.roles.filter(r=>r.id!==source.id&&!r.managed).map((r,n)=>({role:job.roles[r.id],position:n+1}))));
+ await copyGuildAssets({assets:plan.snapshot.assets,target,roles:job.roles,step,job});
+ for(const c of plan.snapshot.channels.filter(c=>types.has(c.type)))await step(`channel:${c.id}`,()=>target.channels.create(channelCopyOptions(c,job.roles,job.channels,job.emojis,target)),(record,created)=>{record.channels[c.id]=created.id;job.channels[c.id]=created.id;for(let n=0;n<c.availableTags.length;n++){const matches=created.availableTags?.filter(t=>t.name===c.availableTags[n].name&&t.moderated===c.availableTags[n].moderated)??[];const tag=matches.length===1?matches[0]:null;if(!tag)throw new ServerNetworkError('作成済みタグを確認できません。');record.tags[c.availableTags[n].id]=tag.id;job.tags[c.availableTags[n].id]=tag.id;}});
+ for(const rule of plan.snapshot.moderation)await step(`automod:${rule.id}`,()=>target.autoModerationRules.create(moderationCopyOptions(rule,job.roles,job.channels)),(record,created)=>{record.moderation[rule.id]=created.id;});
+ const cfg=plan.snapshot.settings,data={name:plan.snapshot.name,verificationLevel:target.features.includes('COMMUNITY')?Math.max(1,cfg.verificationLevel):cfg.verificationLevel,defaultMessageNotifications:cfg.defaultMessageNotifications,explicitContentFilter:target.features.includes('COMMUNITY')?2:cfg.explicitContentFilter,afkTimeout:cfg.afkTimeout,afkChannel:mapped(job.channels,cfg.afkChannel),systemChannel:mapped(job.channels,cfg.systemChannel),systemChannelFlags:Number(cfg.systemChannelFlags),preferredLocale:cfg.preferredLocale,reason:'サーバーコピー'};
+ if(plan.snapshot.community&&target.features.includes('COMMUNITY'))Object.assign(data,{rulesChannel:mapped(job.channels,cfg.rulesChannel),publicUpdatesChannel:mapped(job.channels,cfg.publicUpdatesChannel)});
+ await step('settings',()=>target.edit(data));
+ if(plan.snapshot.welcome&&target.features.includes('COMMUNITY')){const w=plan.snapshot.welcome;await step('welcome',()=>target.editWelcomeScreen({enabled:w.enabled,description:w.description,welcomeChannels:w.channels.map(c=>({channel:mapped(job.channels,c.channel),description:c.description,...(c.emoji.id&&job.emojis[c.emoji.id]?{emoji:job.emojis[c.emoji.id]}:c.emoji.name&&!c.emoji.id?{emoji:c.emoji.name}:{})})),reason:'サーバーコピー'}));}
+ if(plan.snapshot.onboarding&&target.features.includes('COMMUNITY'))await step('onboarding',()=>target.editOnboarding(onboardingCopyOptions(plan.snapshot.onboarding,job.roles,job.channels,job.emojis)));
+ await save(c=>{c.state='complete';c.code='COMPLETE';});return store.get().copies.find(c=>c.id===job.id);
+ }catch(e){if(job)await save(c=>{c.state=c.operation?'uncertain':'stopped';c.code=c.operation?'API_UNKNOWN':'STOPPED';}).catch(()=>{});throw e;}finally{running=false;finish();}
+ }};
+}

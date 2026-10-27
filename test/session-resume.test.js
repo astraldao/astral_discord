@@ -17,5 +17,5 @@ test('recovery buttons open only registered destinations after fresh admin autho
   await c.handle(interaction('admin:open-feature:open-banner'));assert.equal(opened,1);
   for(const action of ['save','install-panel','toggle-voice','unknown']){const i=interaction(`admin:open-feature:${action}`);await c.handle(i);assert.equal(opened,1);assert.match(i.result.embeds[0].toJSON().description,/選び直し/);}
   allowed=false;for(const id of ['admin:open-feature:open-banner','admin:open-section:appearance'])await c.handle(interaction(id));assert.equal(opened,1);
-  assert.equal(adminDestinations.length,15);
+  assert.equal(adminDestinations.length,16);
 });

@@ -2,6 +2,7 @@ import {adminDestinations} from './admin-navigation.js';
 
 // Only static instructions and allowlisted entry actions; never runtime settings.
 export const adminGuides={
+  'open-servers':{prepare:'同じBotをサブへ招待し、両サーバーで管理者権限を用意します。',steps:'サブを登録 → 構成コピーのプレビュー → 実行。同期は元/先チャンネルを指定し、公開範囲を確認します。',effect:'設定と台帳はサーバーごとに分離します。コピーは追加型、同期はメインからサブへの片方向です。',recovery:'結果不明時は再送せず停止します。状態と対応表を確認してください。通常の再起動後は権限と最近の差分を確認して再開します。',doc:'SERVER_NETWORK.md'},
   'open-schedule':{prepare:'確定した予定を登録します。候補日への回答集めは「日程調整」です。',steps:'予定表を選ぶ → 予定を追加 → 日時・名前を入力。共有するときは検索・整理から送信先を確認します。',effect:'保存で予定表と共有投稿へ反映します。削除や日付移動は確認画面から確定します。',recovery:'文字が小さいときは月の一覧。省略した予定は日付から確認できます。',doc:'CALENDAR.md'},
   'open-trpg':{prepare:'卓・シナリオ・PCをまとめます。PCの公開範囲と設置先を確認してください。',steps:'卓を作る → シナリオ・PCを選ぶ → 設置先と投稿内容を確認します。',effect:'パネルを設置するとチャンネルへ投稿します。登録したPCはパネルの公開範囲に従うため、秘匿/共有と設置先を確認してください。',recovery:'元の投稿を確認し、投稿結果が不明な場合は復旧を使ってください。再設置を繰り返さないでください。',doc:'TRPG.md'},
   'open-densuke':{prepare:'候補日を1行に1件用意します。確定した予定の管理は「予定表」です。',steps:'回答の選択肢 → イベント名と候補日 → 内容確認 → 伝助を作成 → 回答用URLを共有します。',effect:'作成で外部サービスへ送信します。共有ボタンでは回答用URLだけを投稿し、編集用URLとパスワードは公開しません。',recovery:'結果が不明なら控えメールを確認し、作成済みURLを登録します。自動再作成はしません。',doc:'DENSUKE.md'},
