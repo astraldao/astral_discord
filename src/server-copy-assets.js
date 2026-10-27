@@ -1,8 +1,8 @@
 import {ServerNetworkError} from './server-network-store.js';
 const list=x=>[...(x?.values?.()??[])];
-export function guildCopyAssets(guild){
+export function guildCopyAssets(guild,collections={}){
  const image=kind=>guild[`${kind}URL`]?.({extension:guild[kind]?.startsWith('a_')?'gif':'png',size:1024})??null;
- return {images:{icon:image('icon'),banner:image('banner'),splash:image('splash'),discoverySplash:image('discoverySplash')},emojis:list(guild.emojis?.cache).filter(e=>!e.managed).map(e=>({id:e.id,name:e.name,animated:!!e.animated,roles:[...e.roles.cache.keys()]})),stickers:list(guild.stickers?.cache).map(s=>({id:s.id,name:s.name,description:s.description??'',tags:s.tags,format:s.format})),sounds:list(guild.soundboardSounds?.cache).map(s=>({id:s.soundId,name:s.name,volume:s.volume,emojiId:s.emoji?.id??null,emojiName:s.emoji?.id?null:s.emoji?.name??null}))};
+ return {images:{icon:image('icon'),banner:image('banner'),splash:image('splash'),discoverySplash:image('discoverySplash')},emojis:list(collections.emojis??guild.emojis?.cache).filter(e=>!e.managed).map(e=>({id:e.id,name:e.name,animated:!!e.animated,roles:[...e.roles.cache.keys()]})),stickers:list(collections.stickers??guild.stickers?.cache).map(s=>({id:s.id,name:s.name,description:s.description??'',tags:s.tags,format:s.format})),sounds:list(collections.sounds??guild.soundboardSounds?.cache).map(s=>({id:s.soundId,name:s.name,volume:s.volume,emojiId:s.emoji?.id??null,emojiName:s.emoji?.id?null:s.emoji?.name??null}))};
 }
 // Source asset URLs come from the SDK, but still must match a fixed Discord CDN path.
 export async function readCopyAsset(url,{fetcher=fetch,max=4*1024*1024}={}){
