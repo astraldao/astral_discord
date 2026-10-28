@@ -33,7 +33,7 @@ import {createChipTools} from './chip-tools.js';
 import {GameWalletStore} from './game-wallets.js';
 import {ScheduleStore} from './schedule-store.js';
 import {createScheduleController} from './schedule-ui.js';
-import {createSharedScheduleController} from './shared-schedule-ui.js';
+import {sharedScheduleAccess,createSharedScheduleController} from './shared-schedule-ui.js';
 import {interactionRoute,createInteractionHandlers} from './interaction-routing.js';
 import {createFourController} from './four-ui.js';
 import {createChipAccountController} from './chip-account-ui.js';
@@ -52,12 +52,13 @@ function polishResponses(interaction){
     if(typeof original==='function')interaction[method]=options=>original.call(interaction,polishMessage(options));
   }
 }
-export async function createGuildRuntime({client,guild,root,env,runtimeEnv,resourcePresence,updateClient,diceJudge,voiceProbe,botVersion,network,globalBusy,voiceBusy,readingActive=()=>false,sharedResources}) {
+export async function createGuildRuntime({client,guild,root,env,runtimeEnv,resourcePresence,updateClient,diceJudge,voiceProbe,botVersion,network,globalBusy,voiceBusy,readingActive=()=>false,sharedResources,scheduleHub}) {
 const settings=new SettingsStore(`${root}/settings.json`,{version:1,lobbyId:null,targetIds:[],seconds:5,voice:true,enforce:true,panel:null});
 await settings.load();
 const personalReadings=await new PersonalReadingsStore(`${root}/personal-readings.json`).load();
 const trpgStore=await new TrpgStore(`${root}/trpg.json`).load();
-const scheduleStore=await new ScheduleStore(`${root}/schedules.json`).load();
+const scheduleStore=scheduleHub?scheduleHub.view(guild.id):await new ScheduleStore(`${root}/schedules.json`).load();
+let stopScheduleRefresh=()=>{};
 const gameWallets=await new GameWalletStore(`${root}/game-wallets.json`).load();
 const backupEnabled=env.ASTRAL_BACKUP_TTS==='1';
 const globalAccess=i=>globalNetworkAdmin(client,env.GUILD_ID,guild,i);
@@ -189,7 +190,8 @@ function settingsChanged() {
     await registerCommands(guild);
     densuke=createDensukeController({email:guild.id===env.GUILD_ID?env.DENSUKE_EMAIL:undefined,settings,guild});
     forumTags=createForumTagsController({guild});
-    schedule=createScheduleController({guild,store:scheduleStore});
+    schedule=createScheduleController({guild,store:scheduleStore,...(scheduleHub?{refreshShared:()=>scheduleHub.refresh(),access:async(i,admin)=>{if(admin)await globalAccess(i);else await sharedScheduleAccess(guild,i);}}:{})});
+    if(scheduleHub)stopScheduleRefresh=scheduleHub.register(guild.id,()=>schedule.refresh());
     sharedSchedules=createSharedScheduleController({guild,store:scheduleStore,openCalendar:(i,id)=>schedule.openShared(i,id)});
     chipAccount=createChipAccountController({guild,wallet:gameWallets});
     four=createFourController({guild});
@@ -290,8 +292,8 @@ return {
  activate(){if(!stopping)ready=true;},
  readingActive:()=>!!backupReader?.active,
  voiceBusy:()=>!!backupReader?.active||pending.size>0||queue.size>0,
- busy:()=>updateBusy({pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]})||!!backupReader?.active,
- freeze(){stopping=true;ready=false;banner?.close();imageWorkshop?.close();void backupReader?.close();for(const job of pending.values())job.abort.abort();},
+ busy:()=>updateBusy({pending:pending.size,accounts:gameWallets.accounts.values(),sessions:[blackjack?.sessions,rps?.sessions,four?.sessions,chipTools?.work]})||!!backupReader?.active||scheduleHub?.busy===true,
+ freeze(){stopping=true;ready=false;stopScheduleRefresh();banner?.close();imageWorkshop?.close();void backupReader?.close();for(const job of pending.values())job.abort.abort();},
  async drain(){await backupReader?.close();await Promise.all([settings.tail,personalReadings.tail,trpgStore.tail,scheduleStore.tail,gameWallets.tail]);},
 };
 }

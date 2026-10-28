@@ -5,7 +5,7 @@
 
 ## プロジェクト概要
 
-- メイン（`GUILD_ID`）＋登録済みサブ1件に対応するBot「astral-voice-lobby」。現行 v7.2.1。
+- メイン（`GUILD_ID`）＋登録済みサブ1件に対応するBot「astral-voice-lobby」。現行 v7.3.0。
 - 主な機能：VC入室読み上げ（VOICEVOX Core）、バックアップ読み上げ、予定表・カレンダー画像・ICS、伝助（日程調整）、TRPG卓・キャラシパネル、ゲーム・チップ台帳、チャットダイス、画像工房、管理画面（更新・再起動・診断・脆弱性診断）。
 - コマンドは `/menu`（利用者）と `/admin`（管理者）の2つだけ。新しいスラッシュコマンドは増やさず、既存メニューに統合する方針。
 - 外部DBなし。保存は `data/*.json`。本番ホストは Quaxly。mainへのpushだけでは本番は更新されず、管理者が `/admin → バージョン管理` から手動適用する。
@@ -15,7 +15,7 @@
 ```sh
 npm ci            # acorn（devDependency）が check に必要
 npm run check     # 構文 + コード実行ポリシー検査（scripts/check.js, scripts/security.js）
-npm test          # node --test test/*.test.js（2026-10-28時点 1605件すべて成功）
+npm test          # node --test test/*.test.js（2026-10-28時点 1627件すべて成功）
 python3 test/voice-assets.test.py && python3 test/backup-query.test.py   # Python側（音声資産・バックアップ検索）
 npm audit         # 2026-10-28時点 0件
 ```
@@ -60,7 +60,7 @@ npm audit         # 2026-10-28時点 0件
 | チャットダイス | `src/chat-dice.js`、`src/dice-request.js`、`src/dice-expression.js`、`src/dice-evaluate.js`、`src/dice-expression-ui.js`、`src/roll-route.js`、`src/roll-ui.js` |
 | 更新・再起動 | `scripts/manual-update.js`、`scripts/auto-update.js`、`scripts/manual-restart.js`、`src/update-*.js`、`src/restart-ui.js` |
 
-メインの保存先は既存の `data/*.json`、サブは `data/guilds/<ID>/*.json`。連携/対応表/処理記録は `data/server-network.json`。Bot内データをサーバー間で共有せず、全体設定にはメイン側の管理者も必要。未知のサーバーは動作させない。
+メインの保存先は既存の `data/*.json`、サブの設定/台帳は `data/guilds/<ID>/*.json`。予定表だけはメインの `data/schedules.json` を単一キューで共有し、投稿のguildIdで公開範囲を分離する。旧サブのschedules.jsonは上書き/自動マージしない。連携/対応表/処理記録は `data/server-network.json`。予定データ以外のBot内データをサーバー間で共有しない。サブで予定表を共有する操作と全体設定にはメイン側の管理者も必要。未知のサーバーは動作させない。
 
 保存データ：`data/settings.json`、`data/personal-readings.json`、`data/trpg.json`、`data/schedules.json`、`data/game-wallets.json`。
 

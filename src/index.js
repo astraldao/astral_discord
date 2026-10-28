@@ -1,3 +1,4 @@
+import {createScheduleHub} from './schedule-hub.js';
 import {Client,REST,Routes,GatewayIntentBits,Partials} from 'discord.js';
 import {readFile} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -23,6 +24,7 @@ const botVersion=JSON.parse(await readFile(new URL('../package.json',import.meta
 const resourcePresence=createResourcePresence(client,{version:botVersion,updating:env.ASTRAL_UPDATING==='1',restarting:env.ASTRAL_RESTARTING==='1'});
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const updateClient=createUpdateClient({version:botVersion}),runtimes=new Map(),loading=new Map();let network,ready=false,stopping=false;
+const scheduleHub=createScheduleHub({primary:env.GUILD_ID,registered:id=>network?.ids().includes(id)===true});
 const sharedResources=createSharedBotResources();
 const readingActive=()=>[...runtimes.values()].some(r=>r.readingActive());
 const voiceBusy=()=>sharedResources.imageBusy||[...runtimes.values()].some(r=>r.voiceBusy());
@@ -32,11 +34,12 @@ const diceJudge=createBeatApiDiceJudge({apiKey:env.BEATAPI_API_KEY,model:env.BEA
 async function ensureRuntime(id){
  if(stopping||!network.ids().includes(id))throw new ServerNetworkError('連携先が登録されていません。');
  if(runtimes.has(id))return runtimes.get(id);if(loading.has(id))return loading.get(id);
- const promise=(async()=>{const guild=await client.guilds.fetch(id);const r=await createGuildRuntime({client,guild,root:networkGuildRoot(env.GUILD_ID,id),env,runtimeEnv,resourcePresence,updateClient,diceJudge,voiceProbe,botVersion,network,globalBusy,voiceBusy,readingActive,sharedResources});if(stopping){r.freeze();await r.drain();throw new ServerNetworkError('Botを終了しています。');}runtimes.set(id,r);if(ready)r.activate();return r;})();
+ const promise=(async()=>{const guild=await client.guilds.fetch(id);const r=await createGuildRuntime({client,guild,root:networkGuildRoot(env.GUILD_ID,id),env,runtimeEnv,resourcePresence,updateClient,diceJudge,voiceProbe,botVersion,network,globalBusy,voiceBusy,readingActive,sharedResources,scheduleHub});if(stopping){r.freeze();await r.drain();throw new ServerNetworkError('Botを終了しています。');}runtimes.set(id,r);if(ready)r.activate();return r;})();
  loading.set(id,promise);try{return await promise;}finally{loading.delete(id);}
 }
 client.once('clientReady',async()=>{try{
  network=await createServerNetwork({client,primary:env.GUILD_ID,ensureRuntime,onDiagnostic:info=>console.warn('サーバー連携:',`v${botVersion}`,JSON.stringify(info)),activity:()=>resourcePresence.activity(),enabled:()=>ready&&!stopping&&client.options.intents.has(GatewayIntentBits.MessageContent)});
+ await scheduleHub.load();
  for(const id of network.ids()){try{await ensureRuntime(id);}catch(e){if(id===env.GUILD_ID)throw e;console.warn('サブサーバーの初期化を確認してください:',e.code??e.name);}}
  resourcePresence.start();void resourcePresence.track(()=>updateProfileVersion(client.application,botVersion)).catch(()=>console.warn('プロフィール更新を確認してください。'));
  ready=env.ASTRAL_SUPERVISED!=='1';if(ready){for(const r of runtimes.values())r.activate();void network.start().catch(()=>{});}
@@ -62,7 +65,7 @@ client.on('roleDelete',r=>route(r.guild.id,'revalidate'));
 client.on('voiceStateUpdate',(before,after)=>route(after.guild.id,'voice',before,after));
 client.on('error',e=>console.error('Discord接続:',e.code??e.name));
 function freeze(){stopping=true;ready=false;resourcePresence.stop();voiceProbe.close();network?.freeze();for(const r of runtimes.values())r.freeze();}
-async function drain(){await Promise.allSettled(loading.values());await network?.drain();await Promise.all([...runtimes.values()].map(r=>r.drain()));await runtimeEnv.tail;updateClient.close();await client.destroy();}
+async function drain(){await Promise.allSettled(loading.values());await network?.drain();await Promise.all([...runtimes.values()].map(r=>r.drain()));await scheduleHub.close();await runtimeEnv.tail;updateClient.close();await client.destroy();}
 if(env.ASTRAL_SUPERVISED==='1'&&process.connected){const lifecycle=createUpdateLifecycle({snapshot:()=>runtimeEnv.snapshot().running,accept:m=>m.runtimeRevision===undefined||m.runtimeRevision===runtimeEnv.snapshot().revision,busy:()=>!!network?.busy||resourcePresence.activeCount>0||[...runtimes.values()].some(r=>r.busy()),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});
  process.on('message',m=>{if(m?.type==='update-presence'){resourcePresence.setUpdating(m.updating);resourcePresence.setRestarting(!!m.restarting);return;}if(m?.type==='activate'&&!stopping){ready=true;for(const r of runtimes.values())r.activate();void network?.start().catch(()=>{});}else void lifecycle(m);});}
 for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{freeze();const force=setTimeout(()=>process.exit(0),12000);force.unref();void(async()=>{while(resourcePresence.activeCount>0)await delay(50);await drain();process.exit(0);})().catch(()=>process.exit(1));});

@@ -2,7 +2,7 @@ import {selectedScheduleEvents} from './schedule-query.js';
 import {scheduleImageOverflow} from './schedule-days.js';
 const choice=(value,label,description)=>({value,label,description});
 export function scheduleActions(s,calendar){
-  const admin=s.scope==='admin';
+  const publisher=s.scope==='admin',admin=publisher&&!s.readOnly;
   if(s.view==='organize'&&admin)return [choice('bulk-open','日付をまとめて移動','表示範囲から対象を選び、移動前後を確認する'),choice('history','変更履歴・復元','編集・削除前の内容を確認する'),choice('conflicts','時間の重なりを確認','予定表全体を確認する'),choice('tools','検索・整理へ','検索・ICS・共有の操作へ戻る')];
   if(s.view==='list'){const overflow=scheduleImageOverflow(s,calendar);return [
     ...(admin?[choice('new-event','予定を追加','予定名・日時を入力する')]:[]),
@@ -19,7 +19,7 @@ export function scheduleActions(s,calendar){
   if(s.view==='tools')return [
     ...(selectedScheduleEvents(calendar,s).length?[choice('export','カレンダーファイルを作る','表示範囲の全ページをICSで保存する')]:[]),
     ...(s.query?[choice('search-clear','検索を解除','元の表示範囲へ戻る')]:[]),
-    ...(admin?[choice('organize','整理・復元','一括移動・履歴・時間の重なり'),choice('import','ICSファイルから取り込む','ファイルを選び、追加前に確認する'),choice('publish','チャンネルに送る（月表示）','送信先と内容を確認する'),choice('publications','投稿を管理','共有投稿の更新・復旧・停止'),choice('rename','予定表の名前を変更','新しい名前を入力する'),choice('home','予定表の管理へ','別の予定表を選ぶ')]:[]),
+    ...(admin?[choice('organize','整理・復元','一括移動・履歴・時間の重なり'),choice('import','ICSファイルから取り込む','ファイルを選び、追加前に確認する')]:[]),...(publisher?[choice('publish','チャンネルに送る（月表示）','送信先と内容を確認する'),choice('publications','投稿を管理','共有投稿の更新・復旧・停止')]:[]),...(admin?[choice('rename','予定表の名前を変更','新しい名前を入力する')]:[]),...(publisher?[choice('home','予定表の管理へ','別の予定表を選ぶ')]:[]),
   ];
   if(s.view==='days')return [choice('days-toggle',s.dayPicker?.onlyHidden?'予定がある日を表示':s.dayPicker?.onlyEvents?'すべての日を表示':'予定がある日だけ','日付の選択欄を切り替える'),choice('day-today','今日を開く','日本時間の今日を選ぶ'),choice('day-jump','日付を入力','年月日を指定して開く')];
   return [];
