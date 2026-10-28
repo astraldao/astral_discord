@@ -12,6 +12,7 @@ const codes=new Set(['READY','MANUAL','RESTART','LIMIT','PERMISSION','SOURCE_MIS
 const idMap=(map,max)=>map&&typeof map==='object'&&!Array.isArray(map)&&Object.keys(map).length<=max&&Object.entries(map).every(([a,b])=>snowflake(a)&&snowflake(b));
 function validReview(c){const r=c.review;if(r===undefined)return true;if(!r||typeof r!=='object'||Array.isArray(r)||c.mode!=='replace'||c.state!=='stopped'||c.operation!==null||!Number.isSafeInteger(r.at)||r.at<0||['channels','tags','emojis','stickers','sounds','moderation'].some(k=>Object.keys(c[k]??{}).length))return false;
  if(r.step==='reset-onboarding')return Object.keys(r).every(k=>['step','at'].includes(k))&&c.staging===null&&(c.completed===undefined||c.completed===0);
+ if(r.step==='role-order')return Object.keys(r).every(k=>['step','at'].includes(k))&&c.lastFailure?.step==='role-order'&&c.lastFailure.code==='DISCORD_50013';
  if(r.step==='reset-channel')return Object.keys(r).every(k=>['step','channel','at'].includes(k))&&snowflake(r.channel)&&c.lastFailure?.step==='reset-channel'&&c.lastFailure.code==='DISCORD_50074';
  return r.step==='reset-automod'&&Object.keys(r).every(k=>['step','rule','at'].includes(k))&&snowflake(r.rule);
 }

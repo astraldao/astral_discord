@@ -513,3 +513,10 @@ HTTP_403_NON_JSONは実SDK DiscordAPIError・status403・rawErrorがArrayBuffer�
 旧reset-channel:IDかつlastFailure=reset-channel/DISCORD_50074、replace・未review・作成対応なし・@everyone/同一Bot管理ロールだけの場合に限定し、元の本人/現在所有者/両側管理権限/対象ID/全一覧/記録hashを保存キュー内も確認してreview(reset-channel/channel/at)へ履歴化。DELETE/PATCHは送らず再コピーは別の新規プレビューとサブID入力が必要。50074以外、別操作、作成済みマップ、権限失効、読み取り失敗、不正対象を解決済みにしない。新しいPATCHの不明結果もこの旧DELETE復旧では解除しない。
 
 旧schema1の記録を維持し、reviewの新しい任意変種を追加。新reviewはv7.1.4以前では読めないため、その記録がある状態はv7.1.5以上で扱う。実機での50074解消は未確認。
+
+
+### ロール順の拒否確認（v7.1.6）
+
+コピー順を上位からにし、fresh REST上で相対順が正しい/対象ゼロならPATCHなし。並び替えはコピー済み通常ロールの実在・同順位ID比較・Bot階層・既存位置の一意性を検証し、通常ロールIDだけを送る。保存/権限確認中の変化を再取得で検知、PATCH後のREST照合が失敗すれば完了にしない。
+
+review(role-order/at)はreplace・role-order intent・lastFailure.role-order/DISCORD_50013・後続資産マップなしに限る。元実行者/現所有者/両側権限/一覧取得/Bot階層/同期なし/記録hashをキュー前後で照合。既存IDへのDELETE/PATCH/POSTなし。元の作成済み通常ロールはマップを保持して次の明示コピーで削除対象にする。結果不明の作成、タイムアウト、HTTP403のみや別ステップを解除しない。新preview/削除確認/サブID入力なしでコピーを開始しない。schema1旧記録を読めるが新変種保存後はv7.1.6以上が必要。

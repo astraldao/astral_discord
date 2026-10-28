@@ -1,3 +1,4 @@
+import {compareCopyRoles} from './server-copy-role-order.js';
 import {channelReusePlan} from './server-copy-channel-reuse.js';
 import {protectedRulePreparation} from './server-copy-moderation.js';
 import {emptyOnboarding,emptyWelcome} from './server-copy-steps.js';
@@ -7,8 +8,9 @@ export function resetPlan(source,target,snapshot,targetSnapshot,bot,owner,preser
  if(!owner||target.ownerId!==owner)throw new ServerNetworkError('削除してコピーする操作は、サブサーバーの所有者がメイン側から実行してください。ロール削除後も操作権限を維持するためです。');
  if(snapshot.community!==targetSnapshot.community)throw new ServerNetworkError('削除前に、サブのコミュニティ設定をメインと同じ状態にしてください。');
  if(![...bot.roles.cache.values()].some(r=>r.managed&&r.permissions.has(P.Administrator)))throw new ServerNetworkError('サブのBot管理ロールに管理者権限が必要です。通常ロールは削除するため、管理者権限をBot管理ロールへ設定してください。');
+ const highest=targetSnapshot.roles.filter(r=>bot.roles.cache.has(r.id)).sort(compareCopyRoles).at(-1);
  const roles=targetSnapshot.roles.filter(r=>r.id!==target.id&&!r.managed),channels=targetSnapshot.channels;
- for(const r of roles){const live=target.roles.cache.get(r.id);if(!live?.editable||r.position>=bot.roles.highest.rawPosition)throw new ServerNetworkError('サブのBotロールを、削除対象のすべての通常ロールより上に配置してください。');}
+ for(const r of roles){const live=target.roles.cache.get(r.id);if(!live?.editable||!highest||compareCopyRoles(r,highest)>=0)throw new ServerNetworkError('サブのBotロールを、削除対象のすべての通常ロールより上に配置してください。');}
  const kept=channelReusePlan(snapshot,targetSnapshot,preserved),retained=new Set(Object.values(kept.reuseChannels));
  if(channels.some(c=>{const live=target.channels.cache.get(c.id);return !live?.deletable&&!(retained.has(c.id)&&live?.manageable);}))throw new ServerNetworkError('サブにBotが削除できないチャンネルがあります。権限を確認してください。');
  const limits=new Map([[1,6],[3,1],[4,1],[5,1],[6,1]]),counts=new Map();for(const rule of snapshot.moderation){const limit=limits.get(rule.triggerType);counts.set(rule.triggerType,(counts.get(rule.triggerType)??0)+1);if(!limit||counts.get(rule.triggerType)>limit)throw new ServerNetworkError('メインのAutoMod種別または件数がコピーできる上限を超えます。削除は開始しません。');}
