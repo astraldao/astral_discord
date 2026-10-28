@@ -1,3 +1,4 @@
+import {storedNetworkCode} from './server-network-codes.js';
 import {createHash} from 'node:crypto';
 import {ServerNetworkError,snowflake} from './server-network-store.js';
 import {networkRead,networkWrite,networkDiagnostic} from './server-network-fault.js';
@@ -21,7 +22,7 @@ export async function resolveAutoModRecovery({store,authority,plan,owner,confirm
  if(!plan||!snowflake(plan.target)||plan.owner!==owner||confirm!==plan.target)throw new ServerNetworkError('確認対象のサブサーバーIDが一致しません。');
  const verify=async()=>{const current=await inspect({store,authority,id:plan.id,owner,check});if(current.plan.target!==plan.target||current.plan.rule!==plan.rule||current.plan.record!==plan.record||current.plan.fingerprint!==plan.fingerprint||current.plan.exists!==plan.exists)throw new ServerNetworkError('処理記録または対象ルールが変わりました。AutoModの結果を確認し直してください。');return current;};
  await verify();let expected=plan.record;
- const failure=async e=>{const info=networkDiagnostic('copy-apply',e);await store.update(d=>{const c=d.copies.find(c=>c.id===plan.id);if(hash(c)!==expected)return;c.lastFailure={step:'reset-automod',code:info.code,at:Date.now()};c.state='uncertain';c.code='API_UNKNOWN';}).catch(()=>{});};
+ const failure=async e=>{const info=networkDiagnostic('copy-apply',e);await store.update(d=>{const c=d.copies.find(c=>c.id===plan.id);if(hash(c)!==expected)return;c.lastFailure={step:'reset-automod',code:storedNetworkCode(info.code),at:Date.now()};c.state='uncertain';c.code='API_UNKNOWN';}).catch(()=>{});};
  if(plan.exists){
   // A fresh existence check and explicit destination-ID confirmation permit only this same-ID DELETE.
   await store.update(d=>{const c=d.copies.find(c=>c.id===plan.id);c.state='uncertain';c.code='API_UNKNOWN';c.at=Date.now();},verify);
