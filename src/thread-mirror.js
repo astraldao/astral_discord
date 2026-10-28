@@ -1,3 +1,4 @@
+import {mirrorTagOrder,mirrorTagStages,sameMirrorTags,validMirrorTagIntent} from './thread-mirror-tags.js';
 import {randomUUID} from 'node:crypto';
 import {AuditLogEvent} from 'discord.js';
 import {mirrorPostHash,prepareMirrorPost,mirrorPostMatches,MirrorMediaLimitError} from './thread-mirror-post.js';
@@ -22,8 +23,8 @@ export function createThreadMirror({client,store,authority,activity=()=>()=>{},e
  const modify=(id,fn,check=()=>{})=>store.update(d=>{const l=d.links.find(l=>l.id===id);if(!l)throw new ServerNetworkError('同期設定がありません。');fn(l);},check);
  const prepare=message=>prepareMirrorPost(message,{read:readAttachment});
  const readable=async(thread,owner)=>{const [actor,bot]=await Promise.all([thread.guild.members.fetch({user:owner,force:true}),thread.guild.members.fetchMe({force:true})]);if(!thread.permissionsFor(actor)?.has([P.ViewChannel,P.ReadMessageHistory])||!thread.permissionsFor(bot)?.has([P.ViewChannel,P.ReadMessageHistory]))throw new ServerNetworkError('元スレッドを閲覧できません。');};
- async function write(id,rev,kind,source,operation,record=()=>{},verify=()=>{},digest){
-  const intent={kind,source,format:'plain',token:randomUUID(),...(digest?{digest}:{})};
+ async function write(id,rev,kind,source,operation,record=()=>{},verify=()=>{},digest,tagIntent){
+  const intent={kind,source,format:'plain',token:randomUUID(),...(digest?{digest}:{}),...(tagIntent??{})};
   await modify(id,l=>{if(l.operation)throw new ServerNetworkError('前の処理の結果が不明です。');l.operation=intent;},async()=>{await guard(id,rev);await verify();});
   const current=get(id);if(closed||!enabled()||current?.state!=='active'||current.revision!==rev)throw new ServerNetworkError('同期設定が変わりました。');await guard(id,rev);await verify();const latest=get(id);if(closed||!enabled()||latest?.state!=='active'||latest.revision!==rev)throw new ServerNetworkError('同期設定が変わりました。');const result=await operation(intent);
   // Recording an acknowledged write must survive a concurrent pause; never send it twice.
@@ -31,15 +32,20 @@ export function createThreadMirror({client,store,authority,activity=()=>()=>{},e
  }
  async function destination(l,target,sourceId){const dest=await target.guild.channels.fetch(l.threads[sourceId],{force:true});if(!dest||dest.parentId!==l.target||dest.guildId!==target.guildId||dest.ownerId!==client.user.id)throw new ServerNetworkError('同期先スレッドの所属と作成者を確認してください。');return dest;}
  async function ownMessage(dest,id){const m=await dest.messages.fetch({message:id,force:true,cache:false});if(m.author.id!==client.user.id)throw new ServerNetworkError('Bot自身の同期投稿以外は操作しません。');return m;}
+ async function syncTags(id,rev,sourceThread,dest,seeded=false){
+  const l=get(id),order=mirrorTagOrder(sourceThread,l.tags),current=dest.appliedTags??[];
+  if(!order.length&&!current.length||JSON.stringify(l.tagOrders?.[sourceThread.id])===JSON.stringify(order)&&sameMirrorTags(current,order))return;
+  const stages=mirrorTagStages(order);for(let n=seeded?1:0;n<stages.length;n++){const tags=stages[n];await write(id,rev,'tags',sourceThread.id,()=>dest.edit({appliedTags:[...tags],reason:'同期元の順を末尾から1件ずつ反映'}),record=>{if(n===stages.length-1)(record.tagOrders??={})[sourceThread.id]=[...order];},()=>readable(sourceThread,l.owner),undefined,{tagOrder:order,tags});}
+ }
  async function ensureThread(id,rev,sourceThread){
   let {l,target}=await guard(id,rev);if(l.threads[sourceThread.id])return destination(l,target,sourceThread.id);
   if([C.GuildForum,C.GuildMedia].includes(target.type)&&Object.keys(l.messages).length>=2000){await pause(id,'LIMIT');throw new ServerNetworkError('同期投稿数の上限です。');}
   if(Object.keys(l.threads).length>=200){await pause(id,'LIMIT');throw new ServerNetworkError('同期スレッド数の上限です。');}
   const t=await sourceThread.fetch(true);if(t.type===C.PrivateThread||t.parentId!==l.source)throw new ServerNetworkError('公開スレッド以外は同期しません。');
-  const appliedTags=(t.appliedTags??[]).map(tag=>{if(!l.tags[tag])throw new ServerNetworkError('タグの対応が変更されました。');return l.tags[tag];});
+  const appliedTags=mirrorTagOrder(t,l.tags);
   const options={name:mirrorThreadName(t),autoArchiveDuration:t.autoArchiveDuration,rateLimitPerUser:t.rateLimitPerUser??0,reason:'管理者設定による片方向同期'};
-  if([C.GuildForum,C.GuildMedia].includes(target.type)){const first=await t.fetchStarterMessage({force:true});if(!first)throw new ServerNetworkError('先頭の投稿を取得できません。');const digest=mirrorPostHash(first);options.message=await prepare(first);options.appliedTags=appliedTags;
-   return write(id,rev,'thread',t.id,intent=>target.threads.create({...options,reason:`astral-sync:${intent.token}`}),(record,created)=>{record.threads[t.id]=created.id;record.messages[first.id]=created.id;record.messageThreads[first.id]=t.id;(record.postHashes??={})[first.id]=digest;},()=>readable(t,l.owner),digest);
+  if([C.GuildForum,C.GuildMedia].includes(target.type)){const first=await t.fetchStarterMessage({force:true});if(!first)throw new ServerNetworkError('先頭の投稿を取得できません。');const digest=mirrorPostHash(first);options.message=await prepare(first);options.appliedTags=appliedTags.length?[appliedTags.at(-1)]:[];
+   const created=await write(id,rev,'thread',t.id,intent=>target.threads.create({...options,reason:`astral-sync:${intent.token}`}),(record,created)=>{record.threads[t.id]=created.id;record.messages[first.id]=created.id;record.messageThreads[first.id]=t.id;(record.postHashes??={})[first.id]=digest;if(appliedTags.length===1)(record.tagOrders??={})[t.id]=[...appliedTags];},()=>readable(t,l.owner),digest);await syncTags(id,rev,t,created,true);return created;
   }
   options.type=target.type===C.GuildAnnouncement?C.AnnouncementThread:C.PublicThread;
   let first=null;try{first=await t.fetchStarterMessage({force:true,cache:false});}catch(e){if(e.code!==10008)throw e;}
@@ -68,10 +74,10 @@ export function createThreadMirror({client,store,authority,activity=()=>()=>{},e
  }
  async function metadata(id,rev,thread,remove=false){
   const {l,target}=await guard(id,rev);if(thread.type===C.PrivateThread||thread.parentId!==l.source)return;
-  if(remove){const tid=l.threads[thread.id];if(!tid)return;try{await destination(l,target,thread.id);}catch(e){if(e.code!==10003)throw e;}await write(id,rev,'delete',thread.id,async()=>{try{return await target.guild.channels.delete(tid,'同期元スレッド削除');}catch(e){if(e.code!==10003)throw e;}},record=>{delete record.threads[thread.id];for(const [mid,sid]of Object.entries(record.messageThreads))if(sid===thread.id){delete record.messages[mid];delete record.messageThreads[mid];if(record.postHashes)delete record.postHashes[mid];}});return;}
+  if(remove){const tid=l.threads[thread.id];if(!tid)return;try{await destination(l,target,thread.id);}catch(e){if(e.code!==10003)throw e;}await write(id,rev,'delete',thread.id,async()=>{try{return await target.guild.channels.delete(tid,'同期元スレッド削除');}catch(e){if(e.code!==10003)throw e;}},record=>{delete record.threads[thread.id];if(record.tagOrders)delete record.tagOrders[thread.id];for(const [mid,sid]of Object.entries(record.messageThreads))if(sid===thread.id){delete record.messages[mid];delete record.messageThreads[mid];if(record.postHashes)delete record.postHashes[mid];}});return;}
   const fresh=await thread.fetch(true),dest=await ensureThread(id,rev,fresh);
-  const tags=(fresh.appliedTags??[]).map(t=>{if(!l.tags[t])throw new ServerNetworkError('タグの対応を確認してください。');return l.tags[t];});
-  await write(id,rev,'metadata',fresh.id,()=>dest.edit({name:mirrorThreadName(fresh),archived:fresh.archived,locked:fresh.locked,rateLimitPerUser:fresh.rateLimitPerUser??0,autoArchiveDuration:fresh.autoArchiveDuration,...([C.GuildForum,C.GuildMedia].includes(target.type)?{appliedTags:tags}:{}),reason:'同期元の変更を反映'}));
+  if([C.GuildForum,C.GuildMedia].includes(target.type))await syncTags(id,rev,fresh,dest);
+  await write(id,rev,'metadata',fresh.id,()=>dest.edit({name:mirrorThreadName(fresh),archived:fresh.archived,locked:fresh.locked,rateLimitPerUser:fresh.rateLimitPerUser??0,autoArchiveDuration:fresh.autoArchiveDuration,reason:'同期元の変更を反映'}));
  }
  function enqueue(link,operation){
   if(closed||!enabled()||link.state!=='active')return Promise.resolve();
@@ -105,7 +111,9 @@ export function createThreadMirror({client,store,authority,activity=()=>()=>{},e
    }else if(op.kind==='delete'){
     const isThread=!!l.threads[op.source],sid=isThread?op.source:l.messageThreads[op.source],destId=isThread?l.threads[op.source]:l.messages[op.source];if(!sid||!destId)throw new ServerNetworkError('削除の対応表を確認できません。');let absent=false;
     try{if(isThread)await target.channels.fetch(destId,{force:true});else{const dest=await destination(l,pair.target,sid);await ownMessage(dest,destId);}}catch(e){if(e.code===10003||!isThread&&e.code===10008)absent=true;else throw e;}
-    if(!absent)throw new ServerNetworkError('同期先が残っています。自動で削除し直しません。');await modify(id,x=>{if(JSON.stringify(x.operation)!==JSON.stringify(op))throw new ServerNetworkError('状態が変わりました。');if(isThread){delete x.threads[op.source];for(const [mid,tid]of Object.entries(x.messageThreads))if(tid===sid){delete x.messages[mid];delete x.messageThreads[mid];if(x.postHashes)delete x.postHashes[mid];}}else{delete x.messages[op.source];delete x.messageThreads[op.source];if(x.postHashes)delete x.postHashes[op.source];}x.operation=null;x.code='MANUAL';x.revision++;},repairCheck);
+    if(!absent)throw new ServerNetworkError('同期先が残っています。自動で削除し直しません。');await modify(id,x=>{if(JSON.stringify(x.operation)!==JSON.stringify(op))throw new ServerNetworkError('状態が変わりました。');if(isThread){delete x.threads[op.source];if(x.tagOrders)delete x.tagOrders[op.source];for(const [mid,tid]of Object.entries(x.messageThreads))if(tid===sid){delete x.messages[mid];delete x.messageThreads[mid];if(x.postHashes)delete x.postHashes[mid];}}else{delete x.messages[op.source];delete x.messageThreads[op.source];if(x.postHashes)delete x.postHashes[op.source];}x.operation=null;x.code='MANUAL';x.revision++;},repairCheck);
+   }else if(op.kind==='tags'){
+    if(op.format!=='plain'||!validMirrorTagIntent(op))throw new ServerNetworkError('タグの確認記録を確認してください。');const dest=await destination(l,pair.target,op.source);if(!sameMirrorTags(dest.appliedTags??[],op.tags))throw new ServerNetworkError('タグの反映を確認できません。自動で付け直しません。');await modify(id,x=>{if(JSON.stringify(x.operation)!==JSON.stringify(op))throw new ServerNetworkError('状態が変わりました。');if(op.tags.length===op.tagOrder.length)(x.tagOrders??={})[op.source]=[...op.tagOrder];x.operation=null;x.code='MANUAL';x.revision++;},repairCheck);
    }else if(op.kind==='metadata'){
     const original=await source.channels.fetch(op.source,{force:true}),dest=await destination(l,pair.target,op.source),tags=(original.appliedTags??[]).map(t=>l.tags[t]).sort();if(dest.name!==(op.format==='plain'?mirrorThreadName(original):legacyThreadName(original))||dest.archived!==original.archived||dest.locked!==original.locked||dest.rateLimitPerUser!==original.rateLimitPerUser||dest.autoArchiveDuration!==original.autoArchiveDuration||JSON.stringify([...(dest.appliedTags??[])].sort())!==JSON.stringify(tags))throw new ServerNetworkError('スレッド設定の一致を確認できません。再送せず停止します。');await modify(id,x=>{if(JSON.stringify(x.operation)!==JSON.stringify(op))throw new ServerNetworkError('状態が変わりました。');x.operation=null;x.code='MANUAL';x.revision++;},repairCheck);
    }else throw new ServerNetworkError('結果を確認できません。自動再実行はしません。');
