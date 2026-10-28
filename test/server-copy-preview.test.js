@@ -6,10 +6,10 @@ import {networkRead,readWelcome,safeNetworkCode,networkDiagnostic,NetworkReadErr
 import {ServerNetworkStore} from '../src/server-network-store.js';
 import {createServerNetworkUI} from '../src/server-network-ui.js';
 import {networkAuthority} from '../src/server-network-access.js';
-import {fakeGuild,parentChannel,G,S,U,B,A,R,permission} from './helpers/server-network-fixture.js';
+import {fakeGuild,parentChannel,G,S,U,B,A,D,R,permission} from './helpers/server-network-fixture.js';
 const privateText='PRIVATE_SENTINEL /example/private Bearer fictional-token';
 const discord=(code,status=404)=>new DiscordAPIError({message:privateText,code,errors:{secret:privateText}},code,status,'GET','https://discord.com/api/v10/example-private',{body:{secret:privateText}});
-function pair(){const a=fakeGuild(G),b=fakeGuild(S);a.g.features=['COMMUNITY'];b.g.features=['COMMUNITY'];return {a,b};}
+function pair(){const a=fakeGuild(G),b=fakeGuild(S);a.g.features=['COMMUNITY'];b.g.features=['COMMUNITY'];a.g.rulesChannelId=a.g.publicUpdatesChannelId=A;b.g.rulesChannelId=b.g.publicUpdatesChannelId=D;a.g.channels.cache.set(A,parentChannel(a.g,A,C.GuildText));b.g.channels.cache.set(D,parentChannel(b.g,D,C.GuildText));return {a,b};}
 function i(id=''){return {customId:id,guildId:G,channelId:A,user:{id:U},memberPermissions:permission(),message:{flags:{has:()=>true}},isModalSubmit:()=>false,async deferUpdate(){this.deferred=true;},async editReply(p){this.result=p;},async reply(p){this.result=p;this.replied=true;}};}
 async function fixture(){const {a,b}=pair();a.g.channels.cache.set(A,parentChannel(a.g,A,C.GuildText));a.g.rulesChannelId=A;a.g.publicUpdatesChannelId=A;const store=new ServerNetworkStore(null,G);await store.update(d=>{d.sub=S;});const diagnostics=[],client={user:{id:B},guilds:{fetch:async id=>id===G?a.g:b.g}},authority=async()=>({source:a.g,target:b.g});let writes=0;const copier={busy:false,run:()=>writes++},mirror={};const ui=createServerNetworkUI({client,store,authority,ensureRuntime:()=>{},copier,mirror,onDiagnostic:d=>diagnostics.push(d)});await ui.open(i());const s=[...ui.sessions.values()][0],click=(action,values)=>Object.assign(i(`servers:${s.id}:${s.turn}:${action}`),{values});return {a,b,store,diagnostics,client,ui,s,click,writes:()=>writes};}
 const body=reply=>reply.embeds[0].toJSON().description;
