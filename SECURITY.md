@@ -520,3 +520,12 @@ HTTP_403_NON_JSONは実SDK DiscordAPIError・status403・rawErrorがArrayBuffer�
 コピー順を上位からにし、fresh REST上で相対順が正しい/対象ゼロならPATCHなし。並び替えはコピー済み通常ロールの実在・同順位ID比較・Bot階層・既存位置の一意性を検証し、通常ロールIDだけを送る。保存/権限確認中の変化を再取得で検知、PATCH後のREST照合が失敗すれば完了にしない。
 
 review(role-order/at)はreplace・role-order intent・lastFailure.role-order/DISCORD_50013・後続資産マップなしに限る。元実行者/現所有者/両側権限/一覧取得/Bot階層/同期なし/記録hashをキュー前後で照合。既存IDへのDELETE/PATCH/POSTなし。元の作成済み通常ロールはマップを保持して次の明示コピーで削除対象にする。結果不明の作成、タイムアウト、HTTP403のみや別ステップを解除しない。新preview/削除確認/サブID入力なしでコピーを開始しない。schema1旧記録を読めるが新変種保存後はv7.1.6以上が必要。
+
+
+### 装飾なしの本文・画像同期（v7.2.0）
+
+投稿に同期用カード/ID/元リンクを挿入しない。本文と元rich埋め込みの書込み可能フィールドを保ち、通知はallowedMentionsなし。添付はHTTPSのcdn.discordapp.com/media.discordapp.net・/attachments/2つのsnowflake/ファイルだけ取得。資格情報/別port/hash/不正パス/任意ホスト/リダイレクトを拒否し、署名queryを維持。15秒deadline、宣言容量と受信量、元ファイルサイズ、10件/投稿合計10MiBを確認。受信はBoundedBytes、ファイルはメモリだけで保持し、HTTP/例外の生データを公開しない。上限超過をリンクや省略へ変えず停止。添付名のパス/改行/NULを拒否。画像・GIFを再エンコードしない。
+
+公開権限を添付取得後・保存キュー前後・送信直前にも検証し、停止/世代/権限の変化があれば送らない。postHashesは元本文/埋め込み/添付ID等のSHA256だけで2000件以内。対応表と併せて削除し、添付自体や署名URLは永続保存しない。再起動後の無変更ファイルを再ダウンロードしない。
+
+新規操作format=plainとUUID token/digestをintentへ記録。スレッド作成reasonのUUIDを監査ログのThreadCreate/Bot実行者/対象ID/対象親/所有者と照合、本文nonceもBot作者/対象スレッド内で照合。名前や本文が同じだけで採用しない。編集復旧は本文/embeds/添付実バイトを比較し、同名同容量を一致証明と扱わない。旧マーカー付き記録の読取り復旧を残す。復旧保存もauthority/操作/世代をキュー内で再確認。証明できない不明結果の自動再送はしない。旧schema1を読むが、新方式運用はv7.2.0以上が必要。実Discord表示/添付/監査ログの動作は未確認。
