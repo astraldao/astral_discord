@@ -32,7 +32,7 @@ export function createSharedScheduleController({guild,store,openCalendar,now=()=
   });
   function screen(s,note=''){
     const all=current(s),count=Math.max(1,Math.ceil(all.length/10));s.page=Math.max(0,Math.min(count-1,s.page));const items=all.slice(s.page*10,(s.page+1)*10);
-    return {...payload('📅  このチャンネルの予定表',`${note?`${note}\n\n`:''}${all.length?`共有予定表 **${all.length}件**。選ぶとカレンダーを開けます。`:'確認できる共有予定表がありません。管理者にこのチャンネルへの共有・投稿の復旧を依頼してください。'}\n\nこのチャンネルで確認できる投稿だけを表示します。編集は管理者の /admin から行います。${count>1?`\n${s.page+1}/${count}ページ`:''}`,{components:[
+    return {...payload('📅  このチャンネルの予定表',`${note?`${note}\n\n`:''}${all.length?`共有予定表 **${all.length}件**。選ぶとカレンダーを開けます。`:'確認できる共有予定表がありません。管理者が /admin → 予定表 → 予定表を選択 → 共有・投稿 から、このチャンネルに共有してください。'}\n\nこのチャンネルで確認できる投稿だけを表示します。共有の設定は /admin → 予定表 → 共有・投稿 から行います。${count>1?`\n${s.page+1}/${count}ページ`:''}`,{components:[
       ...(items.length?[row(new StringSelectMenuBuilder().setCustomId(`calendars:${s.id}:${s.turn}:select`).setPlaceholder('共有予定表を選ぶ').addOptions(...items.map(p=>({label:p.title,value:p.id,description:`予定 ${p.count}件 · ${p.month}の共有投稿`}))))]:[]),
       ...(count>1?[row(button(s,'prev','前へ').setDisabled(s.page===0),button(s,'next','次へ').setDisabled(s.page===count-1))]:[]),
       row(button(s,'refresh','共有投稿を確認'),menuHomeButton()),

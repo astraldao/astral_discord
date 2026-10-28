@@ -1,3 +1,4 @@
+import {ScheduleError} from './schedule-errors.js';
 import {SharedBotResourceError} from './shared-bot-resources.js';
 import {globalNetworkAdmin} from './server-network-access.js';
 import {createChatDice,configureDiceContent} from './chat-dice.js';
@@ -190,7 +191,7 @@ function settingsChanged() {
     await registerCommands(guild);
     densuke=createDensukeController({email:guild.id===env.GUILD_ID?env.DENSUKE_EMAIL:undefined,settings,guild});
     forumTags=createForumTagsController({guild});
-    schedule=createScheduleController({guild,store:scheduleStore,...(scheduleHub?{refreshShared:()=>scheduleHub.refresh(),access:async(i,admin)=>{if(admin)await globalAccess(i);else await sharedScheduleAccess(guild,i);}}:{})});
+    schedule=createScheduleController({guild,store:scheduleStore,...(scheduleHub?{refreshShared:()=>scheduleHub.refresh(),access:async(i,admin)=>{if(admin){try{await globalAccess(i);}catch{throw new ScheduleError('予定表の管理・共有には、このチャンネルの閲覧権限と、メイン・操作先の両サーバーの管理者権限が必要です。');}}else await sharedScheduleAccess(guild,i);}}:{})});
     if(scheduleHub)stopScheduleRefresh=scheduleHub.register(guild.id,()=>schedule.refresh());
     sharedSchedules=createSharedScheduleController({guild,store:scheduleStore,openCalendar:(i,id)=>schedule.openShared(i,id)});
     chipAccount=createChipAccountController({guild,wallet:gameWallets});
