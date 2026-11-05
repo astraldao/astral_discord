@@ -109,6 +109,10 @@ export class ScheduleStore {
   complete(id,messageId,check){return this.update(d=>{const p=d.calendars.flatMap(c=>c.publications).find(p=>p.id===id);if(!p||p.status!=='pending')throw new ScheduleError('この投稿は確認済みです。');p.messageId=messageId;p.status='ready';},check);}
   changeMonth(id,month,revision,check){month=scheduleMonth(month);return this.update(d=>{const c=d.calendars.find(c=>c.publications.some(p=>p.id===id)),p=c?.publications.find(p=>p.id===id);if(!p||p.status!=='ready'||JSON.stringify({...p,calendarId:c.id})!==revision)throw new ScheduleError('投稿情報が変更されました。開き直してください。');if(c.publications.some(x=>x.id!==id&&x.channelId===p.channelId&&x.month===month))throw new ScheduleError('このチャンネルの表示月はすでに登録されています。');p.month=month;},check);}
   cancelPending(id,revision,check){return this.update(d=>{const c=d.calendars.find(c=>c.publications.some(p=>p.id===id)),p=c?.publications.find(p=>p.id===id);if(!p||p.status!=='pending'||JSON.stringify({...p,calendarId:c.id})!==revision)throw new ScheduleError('投稿の状態が変わりました。開き直してください。');c.publications=c.publications.filter(p=>p.id!==id);},check);}
+  // Shared posts showing a past month move to the current month; future months stay until they arrive.
+  // A post whose channel already shows the current month is left as is instead of failing the whole update.
+  followMonth(month,check){try{month=scheduleMonth(month);}catch(error){return Promise.reject(error);}const moves=d=>{const moved=[];for(const c of d.calendars)for(const p of c.publications)if(p.status==='ready'&&p.month<month&&!c.publications.some(x=>x!==p&&x.channelId===p.channelId&&x.month===month)){p.month=month;moved.push(p.id);}return moved;};
+    if(!moves(structuredClone(this.data)).length)return Promise.resolve([]);return this.update(moves,check);}
   unpublish(id,revision,check){return this.update(d=>{const c=d.calendars.find(c=>c.publications.some(p=>p.id===id)),p=c?.publications.find(p=>p.id===id);if(!p||p.status!=='ready'||JSON.stringify({...p,calendarId:c.id})!==revision)throw new ScheduleError('共有の状態が変わりました。開き直してください。');c.publications=c.publications.filter(p=>p.id!==id);},check);}
 
 }

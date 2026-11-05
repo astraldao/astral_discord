@@ -16,5 +16,5 @@ export function createScheduleHub({primary,path='data/schedules.json',registered
   for(const name of publicationMethods)result[name]=(...args)=>{const count=core[name].length-1,fn=args[count],params=Array.from({length:count},(_,n)=>args[n]);return core[name](...params,check(async()=>{result.publication(args[0]);await fn?.();}));};
   views.set(guild,result);return result;
  }
- return {get busy(){return !!active;},async load(){await core.load();return this;},view,refresh,register(guild,fn){assertGuild(guild);refreshers.set(guild,fn);return ()=>{if(refreshers.get(guild)===fn)refreshers.delete(guild);};},async close(){closed=true;core.changed=null;await core.tail;await active;}};
+ return {get busy(){return !!active;},async load(){await core.load();return this;},view,refresh,followMonth(month){if(closed)return Promise.resolve([]);return core.followMonth(month);},register(guild,fn){assertGuild(guild);refreshers.set(guild,fn);return ()=>{if(refreshers.get(guild)===fn)refreshers.delete(guild);};},async close(){closed=true;core.changed=null;await core.tail;await active;}};
 }

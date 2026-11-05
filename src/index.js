@@ -1,4 +1,5 @@
 import {createScheduleHub} from './schedule-hub.js';
+import {currentScheduleMonth} from './schedule-store.js';
 import {Client,REST,Routes,GatewayIntentBits,Partials} from 'discord.js';
 import {readFile} from 'node:fs/promises';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -25,6 +26,8 @@ const resourcePresence=createResourcePresence(client,{version:botVersion,updatin
 setBotIconProvider(()=>client.user?.displayAvatarURL({extension:'png',size:64}));
 const updateClient=createUpdateClient({version:botVersion}),runtimes=new Map(),loading=new Map();let network,ready=false,stopping=false;
 const scheduleHub=createScheduleHub({primary:env.GUILD_ID,registered:id=>network?.ids().includes(id)===true});
+// Shared calendar posts follow the Japan-time month; the store skips the write when nothing is behind.
+let monthTimer;const followMonth=()=>{if(!ready||stopping)return;void scheduleHub.followMonth(currentScheduleMonth()).catch(()=>console.warn('共有予定表の月の自動更新を確認してください。'));};
 const sharedResources=createSharedBotResources();
 const readingActive=()=>[...runtimes.values()].some(r=>r.readingActive());
 const voiceBusy=()=>sharedResources.imageBusy||[...runtimes.values()].some(r=>r.voiceBusy());
@@ -45,6 +48,7 @@ client.once('clientReady',async()=>{try{
  ready=env.ASTRAL_SUPERVISED!=='1';if(ready){for(const r of runtimes.values())r.activate();void network.start().catch(()=>{});}
  console.log(`準備完了: ${client.user.tag} / v${botVersion} / ${runtimes.size}サーバー`);
  for(const r of runtimes.values())await r.refresh().catch(()=>console.warn('設置済みパネルの権限と投稿を確認してください。'));
+ followMonth();monthTimer=setInterval(followMonth,600000);monthTimer.unref?.();
  if(process.connected)process.send({type:'worker-ready'});
  }catch(e){console.error('初期設定:',e.code??e.name);resourcePresence.stop();client.destroy();process.exitCode=1;}});
 client.on('interactionCreate',async i=>{if(!ready||stopping||!runtimes.has(i.guildId))return;await runtimes.get(i.guildId).interaction(i);});
@@ -65,9 +69,9 @@ client.on('roleDelete',r=>route(r.guild.id,'revalidate'));
 client.on('voiceStateUpdate',(before,after)=>route(after.guild.id,'voice',before,after));
 client.on('error',e=>console.error('Discord接続:',e.code??e.name));
 function freeze(){stopping=true;ready=false;resourcePresence.stop();voiceProbe.close();network?.freeze();for(const r of runtimes.values())r.freeze();}
-async function drain(){await Promise.allSettled(loading.values());await network?.drain();await Promise.all([...runtimes.values()].map(r=>r.drain()));await scheduleHub.close();await runtimeEnv.tail;updateClient.close();await client.destroy();}
+async function drain(){clearInterval(monthTimer);await Promise.allSettled(loading.values());await network?.drain();await Promise.all([...runtimes.values()].map(r=>r.drain()));await scheduleHub.close();await runtimeEnv.tail;updateClient.close();await client.destroy();}
 if(env.ASTRAL_SUPERVISED==='1'&&process.connected){const lifecycle=createUpdateLifecycle({snapshot:()=>runtimeEnv.snapshot().running,accept:m=>m.runtimeRevision===undefined||m.runtimeRevision===runtimeEnv.snapshot().revision,busy:()=>!!network?.busy||resourcePresence.activeCount>0||[...runtimes.values()].some(r=>r.busy()),freeze,drain,send:(m,done)=>process.send(m,done??(()=>{})),exit:code=>process.exit(code)});
- process.on('message',m=>{if(m?.type==='update-presence'){resourcePresence.setUpdating(m.updating);resourcePresence.setRestarting(!!m.restarting);return;}if(m?.type==='activate'&&!stopping){ready=true;for(const r of runtimes.values())r.activate();void network?.start().catch(()=>{});}else void lifecycle(m);});}
+ process.on('message',m=>{if(m?.type==='update-presence'){resourcePresence.setUpdating(m.updating);resourcePresence.setRestarting(!!m.restarting);return;}if(m?.type==='activate'&&!stopping){ready=true;for(const r of runtimes.values())r.activate();void network?.start().catch(()=>{});followMonth();}else void lifecycle(m);});}
 for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{freeze();const force=setTimeout(()=>process.exit(0),12000);force.unref();void(async()=>{while(resourcePresence.activeCount>0)await delay(50);await drain();process.exit(0);})().catch(()=>process.exit(1));});
 const fullDiceContent=await configureDiceContent(client,()=>new REST({timeout:3000,retries:0}).setToken(env.DISCORD_TOKEN).get(Routes.oauth2CurrentApplication()));
 if(!fullDiceContent)console.info('通常投稿のダイス返信・スレッド同期にはMessage Content Intentを有効化して再起動してください。');

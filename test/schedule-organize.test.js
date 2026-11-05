@@ -71,10 +71,14 @@ async function uiFixture(){
  return {...f,controller,s,edits,click,act,screen:()=>scheduleScreen(s,f.store),allowed:value=>allowed=value,admin:value=>admin=value,async submit(open,value){const i=Object.assign(interaction(open.modal.toJSON().custom_id),{fields:{getTextInputValue:()=>value}});await controller.handle(i);return i;},async viewer(){publication=await f.store.reserve(f.id,CHANNEL,'2026-10');await f.store.complete(publication,POST);await controller.handle(interaction(`schedule:panel:${publication}`,'viewer'));return [...controller.sessions.sessions.values()].find(v=>v.userId==='viewer');},publication:()=>publication};
 }
 const controls=m=>m.components.flatMap(r=>r.toJSON().components);
-test('bulk selection spans pages, rejects off-page values and saves only after an explicit preview',async()=>{
+test('bulk selection spans pages, rejects off-page values and saves only after an explicit preview',async t=>{
+ // The fixture's events are in October 2026; pin the clock so the default month view still contains them.
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-28T12:00:00+09:00')});
  const f=await uiFixture();await f.store.putEvents(f.id,Array.from({length:25},(_,n)=>input({title:`予定${String(n).padStart(2,'0')}`})),f.calendar().revision);await f.act('tools');await f.act('organize');await f.act('bulk-open');const first=controls(f.screen()).find(c=>c.type===3).options.map(o=>o.value);await f.act('bulk-pick',first);assert.equal(f.s.bulk.eventIds.length,25);await f.act('bulk-next');const last=controls(f.screen()).find(c=>c.type===3).options[0].value;await f.act('bulk-pick',[first[0]]);assert.equal(f.s.bulk.eventIds.length,25);await f.act('bulk-pick',[last]);assert.equal(f.s.bulk.eventIds.length,26);const before=f.calendar();await f.act('bulk-save');assert.deepEqual(f.calendar(),before);await f.act('bulk-preview');assert.equal(f.s.view,'bulk-preview');await f.act('bulk-save');assert.ok(f.calendar().events.every(e=>e.date==='2026-11-01'));assert.equal(f.s.view,'organize');assert.equal(f.calendar().history.at(-1).before.length,26);
 });
-test('bulk day form changes only the preview; invalid values, stale previews and changed candidates cannot save',async()=>{
+test('bulk day form changes only the preview; invalid values, stale previews and changed candidates cannot save',async t=>{
+ // The fixture's events are in October 2026; pin the clock so the default month view still contains them.
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-28T12:00:00+09:00')});
  const f=await uiFixture();await f.act('organize');await f.act('bulk-open');await f.act('bulk-pick',[f.event]);const form=await f.act('bulk-days');await f.submit(form,'0');assert.equal(f.s.bulk.days,7);const form2=await f.act('bulk-days');await f.submit(form2,'-7');assert.equal(f.s.bulk.days,-7);assert.equal(f.calendar().events[0].date,'2026-10-25');await f.act('bulk-preview');await f.store.putEvent(f.id,f.event,input({title:'別の編集'}),0);const before=f.calendar();await f.act('bulk-save');assert.deepEqual(f.calendar(),before);
 });
 test('history restoration is confirmed, refreshes existing publications and old buttons cannot replay it',async()=>{
