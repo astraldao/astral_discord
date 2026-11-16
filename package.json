@@ -1,6 +1,6 @@
 {
   "name": "astral-voice-lobby",
-  "version": "7.4.0",
+  "version": "7.5.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node index.js",
     "test": "node --test test/*.test.js",
+    "test:clock": "node scripts/clock-test.js",
     "check": "node scripts/check.js",
     "voice-test": "node scripts/voice-test.js",
     "backup-voice-benchmark": "node scripts/backup-voice-benchmark.js",
