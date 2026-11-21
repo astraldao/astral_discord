@@ -165,3 +165,17 @@ test('an empty search submitted from an unfiltered page keeps the page and does 
   const f=await fixture();for(let n=0;n<12;n++)await f.add(`予定${n}`,'2026/10/14');await f.act('next');const before=structuredClone(f.store.data);
   const form=await f.act('search');await f.submit(form,{value:''});assert.equal(f.s.page,1);assert.equal(f.s.query,undefined);assert.deepEqual(f.store.data,before);
 });
+
+test('custom period searches drive the results and ICS export without changing the schedule',async()=>{
+  const f=await fixture();await f.add('卓 前日','2026/10/24');await f.add('卓 開始日','2026/10/25');await f.add('卓 終了日','2026/11/07');await f.add('卓 翌日','2026/11/08');await f.add('別の予定','2026/10/28');
+  await f.store.putEvent(f.other,null,input('卓 別の予定表','2026/10/28'));
+  await f.act('period',['week']);const before=structuredClone(f.store.data);
+  const form=await f.act('search');assert.match(form.modal.toJSON().components[0].components[0].placeholder,/期間:/);
+  await f.submit(form,{value:'期間:2026/10/25〜2026/11/07 卓'});
+  assert.deepEqual(eventOptions(f.screen()).map(o=>o.label),['卓 開始日','卓 終了日']);
+  await f.act('tools');const exported=await f.act('export');
+  const ics=exported.replies.at(-1).files[0].attachment.toString('utf8');
+  assert.deepEqual(ics.match(/^SUMMARY:.*$/gm),['SUMMARY:卓 開始日','SUMMARY:卓 終了日']);
+  await f.act('search-clear');assert.equal(f.s.period,'week');assert.equal(f.s.rangeStart,'2026-10-11');
+  assert.deepEqual(f.store.data,before);
+});

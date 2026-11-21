@@ -109,7 +109,7 @@ export function scheduleScreen(s,store,note=''){
       m=payload('📅  追加する予定を確認',`${intro}**${safe(stage.title)} · ${stage.label} · 追加 ${stage.inputs.length}件**\n${eventTime(stage.source)} · 日本時間${stage.source.place?`\n場所：${safe(stage.source.place)}`:''}\n\n${lines}\n\n元の予定は追加件数に含めません。${stage.overlaps?`\n既存の予定と日付・時刻が重なる候補が **${stage.overlaps}件** あります。重複して追加しないか確認してください。`:''}\nこの日付を独立した予定としてまとめて保存します。あとから自動では増やしません。`,{components:[row(button(s,'repeat-save',`この${stage.inputs.length}件を追加`,ButtonStyle.Primary),button(s,'repeat-settings','条件を変更')),row(button(s,'event-back','追加せず戻る'))]});
     }else if(s.view==='tools'){
       const events=selectedScheduleEvents(c,s),scope=s.query?`検索「${safe(s.query)}」· 全期間`:hasRange(s)?`${s.period==='week'?'週間':'今日から30日'} · ${rangeLabel(s)}`:s.date?`${s.date} の予定`:`${monthName(s.month)} の予定`;
-      m=payload(admin?'📅  予定の検索・整理':'📅  検索・取り出し',`${intro}**${safe(c.title)}**\n${scope} · **${events.length}件**\n\n予定名・場所・説明を全期間から検索できます。\n日付:2026/10/17 や 月:2026/10 で絞り込み、スペースで条件を組み合わせられます。\nカレンダーファイルは、この範囲の全ページの予定を含みます。端末へ保存し、対応アプリで読み込んでください。自動同期はしません。${admin?'\n\n「整理・復元」で、日付の一括移動・変更履歴・時間の重なりを確認できます。':''}`,{components:[
+      m=payload(admin?'📅  予定の検索・整理':'📅  検索・取り出し',`${intro}**${safe(c.title)}**\n${scope} · **${events.length}件**\n\n予定名・場所・説明を全期間から検索できます。\n日付:2026/10/17、月:2026/10、期間:2026/10/25〜2026/11/07 で絞り込めます。スペースで検索語を追加できます。\nカレンダーファイルは、この範囲の全ページの予定を含みます。端末へ保存し、対応アプリで読み込んでください。自動同期はしません。${admin?'\n\n「整理・復元」で、日付の一括移動・変更履歴・時間の重なりを確認できます。':''}`,{components:[
         row(button(s,'search','予定を検索',ButtonStyle.Primary),button(s,'list',s.query?'検索結果へ':'一覧へ戻る')),
         ...(scheduleActions(s,c).length?[actionPicker(`schedule:${s.id}:${s.turn}:actions`,scheduleActions(s,c),'保存・管理の操作を選ぶ')]:[]),
       ]});
@@ -160,7 +160,7 @@ function modal(s,kind,store,today){
   if(kind==='event')m.addComponents(input('title','予定名',80,s.eventDraft?.title??e?.title??''),input('date','日付 YYYY/MM/DD（終日は〜で範囲・最大31日）',21,s.eventDraft?.date??(e?scheduleInputDate(e):defaultDate)),input('time','日本時間 HH:MM-HH:MM（終了が早い場合は翌日）',20,s.eventDraft?.time??(e?.start===null||!e?'':`${clock(e.start)}${e.end===null?'':`-${clock(e.end)}`}`),false),input('place','場所・VC・リンク（任意）',100,s.eventDraft?.place??e?.place??'',false),input('description','説明（任意）',500,s.eventDraft?.description??e?.description??'',false,true));
   else if(kind==='bulk-days')m.addComponents(input('value','後へ移動は7、前へ移動は-7（前後365日まで）',4,String(s.bulk.days)));
   else if(kind==='repeat-count')m.addComponents(input('value','元の予定を除く追加件数（1〜26）',2,String(s.repeat.count)));
-  else if(kind==='search'){const field=input('value','検索語（空欄で解除・スペースで絞り込み）',80,s.query??'',false);field.components[0].setPlaceholder('例：図書館 / 日付:2026/10/17 / 月:2026/10 図書館');m.addComponents(field);}
+  else if(kind==='search'){const field=input('value','検索語（空欄で解除・スペースで絞り込み）',80,s.query??'',false);field.components[0].setPlaceholder('例：日付:2026/10/17 / 期間:2026/10/25〜2026/11/07 卓');m.addComponents(field);}
   else if(kind==='recover')m.addComponents(input('value','この予定表の投稿URL',200));
   else if(kind==='navigate')m.addComponents(input('value','表示月（YYYY/MM）',7,s.month));
   else if(kind==='day')m.addComponents(input('value','日付（YYYY/MM/DD）',10,defaultDate));

@@ -92,3 +92,21 @@ test('date search validates leap days and supported years before filtering or ex
   const exportText=unfold(scheduleExport(c,selectedScheduleEvents(c,{query:'月:2028/02'})));
   assert.equal((exportText.match(/BEGIN:VEVENT/g)??[]).length,1);assert.ok(exportText.includes('DTSTART;VALUE=DATE:20280229'));
 });
+
+test('custom period search includes both boundaries and overlapping events across years',async()=>{
+  const c=await calendar([
+    {title:'卓 継続',date:'2026/12/27〜2026/12/31',time:''},
+    {title:'卓 深夜',date:'2026/12/30',time:'23:00-01:00'},
+    {title:'卓 零時終了',date:'2026/12/30',time:'23:00-00:00'},
+    {title:'別の予定',date:'2027/01/01'},
+    {title:'卓 終了日',date:'2027/01/02'},
+    {title:'卓 範囲外',date:'2027/01/03'},
+  ]);
+  const titles=query=>selectedScheduleEvents(c,{query,month:'2026-10'}).map(e=>e.title);
+  assert.deepEqual(titles('期間：２０２６／１２／３１～２０２７／０１／０２ 卓'),['卓 継続','卓 深夜','卓 終了日']);
+  assert.deepEqual(titles('期間:2027-01-01〜2027-01-01'),['別の予定']);
+  assert.equal(titles('期間:2000/01/01~2099/12/31').length,6);
+  for(const query of ['期間:2026/12/31','期間:~2027/01/02','期間:2027/01/02〜2026/12/31','期間:2027/02/29〜2027/03/01','期間:2026/12/31~2027/01/02~2027/01/03']){
+    assert.throws(()=>scheduleQuery(query));
+  }
+});

@@ -13,6 +13,12 @@ export function scheduleQuery(value){
 // Explicit prefixes keep ordinary titles (including bare dates) searchable as text.
 function searchDate(term){
   if(term.startsWith('日付:')){const date=scheduleDate(term.slice(3));return {start:date,end:date};}
+  if(term.startsWith('期間:')){
+    const parts=term.slice(3).split(/[〜~]/u);
+    if(parts.length!==2||parts.some(part=>!part))throw new ScheduleError('期間は 期間:YYYY/MM/DD〜YYYY/MM/DD で入力してください。');
+    const {rangeStart,rangeEnd}=scheduleRange(...parts);
+    return {start:rangeStart,end:rangeEnd};
+  }
   if(term.startsWith('月:')){
     const month=scheduleMonth(term.slice(2)),[year,m]=month.split('-').map(Number);
     return {start:`${month}-01`,end:`${month}-${new Date(Date.UTC(year,m,0)).getUTCDate()}`};
